@@ -1,0 +1,32 @@
+{
+  // Configurações do editor e formatação para o time
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "Dart-Code.dart-code",
+  "editor.codeActionsOnSave": {
+    "source.fixAll": "explicit",
+    "source.organizeImports": "explicit"
+  },
+  "editor.rulers": [80, 100],
+  "editor.tabSize": 2,
+
+  // Configurações específicas de Dart e Flutter
+  "dart.previewFlutterUiGuides": true,
+  "dart.flutterCreateAndroidLanguage": "kotlin",
+  "dart.flutterCreateIOSLanguage": "swift",
+  "dart.lineLength": 80,
+  "dart.showTodos": true,
+  "dart.closingLabels": true,
+  "dart.hotReloadOnSave": "always",
+
+  // Ocultar arquivos irrelevantes da visualização para não poluir
+  "files.exclude": {
+    "**/.git": true,
+    "**/.svn": true,
+    "**/.hg": true,
+    "**/CVS": true,
+    "**/.DS_Store": true,
+    "**/Thumbs.db": true,
+    "**/.dart_tool": true,
+    "**/.idea": true
+  }
+}

@@ -1,0 +1,92 @@
+# -----------------------------------------------------------------------------
+# .gitignore - TransSaúde (Flutter + Firebase + Android)
+# -----------------------------------------------------------------------------
+
+# --- Flutter / Dart ---
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+ephemeral/
+.pub-cache/
+.pub/
+
+# Arquivos de símbolos e testes
+*.parse.json
+.coverage
+coverage/
+
+# --- Android ---
+**/android/.gradle/
+**/android/captures/
+**/android/gradlew
+**/android/gradlew.bat
+**/android/local.properties
+**/android/**/GeneratedPluginRegistrant.java
+
+# Chaves de assinatura e segredos Android
+*.keystore
+*.jks
+key.properties
+
+# Pacotes compilados Android
+*.apk
+*.aab
+
+# --- Firebase & Segurança ---
+# ATENÇÃO: Chaves de API de serviço e credenciais sensíveis NUNCA devem ir para o GitHub.
+# Para o google-services.json, se o repositório for público, mantenha ignorado e compartilhe
+# via canal seguro ou arquivo de template (ex: google-services.json.example).
+# Se o repositório do time for privado, a equipe pode optar por versionar o google-services.json
+# ou gerenciá-lo via CI/CD secrets.
+*-firebase-adminsdk-*.json
+firebase-debug.log*
+firestore-debug.log*
+ui-debug.log*
+google-services.json
+# Se quiser versionar o google-services.json no repo privado, descomente a linha abaixo:
+# !android/app/google-services.json
+
+# --- Ambientes / Variáveis de Ambiente ---
+.env
+.env.*
+!.env.example
+
+# --- VS Code ---
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.history/
+*.code-workspace
+
+# --- Android Studio / IntelliJ IDEA ---
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# --- Sistema Operacional ---
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+[Dd]esktop.ini
+
+# Linux
+*~
+.directory
+.Trash-*
+
+# --- Logs ---
+*.log
