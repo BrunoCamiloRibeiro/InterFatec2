@@ -6,7 +6,7 @@
     "source.fixAll": "explicit",
     "source.organizeImports": "explicit"
   },
-  "editor.rulers": [80, 100],
+  "editor.rulers": [],
   "editor.tabSize": 2,
 
   // Configurações específicas de Dart e Flutter
