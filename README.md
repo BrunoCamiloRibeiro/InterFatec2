@@ -176,14 +176,15 @@ Resumo rápido dos tipos de commit:
 - `refactor:` melhoria de código sem alterar regra de negócio
 
 ### ⚠️ Regras de Integração e Pull Request:
+- **NUNCA dê push direto na `develop` ou `main`:** É proibido push direto. Todo código entra exclusivamente via PR a partir da sua branch.
 - **Só abra a PR se tiver certeza absoluta do que fez:** Teste a tela/funcionalidade localmente e rode `flutter analyze`. Não abra PR com código não testado ou incompleto.
-- **Sempre abra uma Pull Request (PR) no GitHub:** Após commitar na sua branch e dar `git push`, é **obrigatório abrir uma PR** direcionada para `develop` para que o time revise antes do merge.
+- **Sempre abra uma Pull Request (PR) direcionada para `develop`:** Após commitar na sua branch e dar `git push`, abra a PR para `develop` para revisão em equipe.
 - **Informe se a branch deve ser deletada ou mantida:** Na descrição do PR, deixe explícito se a branch pode ser excluída após o merge ou se você ainda continuará trabalhando nela.
 - **Padrão para commit de merge da PR:**
   ```text
   merge(<escopo>): <descrição sucinta da entrega> (PR #<número>)
   ```
-  *Exemplo:* `merge(paciente): integrar painel e status de transporte (PR #2)`
+- **Como vai para a `main` (Produção)?** No fechamento da versão estável/sprint, abre-se uma PR de Release: `develop` $\rightarrow$ `main` com commit `release(sprint-X): ...`.
 
 ---
 

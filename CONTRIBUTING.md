@@ -141,7 +141,28 @@ merge(<escopo>): <descrição sucinta da entrega em minúsculas> (PR #<número>)
 
 ---
 
-## 🛡️ 5. Boas Práticas do Time
+## 🚀 5. Como Enviar para a `main` (Produção / Release Oficial)
+
+A branch `main` reflete exclusivamente o código em **produção / versão estável para entrega**. **Nenhum desenvolvedor cria branch nem abre PR individual direto para a `main`.**
+
+### 📦 Fluxo de Fechamento de Versão:
+1. Durante a sprint, todas as branches (`feat/...`, `fix/...`) são mergeadas na **`develop`** via PR.
+2. Quando todas as telas e regras estiverem integradas e testadas na `develop`, abre-se a **Pull Request de Release**:
+   * **Base:** `main` $\leftarrow$ **Compare:** `develop`
+   * **Título da PR:** `release: versão final da sprint X` (ou `Release v1.0.0`)
+   * **Padrão de commit do merge:** `release(sprint-1): consolidacao das entregas (v1.0.0)`
+3. Com o PR aprovado e mergeado, a `main` estará atualizada com a versão oficial de produção.
+
+---
+
+## 🛡️ 6. Boas Práticas e Regras Inegociáveis do Time
+
+> [!CAUTION]
+> ### 🛑 NUNCA DÊ PUSH DIRETO NA `develop` OU NA `main`!
+> Se você der `git push origin develop` ou `git push origin main` direto sem abrir PR, **você é uma anta e vai quebrar o código de todo mundo.**
+> * Todo e qualquer código entra **EXCLUSIVAMENTE via Pull Request**.
+> * Não existe "foi só uma linha rápida" ou "era só um errinho". Crie uma branch, commite nela e abra PR.
+> * Quem empurrar commit direto na `develop` vai pagar o lanche do grupo inteiro e resolver conflito de merge linha por linha no braço.
 
 - **Código Limpo:** Rode sempre `dart format .` e `flutter analyze` antes de commitar.
 - **Não comitar segredos:** Nunca envie arquivos de chaves privadas ou tokens no Git.
