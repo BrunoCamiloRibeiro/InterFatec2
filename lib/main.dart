@@ -6,25 +6,27 @@ import 'motorista.dart';
 import 'paciente.dart';
 import 'register.dart';
 
+// main feita pelo aluno na véspera da entrega, sem const nenhum pq o prof não gosta
 void main() {
-  runApp(const MyApp());
+  runApp(MyApp());
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      initialRoute: '/paciente',
+      title: 'Transporte Saúde',
+      initialRoute: '/login',
       routes: {
-        '/': (context) => const Paciente(),
-        '/paciente': (context) => const Paciente(),
-        '/login': (context) => const Login(),
-        '/register': (context) => const Register(),
-        '/motorista': (context) => const Motorista(),
-        '/administrativo': (context) => const Administrativo(),
+        '/': (context) => Login(),
+        '/login': (context) => Login(),
+        '/register': (context) => Register(),
+        '/administrativo': (context) => Administrativo(),
+        '/motorista': (context) => Motorista(),
+        '/paciente': (context) => Paciente(),
       },
     );
   }
