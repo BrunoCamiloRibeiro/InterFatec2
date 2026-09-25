@@ -168,12 +168,23 @@ Antes de enviar qualquer código, consulte o nosso guia detalhado:
 
 👉 **[Leia o Guia de Contribuição e Padrões de Commit (CONTRIBUTING.md)](CONTRIBUTING.md)**
 
-Resumo rápido dos tipos:
+Resumo rápido dos tipos de commit:
 - `feat(modulo):` nova funcionalidade
 - `fix(modulo):` correção de erro
 - `docs:` melhorias na documentação
 - `style:` ajustes de formatação e lint
 - `refactor:` melhoria de código sem alterar regra de negócio
+
+### ⚠️ Regras de Integração e Pull Request:
+- **NUNCA dê push direto na `develop` ou `main`:** É proibido push direto. Todo código entra exclusivamente via PR a partir da sua branch.
+- **Só abra a PR se tiver certeza absoluta do que fez:** Teste a tela/funcionalidade localmente e rode `flutter analyze`. Não abra PR com código não testado ou incompleto.
+- **Sempre abra uma Pull Request (PR) direcionada para `develop`:** Após commitar na sua branch e dar `git push`, abra a PR para `develop` para revisão em equipe.
+- **Informe se a branch deve ser deletada ou mantida:** Na descrição do PR, deixe explícito se a branch pode ser excluída após o merge ou se você ainda continuará trabalhando nela.
+- **Padrão para commit de merge da PR:**
+  ```text
+  merge(<escopo>): <descrição sucinta da entrega> (PR #<número>)
+  ```
+- **Como vai para a `main` (Produção)?** No fechamento da versão estável/sprint, abre-se uma PR de Release: `develop` $\rightarrow$ `main` com commit `release(sprint-X): ...`.
 
 ---
 
