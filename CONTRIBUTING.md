@@ -106,16 +106,44 @@ gitGraph
    git push origin feat/motorista-lista-digital
    ```
 
-6. **Abra um Pull Request (PR):**
-   - Direcionado para a branch `develop`.
-   - Adicione uma descrição do que foi feito e capturas de tela se houver alteração de interface.
-   - Solicite a revisão de **ao menos 1 colega de equipe**.
-   - Após a aprovação e testes, faça o merge via `Squash and merge` ou `Rebase and merge`.
+6. **Abra obrigatoriamente uma Pull Request (PR) no GitHub:**
+   - ⚠️ **ATENÇÃO:** Nunca faça push ou merge direto para `develop` ou `main`. **Assim que terminar os commits e enviar sua branch com `git push`, acesse o repositório no GitHub e abra imediatamente uma Pull Request (PR).**
+   - 🛑 **SÓ ABRA A PR SE TIVER ABSOLUTA CERTEZA DO QUE FEZ:** Não envie código quebrado, não testado ou feito pela metade. Rode o aplicativo localmente, teste todas as ações e execute `flutter analyze` para garantir que não há erros de compilação ou linter.
+   - Configure a branch de destino como `develop` (base: `develop` <- compare: `sua-branch`).
+   - Preencha um título e uma descrição clara explicando o que foi implementado/corrigido (inclua prints ou vídeos se alterou telas).
+   - 🗑️ **STATUS DA BRANCH (OBRIGATÓRIO INFORMAR NA PR):** Deixe expressamente claro na descrição da PR se a sua branch deve ser **deletada após o merge** ou se **você ainda vai continuar usando ela**.
+     * Adicione essa caixa de seleção na descrição do PR:
+       - `[X] Deletar branch após o merge` (se a feature foi concluída)
+       - `[ ] Manter branch ativa (ainda continuarei usando para próximas tarefas)`
+   - Solicite a revisão (*Reviewers*) de **ao menos 1 colega de equipe**.
+   - O merge só pode ser feito após a aprovação e validação dos testes.
 
 ---
 
-## 🛡️ 4. Boas Práticas do Time
+## 🔀 4. Padrão para o Nome do Commit de Merge do PR
+
+Ao aprovar e realizar o merge da PR no GitHub, o commit de merge deve seguir obrigatoriamente um formato padronizado para manter o histórico do Git limpo e rastreável.
+
+### 📐 Formato Padrão:
+
+```text
+merge(<escopo>): <descrição sucinta da entrega em minúsculas> (PR #<número>)
+```
+
+> **Nota:** Se você utilizar o botão de merge nativo do GitHub, edite a primeira linha do commit para seguir esse padrão.
+
+### 💡 Exemplos:
+* `merge(paciente): integrar painel e status de transporte (PR #2)`
+* `merge(motorista): adicionar lista de passageiros e baixa de ida (PR #3)`
+* `merge(auth): tela de login e fluxo de autenticacao firebase (PR #4)`
+* `merge(admin): implementar gestao de viagens diarias (PR #5)`
+* `merge(fix/paciente): corrigir confirmacao de carona no dialogo (PR #6)`
+
+---
+
+## 🛡️ 5. Boas Práticas do Time
 
 - **Código Limpo:** Rode sempre `dart format .` e `flutter analyze` antes de commitar.
 - **Não comitar segredos:** Nunca envie arquivos de chaves privadas ou tokens no Git.
 - **Comunicação Ativa:** Antes de iniciar uma tarefa, avise o time no grupo para que duas pessoas não trabalhem no mesmo arquivo ou funcionalidade ao mesmo tempo.
+
