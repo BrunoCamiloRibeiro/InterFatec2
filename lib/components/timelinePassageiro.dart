@@ -15,17 +15,21 @@ class TimelinePassageiro extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return TimelineTile(
-      // Recebendo os parâmetros
-      isFirst: isFirst,
-      isLast: isLast,
-      // Linhas
-      beforeLineStyle: LineStyle(color: Colors.blue),
-      // Icones
-      indicatorStyle: IndicatorStyle(
-        width: 30,
-        color: Colors.blueAccent,
-        iconStyle: IconStyle(iconData: Icons.done, color: Colors.white),
+    return SizedBox(
+      // Espaço entre os eventos
+      height: 70,
+      child: TimelineTile(
+        // Recebendo os parâmetros
+        isFirst: isFirst,
+        isLast: isLast,
+        // Linhas
+        beforeLineStyle: LineStyle(color: isPast ? Colors.blueGrey[900]! : Colors.blueGrey[300]!),
+        // Icones
+        indicatorStyle: IndicatorStyle(
+          width: 30,
+          color: isPast ? Colors.blueGrey[900]! : Colors.blueGrey[300]!,
+          iconStyle: IconStyle(iconData: Icons.done, color: Colors.white),
+        ),
       ),
     );
   }

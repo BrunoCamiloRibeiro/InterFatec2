@@ -23,7 +23,7 @@ class Motorista extends StatelessWidget {
                   padding: EdgeInsets.all(10),
                   decoration: BoxDecoration(
                     border: Border(
-                      top: BorderSide(color: Colors.blue, width: 5.0),
+                      top: BorderSide(color: Colors.blueGrey[900]!, width: 5.0),
                     ),
                   ),
                   child: ListTile(
