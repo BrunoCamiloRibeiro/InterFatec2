@@ -1,18 +1,16 @@
 import 'package:flutter/material.dart';
-
-void main() => runApp(const ListaPassageiros());
+import 'package:timeline_tile/timeline_tile.dart';
 
 Color corStatus = Colors.redAccent;
 
-class ListaPassageiros extends StatelessWidget {
-  const ListaPassageiros({super.key});
+class Motorista extends StatelessWidget {
+  const Motorista({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       home: Scaffold(
         appBar: AppBar(title: const Text('Lista de Passageiros')),
-        // Estilização do Scaffold
         backgroundColor: Colors.white,
         body: SafeArea(
           child: ListView(
@@ -24,19 +22,10 @@ class ListaPassageiros extends StatelessWidget {
                   padding: EdgeInsets.all(10),
                   decoration: BoxDecoration(
                     border: Border(
-                      top: BorderSide(
-                        color: Colors.blue,
-                        width: 5.0,
-                      ), //substituir cor por variável dinâmica posteriormente
+                      top: BorderSide(color: Colors.blue, width: 5.0),
                     ),
                   ),
                   child: ListTile(
-                    // leading: Icon(
-                    //   Icons.person, // Ícone padrão de usuário
-                    //   size:
-                    //       40.0, // Tamanho do ícone (ajuste conforme necessário)
-                    //   color: Colors.grey, // Opcional: cor do ícone
-                    // ), // Foto?
                     title: Text(
                       'NOME DA PESSOA',
                       style: TextStyle(fontWeight: FontWeight.bold),
@@ -47,7 +36,6 @@ class ListaPassageiros extends StatelessWidget {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Container(
-                            // margin: EdgeInsets.only(bottom: 4),
                             child: Text(
                               '(DD) 9XXXX-XXXX',
                               style: TextStyle(
@@ -56,38 +44,116 @@ class ListaPassageiros extends StatelessWidget {
                               ),
                             ),
                           ),
-                          // Locais de Consulta e Busca
+
+                          // Timeline com timeline_tile
                           Container(
-                            margin: EdgeInsets.all(5),
-                            padding: EdgeInsets.all(5),
-                            // elevation: 5,
+                            margin: EdgeInsets.symmetric(vertical: 8.0),
                             child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  'Endereço de Embarque',
-                                  style: TextStyle(
-                                    fontSize: 13.0,
-                                    // fontWeight: FontWeight.bold,
+                                // 1. Embarque (Início)
+                                TimelineTile(
+                                  isFirst: true,
+                                  alignment: TimelineAlign
+                                      .center, // <-- Adicionado aqui
+                                  startChild: Padding(
+                                    padding: const EdgeInsets.only(right: 8.0),
+                                    child: Text(
+                                      '05:30',
+                                      style: TextStyle(
+                                        fontSize: 12.0,
+                                        color: Colors.black,
+                                      ),
+                                      textAlign: TextAlign.right,
+                                    ),
+                                  ),
+                                  indicatorStyle: IndicatorStyle(
+                                    width: 24,
+                                    color: Colors.blue,
+                                    iconStyle: IconStyle(
+                                      iconData: Icons.location_pin,
+                                      color: Colors.white,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  endChild: Padding(
+                                    padding: const EdgeInsets.all(8.0),
+                                    child: Text(
+                                      'Endereço de Embarque',
+                                      style: TextStyle(fontSize: 13.0),
+                                    ),
                                   ),
                                 ),
-                                Text(
-                                  'Local de Consulta',
-                                  style: TextStyle(
-                                    fontSize: 13.0,
-                                    // fontWeight: FontWeight.bold,
+
+                                // 2. Consulta (Meio)
+                                TimelineTile(
+                                  alignment: TimelineAlign
+                                      .center, // <-- Adicionado aqui
+                                  startChild: Padding(
+                                    padding: const EdgeInsets.only(right: 8.0),
+                                    child: Text(
+                                      '10:30',
+                                      style: TextStyle(
+                                        fontSize: 12.0,
+                                        color: Colors.black,
+                                      ),
+                                      textAlign: TextAlign.right,
+                                    ),
+                                  ),
+                                  indicatorStyle: IndicatorStyle(
+                                    width: 24,
+                                    color: Colors.blue,
+                                    iconStyle: IconStyle(
+                                      iconData: Icons.local_hospital_outlined,
+                                      color: Colors.white,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  endChild: Padding(
+                                    padding: const EdgeInsets.all(8.0),
+                                    child: Text(
+                                      'Local de Consulta',
+                                      style: TextStyle(fontSize: 13.0),
+                                    ),
                                   ),
                                 ),
-                                Text(
-                                  'Local de Busca',
-                                  style: TextStyle(
-                                    fontSize: 13.0,
-                                    // fontWeight: FontWeight.bold,
+
+                                // 3. Busca (Fim)
+                                TimelineTile(
+                                  isLast: true,
+                                  alignment: TimelineAlign
+                                      .center, // <-- Adicionado aqui
+                                  startChild: Padding(
+                                    padding: const EdgeInsets.only(right: 8.0),
+                                    child: Text(
+                                      '13:45',
+                                      style: TextStyle(
+                                        fontSize: 12.0,
+                                        color: Colors.black,
+                                      ),
+                                      textAlign: TextAlign.right,
+                                    ),
+                                  ),
+                                  indicatorStyle: IndicatorStyle(
+                                    width: 24,
+                                    color: Colors.blue,
+                                    iconStyle: IconStyle(
+                                      iconData: Icons.logout_outlined,
+                                      color: Colors.white,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  endChild: Padding(
+                                    padding: const EdgeInsets.all(8.0),
+                                    child: Text(
+                                      'Local de Busca',
+                                      style: TextStyle(fontSize: 13.0),
+                                    ),
                                   ),
                                 ),
                               ],
                             ),
                           ),
+
                           Container(
                             margin: EdgeInsets.only(top: 4.0),
                             child: Badge(
@@ -101,7 +167,7 @@ class ListaPassageiros extends StatelessWidget {
                                   'Status',
                                   style: TextStyle(
                                     fontSize: 12.0,
-                                    color: Colors.white, // Opcional: define a cor do texto para contrastar com o fundo
+                                    color: Colors.white,
                                   ),
                                 ),
                               ),
@@ -110,14 +176,7 @@ class ListaPassageiros extends StatelessWidget {
                         ],
                       ),
                     ),
-                    trailing: Text(
-                      '13:45',
-                      style: TextStyle(
-                        fontSize: 18.0,
-                        //fontWeight: FontWeight.bold, // Opcional: deixa o texto em negrito
-                        //color: Colors.grey, // Ideia: definir a cor de acordo com horário atual
-                      ),
-                    ),
+                    trailing: Text('13:45', style: TextStyle(fontSize: 18.0)),
                   ),
                 ),
               ),
