@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:timeline_tile/timeline_tile.dart';
+// import 'package:timeline_tile/timeline_tile.dart';
+import '../components/TimelinePassageiro.dart';
 
 Color corStatus = Colors.redAccent;
 
@@ -50,106 +51,12 @@ class Motorista extends StatelessWidget {
                             margin: EdgeInsets.symmetric(vertical: 8.0),
                             child: Column(
                               children: [
-                                // 1. Embarque (Início)
-                                TimelineTile(
-                                  isFirst: true,
-                                  alignment: TimelineAlign
-                                      .center, // <-- Adicionado aqui
-                                  startChild: Padding(
-                                    padding: const EdgeInsets.only(right: 8.0),
-                                    child: Text(
-                                      '05:30',
-                                      style: TextStyle(
-                                        fontSize: 12.0,
-                                        color: Colors.black,
-                                      ),
-                                      textAlign: TextAlign.right,
-                                    ),
-                                  ),
-                                  indicatorStyle: IndicatorStyle(
-                                    width: 24,
-                                    color: Colors.blue,
-                                    iconStyle: IconStyle(
-                                      iconData: Icons.location_pin,
-                                      color: Colors.white,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                  endChild: Padding(
-                                    padding: const EdgeInsets.all(8.0),
-                                    child: Text(
-                                      'Endereço de Embarque',
-                                      style: TextStyle(fontSize: 13.0),
-                                    ),
-                                  ),
-                                ),
-
-                                // 2. Consulta (Meio)
-                                TimelineTile(
-                                  alignment: TimelineAlign
-                                      .center, // <-- Adicionado aqui
-                                  startChild: Padding(
-                                    padding: const EdgeInsets.only(right: 8.0),
-                                    child: Text(
-                                      '10:30',
-                                      style: TextStyle(
-                                        fontSize: 12.0,
-                                        color: Colors.black,
-                                      ),
-                                      textAlign: TextAlign.right,
-                                    ),
-                                  ),
-                                  indicatorStyle: IndicatorStyle(
-                                    width: 24,
-                                    color: Colors.blue,
-                                    iconStyle: IconStyle(
-                                      iconData: Icons.local_hospital_outlined,
-                                      color: Colors.white,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                  endChild: Padding(
-                                    padding: const EdgeInsets.all(8.0),
-                                    child: Text(
-                                      'Local de Consulta',
-                                      style: TextStyle(fontSize: 13.0),
-                                    ),
-                                  ),
-                                ),
-
-                                // 3. Busca (Fim)
-                                TimelineTile(
-                                  isLast: true,
-                                  alignment: TimelineAlign
-                                      .center, // <-- Adicionado aqui
-                                  startChild: Padding(
-                                    padding: const EdgeInsets.only(right: 8.0),
-                                    child: Text(
-                                      '13:45',
-                                      style: TextStyle(
-                                        fontSize: 12.0,
-                                        color: Colors.black,
-                                      ),
-                                      textAlign: TextAlign.right,
-                                    ),
-                                  ),
-                                  indicatorStyle: IndicatorStyle(
-                                    width: 24,
-                                    color: Colors.blue,
-                                    iconStyle: IconStyle(
-                                      iconData: Icons.logout_outlined,
-                                      color: Colors.white,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                  endChild: Padding(
-                                    padding: const EdgeInsets.all(8.0),
-                                    child: Text(
-                                      'Local de Busca',
-                                      style: TextStyle(fontSize: 13.0),
-                                    ),
-                                  ),
-                                ),
+                                // Embarque
+                                TimelinePassageiro(isFirst: true, isLast: false, isPast: true),
+                                // Local da Consulta
+                                TimelinePassageiro(isFirst: false, isLast: false, isPast: false),
+                                // Local de Saída
+                                TimelinePassageiro(isFirst: false, isLast: true, isPast: false),
                               ],
                             ),
                           ),
