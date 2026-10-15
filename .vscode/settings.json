@@ -28,5 +28,9 @@
     "**/Thumbs.db": true,
     "**/.dart_tool": true,
     "**/.idea": true
+  },
+  "cmake.sourceDirectory": "D:/Users/Audrey Souza/Desktop/InterFatec2/windows",
+  "[dart]": {
+    "editor.defaultFormatter": "Dart-Code.dart-code"
   }
 }
