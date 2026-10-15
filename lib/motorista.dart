@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../components/CardPaciente.dart'; // DESCOMENTAR ESSA LINHA CASO SEJA NECESSÁRIO USAR A TIMELINE
+
 // import 'package:timeline_tile/timeline_tile.dart';
 // import '../components/TimelineViagem.dart'; // DESCOMENTAR ESSA LINHA CASO SEJA NECESSÁRIO USAR A TIMELINE
 
@@ -23,125 +25,42 @@ class Motorista extends StatelessWidget {
           child: ListView(
             padding: EdgeInsets.all(16),
             children: <Widget>[
-              Card(
-                elevation: 12,
-                child: Container(
-                  padding: EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    border: Border(
-                      left: BorderSide(
-                        color: Colors.blueGrey[900]!,
-                        width: 5.0,
-                      ),
-                    ),
+              Column(
+                spacing: 10,
+                children: [
+                  CardPaciente(
+                    nome_paciente: 'Maria Aparecida Santos',
+                    endereco_paciente: 'Rua das Flores, 125 - Centro',
+                    tel_paciente: '(17) 99123-4567',
+                    local_consulta: 'Hospital de Base',
+                    local_saida: 'Residência',
+                    status: 0,
                   ),
-                  child: ListTile(
-                    title: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween, // Joga o nome pra esquerda e a coluna pra direita
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Icon(Icons.person_2_outlined, size: 25),
-                                SizedBox(width: 5),
-                                Text(
-                                  'nome da pessoa'.toUpperCase(),
-                                  style: TextStyle(fontWeight: FontWeight.bold),
-                                ),
-                              ],
-                            ),
-                            Row(
-                              children: [
-                                Icon(Icons.house_outlined, size: 25),
-                                SizedBox(width: 5),
-                                Text(
-                                  'Endereço Residência',
-                                  style: TextStyle(
-                                    fontSize: 15.0,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            Row(
-                              children: [
-                                Icon(Icons.phone_outlined, size: 23),
-                                SizedBox(width: 5),
-                                Text(
-                                  '(DD) 9XXXX-XXXX',
-                                  style: TextStyle(
-                                    fontSize: 13.5,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-
-                        Column(
-                          mainAxisAlignment: MainAxisAlignment.start,
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Row(
-                              children: [
-                                Text(
-                                  'Local Consulta',
-                                  style: TextStyle(
-                                    fontSize: 15.0,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                SizedBox(width: 5),
-                                Icon(Icons.local_hospital_outlined, size: 25),
-                              ],
-                            ),
-                            Row(
-                              children: [
-                                Text(
-                                  'Local Desembarque',
-                                  style: TextStyle(
-                                    fontSize: 15.0,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                SizedBox(width: 5),
-                                Icon(Icons.exit_to_app_outlined, size: 25),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-
-                    subtitle: Row(
-                      children: [
-                        Container(
-                          margin: EdgeInsets.only(top: 10),
-                          child: Badge(
-                            backgroundColor: corStatus,
-                            label: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8.0,
-                                vertical: 2.0,
-                              ),
-                              child: Text(
-                                'Status',
-                                style: TextStyle(
-                                  fontSize: 12.0,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+                  CardPaciente(
+                    nome_paciente: 'João Pedro Oliveira',
+                    endereco_paciente: 'Av. Alberto Andaló, 840',
+                    tel_paciente: '(17) 99234-5678',
+                    local_consulta: 'UBS Central',
+                    local_saida: 'Residência',
+                    status: 1,
                   ),
-                ),
+                  CardPaciente(
+                    nome_paciente: 'Ana Carolina Ferreira',
+                    endereco_paciente: 'Rua São Paulo, 56 - Vila Nova',
+                    tel_paciente: '(17) 99345-6789',
+                    local_consulta: 'Hospital Austa',
+                    local_saida: 'Clínica de Fisioterapia',
+                    status: 2,
+                  ),
+                  CardPaciente(
+                    nome_paciente: 'Carlos Eduardo Martins',
+                    endereco_paciente: 'Rua dos Ipês, 310',
+                    tel_paciente: '(17) 99456-7890',
+                    local_consulta: 'AME São José do Rio Preto',
+                    local_saida: 'Residência',
+                    status: 3,
+                  ),
+                ],
               ),
             ],
           ),
