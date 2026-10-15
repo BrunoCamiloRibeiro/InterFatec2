@@ -8,7 +8,7 @@ class CardPaciente extends StatelessWidget {
   final String local_saida;
   final int status;
 
-  const CardPaciente({
+  CardPaciente({
     super.key,
     required this.nome_paciente,
     required this.endereco_paciente,
@@ -39,114 +39,115 @@ class CardPaciente extends StatelessWidget {
           ),
         ),
         child: ListTile(
-          title: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween, // Joga o nome pra esquerda e a coluna pra direita
+          // TITLE: Apenas as informações do paciente (Nome, Endereço, Telefone)
+          title: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              Row(
                 children: [
-                  Row(
-                    children: [
-                      Icon(Icons.person_2_outlined, size: 25),
-                      SizedBox(width: 5),
-                      Text(
-                        nome_paciente.toUpperCase(),
-                        style: TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                    ],
-                  ),
-                  Row(
-                    children: [
-                      Icon(Icons.house_outlined, size: 25),
-                      SizedBox(width: 5),
-                      Text(
-                        endereco_paciente,
-                        style: TextStyle(
-                          fontSize: 15.0,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                  Row(
-                    children: [
-                      Icon(Icons.phone_outlined, size: 23),
-                      SizedBox(width: 5),
-                      Text(
-                        tel_paciente,
-                        style: TextStyle(
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
+                  const Icon(Icons.person_2_outlined, size: 25),
+                  const SizedBox(width: 5),
+                  Expanded(
+                    child: Text(
+                      nome_paciente.toUpperCase(),
+                      maxLines: 2, // Permite até 2 linhas para nomes grandes
+                      overflow: TextOverflow
+                          .ellipsis, // Coloca '...' se passar de 2 linhas
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
                   ),
                 ],
               ),
-
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.start,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            local_consulta,
-                            textAlign: TextAlign.end,
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 1,
-                            style: const TextStyle(
-                              fontSize: 15.0,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 5),
-                        const Icon(Icons.local_hospital_outlined, size: 25),
-                      ],
+              Row(
+                children: [
+                  const Icon(Icons.house_outlined, size: 25),
+                  const SizedBox(width: 5),
+                  Expanded(
+                    child: Text(
+                      endereco_paciente,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 15.0,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            local_saida,
-                            textAlign: TextAlign.end,
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 1,
-                            style: const TextStyle(
-                              fontSize: 15.0,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 5),
-                        const Icon(Icons.exit_to_app_outlined, size: 25),
-                      ],
+                  ),
+                ],
+              ),
+              Row(
+                children: [
+                  const Icon(Icons.phone_outlined, size: 23),
+                  const SizedBox(width: 5),
+                  Expanded(
+                    child: Text(
+                      tel_paciente,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ],
           ),
 
-          subtitle: Row(
+          // SUBTITLE: Locais de Consulta/Saída e o Status logo abaixo
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                margin: EdgeInsets.only(top: 10),
-                child: Badge(
-                  backgroundColor: corStatus,
-                  label: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8.0,
-                      vertical: 2.0,
-                    ),
+              SizedBox(height: 8),
+              Divider(),
+              SizedBox(height: 4),
+              // Local de Consulta
+              Row(
+                children: [
+                  const Icon(Icons.local_hospital_outlined, size: 20),
+                  const SizedBox(width: 5),
+                  Expanded(
                     child: Text(
-                      textoStatus,
-                      style: TextStyle(fontSize: 12.0, color: Colors.white),
+                      local_consulta,
+                      maxLines: 2, // Alterado de 1 para 2
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
+                  ),
+                ],
+              ),
+              SizedBox(height: 4),
+              // Local de Saída
+              Row(
+                children: [
+                  const Icon(Icons.exit_to_app_outlined, size: 20),
+                  const SizedBox(width: 5),
+                  Expanded(
+                    child: Text(
+                      local_saida,
+                      maxLines: 2, // Alterado de 1 para 2
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: 8),
+              // Badge de Status
+              Badge(
+                backgroundColor: corStatus,
+                label: Container(
+                  padding: EdgeInsets.symmetric(horizontal: 8.0, vertical: 2.0),
+                  child: Text(
+                    textoStatus,
+                    style: TextStyle(fontSize: 12.0, color: Colors.white),
                   ),
                 ),
               ),
