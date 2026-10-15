@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 // import 'package:timeline_tile/timeline_tile.dart';
-import '../components/TimelinePassageiro.dart';
+import '../components/TimelineViagem.dart';
 
+// STATUS
+// embarque
+// desembarque_destino
+// reembarque
+// desembarque_final
 Color corStatus = Colors.redAccent;
 
 class Motorista extends StatelessWidget {
@@ -52,11 +57,32 @@ class Motorista extends StatelessWidget {
                             child: Column(
                               children: [
                                 // Embarque
-                                TimelinePassageiro(isFirst: true, isLast: false, isPast: true),
+                                TimelineViagem(
+                                  isFirst: true,
+                                  isLast: false,
+                                  isPast: true,
+                                  horario: '01:00',
+                                  local: 'Endereço de Embarque',
+                                  icone: Icons.location_pin
+                                ),
                                 // Local da Consulta
-                                TimelinePassageiro(isFirst: false, isLast: false, isPast: false),
+                                TimelineViagem(
+                                  isFirst: false,
+                                  isLast: false,
+                                  isPast: false,
+                                  horario: '02:00',
+                                  local: 'Endereço de Consulta',
+                                  icone: Icons.local_hospital_outlined
+                                ),
                                 // Local de Saída
-                                TimelinePassageiro(isFirst: false, isLast: true, isPast: false),
+                                TimelineViagem(
+                                  isFirst: false,
+                                  isLast: true,
+                                  isPast: false,
+                                  horario: '03:00',
+                                  local: 'Endereço de Desembarque',
+                                  icone: Icons.exit_to_app_outlined,
+                                ),
                               ],
                             ),
                           ),
@@ -83,7 +109,7 @@ class Motorista extends StatelessWidget {
                         ],
                       ),
                     ),
-                    trailing: Text('13:45', style: TextStyle(fontSize: 18.0)),
+                    // trailing: Text('13:45', style: TextStyle(fontSize: 18.0)),
                   ),
                 ),
               ),
