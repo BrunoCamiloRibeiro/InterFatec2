@@ -1,6 +1,38 @@
 import 'package:flutter/material.dart';
 import 'package:timeline_tile/timeline_tile.dart';
 
+// EXEMPLO:
+// Embarque
+// TimelineViagem(
+//   isFirst: true,
+//   isLast: false,
+//   isPast: true,
+//   horario: '01:00',
+//   local: 'Endereço de Embarque',
+//   icone: Icons.location_pin
+// ),
+// // Local da Consulta
+// TimelineViagem(
+//   isFirst: false,
+//   isLast: false,
+//   isPast: false,
+//   horario: '02:00',
+//   local: 'Endereço de Consulta',
+//   icone: Icons.local_hospital_outlined
+// ),
+// // Local de Saída
+// TimelineViagem(
+//   isFirst: false,
+//   isLast: true,
+//   isPast: false,
+//   horario: '03:00',
+//   local: 'Endereço de Desembarque',
+//   icone: Icons.exit_to_app_outlined,
+// ),
+
+
+
+
 class TimelineViagem extends StatelessWidget {
   final bool isFirst;
   final bool isLast;
