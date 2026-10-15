@@ -1,20 +1,20 @@
 import 'package:flutter/material.dart';
 
 class CardPaciente extends StatelessWidget {
-  final String nome_paciente;
-  final String endereco_paciente;
-  final String tel_paciente;
-  final String local_consulta;
-  final String local_saida;
+  final String nomePaciente;
+  final String enderecoPaciente;
+  final String telPaciente;
+  final String localConsulta;
+  final String localSaida;
   final int status;
 
   CardPaciente({
     super.key,
-    required this.nome_paciente,
-    required this.endereco_paciente,
-    required this.tel_paciente,
-    required this.local_consulta,
-    required this.local_saida,
+    required this.nomePaciente,
+    required this.enderecoPaciente,
+    required this.telPaciente,
+    required this.localConsulta,
+    required this.localSaida,
     required this.status,
   });
 
@@ -47,7 +47,7 @@ class CardPaciente extends StatelessWidget {
               return AlertDialog(
                 title: Text('Confirmação'),
                 content: Text(
-                  'Deseja confirmar ${acaoTexto.toUpperCase()} do passageiro ${nome_paciente.toUpperCase()}?',
+                  'Deseja confirmar ${acaoTexto.toUpperCase()} do passageiro ${nomePaciente.toUpperCase()}?',
                 ),
                 actions: [
                   TextButton(
@@ -86,7 +86,7 @@ class CardPaciente extends StatelessWidget {
                     const SizedBox(width: 5),
                     Expanded(
                       child: Text(
-                        nome_paciente.toUpperCase(),
+                        nomePaciente.toUpperCase(),
                         maxLines: 2, // Permite até 2 linhas para nomes grandes
                         overflow: TextOverflow
                             .ellipsis, // Coloca '...' se passar de 2 linhas
@@ -101,7 +101,7 @@ class CardPaciente extends StatelessWidget {
                     const SizedBox(width: 5),
                     Expanded(
                       child: Text(
-                        endereco_paciente,
+                        enderecoPaciente,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
@@ -118,7 +118,7 @@ class CardPaciente extends StatelessWidget {
                     const SizedBox(width: 5),
                     Expanded(
                       child: Text(
-                        tel_paciente,
+                        telPaciente,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
@@ -146,7 +146,7 @@ class CardPaciente extends StatelessWidget {
                     const SizedBox(width: 5),
                     Expanded(
                       child: Text(
-                        local_consulta,
+                        localConsulta,
                         maxLines: 2, // Alterado de 1 para 2
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
@@ -165,7 +165,7 @@ class CardPaciente extends StatelessWidget {
                     const SizedBox(width: 5),
                     Expanded(
                       child: Text(
-                        local_saida,
+                        localSaida,
                         maxLines: 2, // Alterado de 1 para 2
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
