@@ -1,4 +1,3 @@
-
 class TextAbbreviator {
   // Palavras de ligação comuns em português brasileiro.
   static const Set<String> _stopWords = {

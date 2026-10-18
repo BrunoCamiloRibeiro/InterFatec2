@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-
 import '../components/abreviar_textos.dart';
 
 class CardPaciente extends StatelessWidget {

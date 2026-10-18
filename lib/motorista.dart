@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-
 import 'components/card_paciente.dart'; // DESCOMENTAR ESSA LINHA CASO SEJA NECESSÁRIO USAR A TIMELINE
 
 // import 'package:timeline_tile/timeline_tile.dart';
