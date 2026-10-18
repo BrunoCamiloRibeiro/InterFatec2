@@ -34,11 +34,12 @@ class Motorista extends StatelessWidget {
                 spacing: 10,
                 children: [
                   CardPaciente(
-                    nomePaciente: 'Maria das Graças Aparecida de Jesus dos Santos',
+                    nomePaciente:
+                        'Maria das Graças Aparecida de Jesus dos Santos',
                     enderecoPaciente: 'Rua das Flores, 125 - Centro',
                     telPaciente: '(17) 99123-4567',
                     localConsulta: 'Hospital de Base',
-                    localSaida: 'Residência',
+                    localSaida: 'Laboratório de Análises Clínicas',
                     status: 0,
                   ),
                   CardPaciente(
@@ -46,7 +47,7 @@ class Motorista extends StatelessWidget {
                     enderecoPaciente: 'Av. Alberto Andaló, 840',
                     telPaciente: '(17) 99234-5678',
                     localConsulta: 'UBS Central',
-                    localSaida: 'Residência',
+                    localSaida: 'Clínica de Radiologia',
                     status: 1,
                   ),
                   CardPaciente(
@@ -62,7 +63,7 @@ class Motorista extends StatelessWidget {
                     enderecoPaciente: 'Rua dos Ipês, 310',
                     telPaciente: '(17) 99456-7890',
                     localConsulta: 'AME São José do Rio Preto',
-                    localSaida: 'Residência',
+                    localSaida: 'Centro de Diagnóstico por Imagem',
                     status: 3,
                   ),
                 ],
