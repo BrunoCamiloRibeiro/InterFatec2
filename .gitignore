@@ -55,7 +55,7 @@ google-services.json
 
 # --- VS Code ---
 .vscode/*
-!.vscode/settings.json
+.vscode/settings.json
 !.vscode/tasks.json
 !.vscode/launch.json
 !.vscode/extensions.json
@@ -90,3 +90,4 @@ ehthumbs_vista.db
 
 # --- Logs ---
 *.log
+.vscode/settings.json

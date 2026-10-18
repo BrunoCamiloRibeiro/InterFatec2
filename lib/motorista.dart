@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import 'components/card_paciente.dart'; // DESCOMENTAR ESSA LINHA CASO SEJA NECESSÁRIO USAR A TIMELINE
 
 // import 'package:timeline_tile/timeline_tile.dart';
@@ -17,12 +18,18 @@ class Motorista extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       home: Scaffold(
-        appBar: AppBar(title: const Text('Lista de Passageiros')),
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+          title: const Text('Lista de Passageiros'),
+        ),
         backgroundColor: Colors.white,
         body: SafeArea(
           child: ListView(
             padding: EdgeInsets.all(16),
-            children: <Widget>[
+            children: [
               Column(
                 spacing: 10,
                 children: [

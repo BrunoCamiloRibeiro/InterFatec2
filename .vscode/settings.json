@@ -28,5 +28,8 @@
     "**/Thumbs.db": true,
     "**/.dart_tool": true,
     "**/.idea": true
+  },
+  "[dart]": {
+    "editor.defaultFormatter": "Dart-Code.dart-code"
   }
 }
