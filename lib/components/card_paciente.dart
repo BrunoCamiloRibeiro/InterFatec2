@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../components/abreviar_textos.dart';
+
 class CardPaciente extends StatelessWidget {
   final String nomePaciente;
   final String enderecoPaciente;
@@ -86,8 +88,14 @@ class CardPaciente extends StatelessWidget {
                     const SizedBox(width: 5),
                     Expanded(
                       child: Text(
-                        nomePaciente.toUpperCase(),
-                        maxLines: 2, // Permite até 2 linhas para nomes grandes
+                        TextAbbreviator.abbreviate(
+                          nomePaciente,
+                          maxCharacters: 30,
+                          maxWords: 4,
+                          keepWords: 1,
+                        ).toUpperCase(),
+                        // nomePaciente.toUpperCase(),
+                        maxLines: 2, // Permite até X linhas para nomes grandes
                         overflow: TextOverflow
                             .ellipsis, // Coloca '...' se passar de 2 linhas
                         style: const TextStyle(fontWeight: FontWeight.bold),

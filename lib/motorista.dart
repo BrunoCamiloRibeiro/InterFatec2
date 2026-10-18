@@ -10,7 +10,6 @@ import 'components/card_paciente.dart'; // DESCOMENTAR ESSA LINHA CASO SEJA NECE
 // desembarque_destino
 // reembarque
 // desembarque_final
-Color corStatus = Colors.redAccent;
 
 class Motorista extends StatelessWidget {
   const Motorista({super.key});
@@ -29,7 +28,7 @@ class Motorista extends StatelessWidget {
                 spacing: 10,
                 children: [
                   CardPaciente(
-                    nomePaciente: 'Maria Aparecida Santos',
+                    nomePaciente: 'Maria das Graças Aparecida de Jesus dos Santos',
                     enderecoPaciente: 'Rua das Flores, 125 - Centro',
                     telPaciente: '(17) 99123-4567',
                     localConsulta: 'Hospital de Base',
@@ -37,7 +36,7 @@ class Motorista extends StatelessWidget {
                     status: 0,
                   ),
                   CardPaciente(
-                    nomePaciente: 'João Pedro Oliveira',
+                    nomePaciente: 'Teste de Nome Extremamente Longo com Muitos Caracteres e Palavras',
                     enderecoPaciente: 'Av. Alberto Andaló, 840',
                     telPaciente: '(17) 99234-5678',
                     localConsulta: 'UBS Central',
