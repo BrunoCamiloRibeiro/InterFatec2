@@ -1,8 +1,7 @@
-
-import 'dart:convert';
+import 'dart:convert'; // Converte o texto JSON em objetos Dart usando jsonDecode()
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:flutter/services.dart'; // Disponibiliza rootBundle, usado para ler o arquivo JSON dos assets do aplicativo
 
 import 'components/card_paciente.dart';
 
@@ -14,14 +13,6 @@ class Motorista extends StatefulWidget {
 }
 
 class _MotoristaState extends State<Motorista> {
-  late Future<List<dynamic>> _futurePacientes;
-
-  @override
-  void initState() {
-    super.initState();
-    _futurePacientes = carregarPacientes();
-  }
-
   Future<List<dynamic>> carregarPacientes() async {
     final String jsonString = await rootBundle.loadString(
       'assets/data/dados_pacientes.json',
@@ -29,22 +20,6 @@ class _MotoristaState extends State<Motorista> {
 
     return jsonDecode(jsonString) as List<dynamic>;
   }
-
-  void _alterarStatus(int indice, int novoStatus) {
-    setState(() {
-      final pacientes = _pacientesCarregados;
-
-      if (pacientes == null ||
-          indice < 0 ||
-          indice >= pacientes.length) {
-        return;
-      }
-
-      pacientes[indice]['status'] = novoStatus;
-    });
-  }
-
-  List<dynamic>? _pacientesCarregados;
 
   @override
   Widget build(BuildContext context) {
@@ -59,12 +34,10 @@ class _MotoristaState extends State<Motorista> {
       backgroundColor: Colors.white,
       body: SafeArea(
         child: FutureBuilder<List<dynamic>>(
-          future: _futurePacientes,
+          future: carregarPacientes(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(
-                child: CircularProgressIndicator(),
-              );
+              return const Center(child: CircularProgressIndicator());
             }
 
             if (snapshot.hasError) {
@@ -73,59 +46,55 @@ class _MotoristaState extends State<Motorista> {
               );
             }
 
-            if (!snapshot.hasData) {
-              return const Center(
-                child: Text('Nenhum paciente encontrado.'),
-              );
-            }
-
-            // Guarda a lista carregada para atualizar os status
-            // sem precisar ler novamente o arquivo JSON.
-            _pacientesCarregados ??= snapshot.data!;
-
-            final pacientes = _pacientesCarregados!;
-
-            if (pacientes.isEmpty) {
-              return const Center(
-                child: Text('Nenhum paciente encontrado.'),
-              );
-            }
+            final pacientes = snapshot.data ?? [];
 
             return ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                for (int i = 0; i < pacientes.length; i++)
-                  Builder(
-                    builder: (context) {
-                      final paciente =
-                          pacientes[i] as Map<String, dynamic>;
-
-                      final int status =
-                          (paciente['status'] as num?)?.toInt() ?? 0;
-
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: CardPaciente(
-                          nomePaciente:
-                              paciente['nomePaciente']?.toString() ?? '',
-                          enderecoPaciente:
-                              paciente['enderecoPaciente']?.toString() ?? '',
-                          telPaciente:
-                              paciente['telPaciente']?.toString() ?? '',
-                          localConsulta:
-                              paciente['localConsulta']?.toString() ?? '',
-                          localSaida:
-                              paciente['localSaida']?.toString() ?? '',
-                          status: status,
-
-                          // Callback que recebe o novo status
-                          // e atualiza o paciente correspondente.
-                          onAlterarStatus: (novoStatus) {
-                            _alterarStatus(i, novoStatus);
-                          },
+                for (final paciente in pacientes)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Dismissible(
+                      key: ValueKey(
+                        paciente['nomePaciente'],
+                      ), // trocar isso pelo ID depois
+                      direction: DismissDirection.horizontal,
+                      background: Container(
+                        padding: EdgeInsets.only(left: 16),
+                        alignment: Alignment.centerLeft,
+                        decoration: BoxDecoration(
+                          color: Colors.red.withAlpha(100),
+                          borderRadius: BorderRadius.circular(16),
                         ),
-                      );
-                    },
+                        child: Icon(
+                          Icons.arrow_back,
+                          color: Colors.white,
+                          size: 50,
+                        ),
+                      ),
+                      secondaryBackground: Container(
+                        padding: EdgeInsets.only(right: 16),
+                        alignment: Alignment.centerRight,
+                        decoration: BoxDecoration(
+                          color: Colors.green.withAlpha(100),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Icon(
+                          Icons.arrow_forward,
+                          color: Colors.white,
+                          size: 50,
+                        ),
+                      ),
+                      // onDismissed: (_) {},
+                      child: CardPaciente(
+                        nomePaciente: paciente['nomePaciente'],
+                        enderecoPaciente: paciente['enderecoPaciente'],
+                        telPaciente: paciente['telPaciente'],
+                        localConsulta: paciente['localConsulta'],
+                        localSaida: paciente['localSaida'],
+                        status: paciente['status'],
+                      ),
+                    ),
                   ),
               ],
             );
