@@ -85,7 +85,7 @@ class _MotoristaState extends State<Motorista> {
                           size: 50,
                         ),
                       ),
-                      onDismissed: (direction) {
+                      confirmDismiss: (direction) async {
                         if (direction == DismissDirection.startToEnd) {
                           // INSERIR LÓGICA DE RETROCEDER STATUS
                           // Possivel ideia: ter múltiplas listas e ao puxar ela se move para outra lista
@@ -95,6 +95,7 @@ class _MotoristaState extends State<Motorista> {
                           // Possivel ideia: ter múltiplas listas e ao puxar ela se move para outra lista
                           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Puxado da Direita para a Esquerda')));
                         }
+                        return false;
                       },
                       child: CardPaciente(
                         nomePaciente: paciente['nomePaciente'],
