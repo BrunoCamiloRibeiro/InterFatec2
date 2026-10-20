@@ -85,7 +85,17 @@ class _MotoristaState extends State<Motorista> {
                           size: 50,
                         ),
                       ),
-                      // onDismissed: (_) {},
+                      onDismissed: (direction) {
+                        if (direction == DismissDirection.startToEnd) {
+                          // INSERIR LÓGICA DE RETROCEDER STATUS
+                          // Possivel ideia: ter múltiplas listas e ao puxar ela se move para outra lista
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Puxado da Esquerda para a Direita')));
+                        } else if (direction == DismissDirection.endToStart) {
+                          // INSERIR LÓGICA DE AVANÇAR STATUS
+                          // Possivel ideia: ter múltiplas listas e ao puxar ela se move para outra lista
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Puxado da Direita para a Esquerda')));
+                        }
+                      },
                       child: CardPaciente(
                         nomePaciente: paciente['nomePaciente'],
                         enderecoPaciente: paciente['enderecoPaciente'],
