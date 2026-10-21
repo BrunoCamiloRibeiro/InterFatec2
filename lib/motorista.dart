@@ -141,12 +141,11 @@ class _MotoristaState extends State<Motorista> {
                               ),
                             ),
                           );
-
-                          if (novoStatus != statusAtual) {
-                            setState(() {
-                              paciente['status'] = novoStatus;
-                            });
-                          }
+                        }
+                        if (novoStatus != statusAtual) {
+                          setState(() {
+                            paciente['status'] = novoStatus;
+                          });
                         }
                         return false;
                       },
