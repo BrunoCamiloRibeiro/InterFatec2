@@ -66,10 +66,19 @@ class _MotoristaState extends State<Motorista> {
                           color: Colors.red.withAlpha(100),
                           borderRadius: BorderRadius.circular(16),
                         ),
-                        child: Icon(
-                          Icons.arrow_back,
-                          color: Colors.white,
-                          size: 50,
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.arrow_back,
+                              color: Colors.white,
+                              size: 50,
+                            ),
+                            Text(
+                              'Retroceder',
+                              style: TextStyle(color: Colors.white),
+                            ),
+                          ],
                         ),
                       ),
                       secondaryBackground: Container(
@@ -79,21 +88,42 @@ class _MotoristaState extends State<Motorista> {
                           color: Colors.green.withAlpha(100),
                           borderRadius: BorderRadius.circular(16),
                         ),
-                        child: Icon(
-                          Icons.arrow_forward,
-                          color: Colors.white,
-                          size: 50,
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.arrow_forward,
+                              color: Colors.white,
+                              size: 50,
+                            ),
+                            Text(
+                              'Avançar',
+                              style: TextStyle(color: Colors.white),
+                            ),
+                          ],
                         ),
                       ),
                       confirmDismiss: (direction) async {
                         if (direction == DismissDirection.startToEnd) {
                           // INSERIR LÓGICA DE RETROCEDER STATUS
                           // Possivel ideia: ter múltiplas listas e ao puxar ela se move para outra lista
-                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Puxado da Esquerda para a Direita')));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Puxado da Esquerda para a Direita',
+                              ),
+                            ),
+                          );
                         } else if (direction == DismissDirection.endToStart) {
                           // INSERIR LÓGICA DE AVANÇAR STATUS
                           // Possivel ideia: ter múltiplas listas e ao puxar ela se move para outra lista
-                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Puxado da Direita para a Esquerda')));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Puxado da Direita para a Esquerda',
+                              ),
+                            ),
+                          );
                         }
                         return false;
                       },
