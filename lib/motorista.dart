@@ -13,6 +13,14 @@ class Motorista extends StatefulWidget {
 }
 
 class _MotoristaState extends State<Motorista> {
+  late Future<List<dynamic>> _pacientesFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _pacientesFuture = carregarPacientes();
+  }
+
   Future<List<dynamic>> carregarPacientes() async {
     final String jsonString = await rootBundle.loadString(
       'assets/data/dados_pacientes.json',
@@ -34,7 +42,7 @@ class _MotoristaState extends State<Motorista> {
       backgroundColor: Colors.white,
       body: SafeArea(
         child: FutureBuilder<List<dynamic>>(
-          future: carregarPacientes(),
+          future: _pacientesFuture,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
@@ -104,8 +112,14 @@ class _MotoristaState extends State<Motorista> {
                         ),
                       ),
                       confirmDismiss: (direction) async {
+                        final int statusAtual = paciente['status'] as int;
+                        int novoStatus = statusAtual;
+
                         if (direction == DismissDirection.startToEnd) {
                           // INSERIR LÓGICA DE RETROCEDER STATUS
+                          if (statusAtual > 0 && statusAtual < 4) {
+                            novoStatus = statusAtual - 1;
+                          }
                           // Possivel ideia: ter múltiplas listas e ao puxar ela se move para outra lista
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
@@ -116,6 +130,9 @@ class _MotoristaState extends State<Motorista> {
                           );
                         } else if (direction == DismissDirection.endToStart) {
                           // INSERIR LÓGICA DE AVANÇAR STATUS
+                          if (statusAtual >= 0 && statusAtual < 3) {
+                            novoStatus = statusAtual + 1;
+                          }
                           // Possivel ideia: ter múltiplas listas e ao puxar ela se move para outra lista
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
@@ -124,6 +141,12 @@ class _MotoristaState extends State<Motorista> {
                               ),
                             ),
                           );
+
+                          if (novoStatus != statusAtual) {
+                            setState(() {
+                              paciente['status'] = novoStatus;
+                            });
+                          }
                         }
                         return false;
                       },
