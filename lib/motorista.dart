@@ -66,7 +66,13 @@ class _MotoristaState extends State<Motorista> {
                       key: ValueKey(
                         paciente['nomePaciente'],
                       ), // trocar isso pelo ID depois
-                      direction: DismissDirection.horizontal,
+                      direction: switch (paciente['status'] as int) {
+                        0 => DismissDirection.endToStart,
+                        3 => DismissDirection.startToEnd,
+                        4 => DismissDirection.none,
+                        _ => DismissDirection.horizontal,
+                      },
+
                       background: Container(
                         padding: EdgeInsets.only(left: 16),
                         alignment: Alignment.centerLeft,
