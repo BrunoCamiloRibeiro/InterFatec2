@@ -69,8 +69,8 @@ class _MotoristaState extends State<Motorista> {
                       ), // trocar isso pelo ID depois
                       direction: switch (paciente['status'] as int) {
                         0 => DismissDirection.endToStart,
-                        3 => DismissDirection.startToEnd,
-                        4 => DismissDirection.none,
+                        4 => DismissDirection.startToEnd,
+                        5 => DismissDirection.none,
                         _ => DismissDirection.horizontal,
                       },
 
@@ -124,7 +124,7 @@ class _MotoristaState extends State<Motorista> {
 
                         if (direction == DismissDirection.startToEnd) {
                           // INSERIR LÓGICA DE RETROCEDER STATUS
-                          if (statusAtual > 0 && statusAtual < 4) {
+                          if (statusAtual > 0 && statusAtual < 5) {
                             novoStatus = statusAtual - 1;
                           }
                           // Possivel ideia: ter múltiplas listas e ao puxar ela se move para outra lista
@@ -137,7 +137,7 @@ class _MotoristaState extends State<Motorista> {
                           );
                         } else if (direction == DismissDirection.endToStart) {
                           // INSERIR LÓGICA DE AVANÇAR STATUS
-                          if (statusAtual >= 0 && statusAtual < 3) {
+                          if (statusAtual >= 0 && statusAtual < 4) {
                             novoStatus = statusAtual + 1;
                           }
                           // Possivel ideia: ter múltiplas listas e ao puxar ela se move para outra lista
