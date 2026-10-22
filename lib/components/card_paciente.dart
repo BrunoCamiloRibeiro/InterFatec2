@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+
 import '../components/abreviar_textos.dart';
+import '../components/indicador_progresso.dart';
 
 class CardPaciente extends StatelessWidget {
   final String nomePaciente;
@@ -185,17 +187,30 @@ class CardPaciente extends StatelessWidget {
                 ),
                 SizedBox(height: 8),
                 // Badge de Status
-                Badge(
-                  backgroundColor: corStatus,
-                  label: Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 8.0,
-                      vertical: 2.0,
-                    ),
-                    child: Text(
-                      textoStatus,
-                      style: TextStyle(fontSize: 12.0, color: Colors.white),
-                    ),
+                // Badge(
+                //   backgroundColor: corStatus,
+                //   label: Container(
+                //     padding: EdgeInsets.symmetric(
+                //       horizontal: 8.0,
+                //       vertical: 2.0,
+                //     ),
+                //     child: Text(
+                //       textoStatus,
+                //       style: TextStyle(fontSize: 12.0, color: Colors.white),
+                //     ),
+                //   ),
+                // ),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: corStatus.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: IndicadorProgresso(
+                    valorAtual: status,
+                    valorMaximo: (status == 0) ? 1 : 3,
+                    corAtiva: corStatus.withAlpha(255),
+                    corInativa: Colors.grey,
                   ),
                 ),
               ],
