@@ -1,275 +1,173 @@
-import 'package:flutter/material.dart';
+import 'dart:convert'; // Converte o texto JSON em objetos Dart usando jsonDecode()
 
-// tela da lista de passageiros sem Scaffold e recheada de Material
-class Motorista extends StatelessWidget {
-  Motorista({super.key});
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // Disponibiliza rootBundle, usado para ler o arquivo JSON dos assets do aplicativo
+
+import 'components/card_paciente.dart';
+
+class Motorista extends StatefulWidget {
+  const Motorista({super.key});
+
+  @override
+  State<Motorista> createState() => _MotoristaState();
+}
+
+class _MotoristaState extends State<Motorista> {
+  late Future<List<dynamic>> _pacientesFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _pacientesFuture = carregarPacientes();
+  }
+
+  Future<List<dynamic>> carregarPacientes() async {
+    final String jsonString = await rootBundle.loadString(
+      'assets/data/dados_pacientes.json',
+    );
+
+    return jsonDecode(jsonString) as List<dynamic>;
+  }
 
   @override
   Widget build(BuildContext context) {
-    // Material direto no lugar de Scaffold
-    return Material(
-      color: Color(0xFFF7F8FA),
-      child: SafeArea(
-        child: SingleChildScrollView(
-          padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-          child: Column(
-            children: [
-              // cabeçalho na mão já que não tem AppBar do Scaffold
-              Row(
-                children: [
-                  IconButton(
-                    icon: Icon(Icons.arrow_back, color: Colors.black),
-                    onPressed: () {
-                      Navigator.pop(context);
-                    },
-                  ),
-                  Expanded(
-                    child: Text(
-                      'Lista de Passageiros',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.black87,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  SizedBox(
-                    width: 48,
-                  ), // gambiarra pra centralizar o texto certinho
-                ],
-              ),
-              SizedBox(height: 10),
-
-              // Card 1: Maria das Dores Silva (laranja)
-              _cardPassageiro(
-                nome: 'Maria das Dores Silva',
-                horario: '07:30',
-                local: 'Hospital Santa Casa - Nefrologia',
-                corBarra: Colors.orange,
-                idaAtiva: true,
-                voltaAtiva: false,
-                textoAcao: 'Toque para confirmar Volta',
-                corAcao: Colors.orange,
-              ),
-              SizedBox(height: 12),
-
-              // Card 2: José de Alencar Santos (cinza)
-              _cardPassageiro(
-                nome: 'José de Alencar Santos',
-                horario: '09:00',
-                local: 'Clínica de Olhos - Consulta',
-                corBarra: Colors.grey.shade400,
-                idaAtiva: false,
-                voltaAtiva: false,
-                textoAcao: 'Toque para confirmar Ida',
-                corAcao: Colors.grey.shade600,
-              ),
-              SizedBox(height: 12),
-
-              // Card 3: Francisca Pereira Lima (verde/concluído)
-              _cardPassageiro(
-                nome: 'Francisca Pereira Lima',
-                horario: '11:15',
-                local: 'Centro de Reabilitação - Fisioterapia',
-                corBarra: Colors.green,
-                idaAtiva: true,
-                voltaAtiva: true,
-                textoAcao: 'Concluído',
-                corAcao: Colors.green,
-              ),
-              SizedBox(height: 12),
-
-              // Card 4: Antônio Marcos Souza (cinza)
-              _cardPassageiro(
-                nome: 'Antônio Marcos Souza',
-                horario: '14:00',
-                local: 'Hospital Universitário - Oncologia',
-                corBarra: Colors.grey.shade400,
-                idaAtiva: false,
-                voltaAtiva: false,
-                textoAcao: 'Toque para confirmar Ida',
-                corAcao: Colors.grey.shade600,
-              ),
-              SizedBox(height: 25),
-
-              // botão que o professor pediu lá embaixo pra gerar lista para assinar
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Color(0xFF0F172A),
-                    foregroundColor: Colors.white,
-                    padding: EdgeInsets.symmetric(vertical: 15),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    elevation: 2,
-                  ),
-                  icon: Icon(Icons.assignment_outlined, size: 18),
-                  label: Text(
-                    'Gerar lista para assinar',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-                  ),
-                  onPressed: () {
-                    // dialog em vez de snackbar já que não temos Scaffold
-                    showDialog(
-                      context: context,
-                      builder: (ctx) => AlertDialog(
-                        title: Text('Lista de Presença'),
-                        content: Text(
-                          'Lista gerada para assinatura! (fictício)',
-                        ),
-                        actions: [
-                          TextButton(
-                            child: Text('OK'),
-                            onPressed: () => Navigator.pop(ctx),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ),
-              SizedBox(height: 20),
-            ],
-          ),
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.of(context).pop(),
         ),
+        title: const Text('Lista de Passageiros'),
       ),
-    );
-  }
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        child: FutureBuilder<List<dynamic>>(
+          future: _pacientesFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
 
-  // card feito usando Material em vez de Container com decoration
-  static Widget _cardPassageiro({
-    required String nome,
-    required String horario,
-    required String local,
-    required Color corBarra,
-    required bool idaAtiva,
-    required bool voltaAtiva,
-    required String textoAcao,
-    required Color corAcao,
-  }) {
-    return Material(
-      color: Colors.white,
-      elevation: 1,
-      borderRadius: BorderRadius.circular(12),
-      clipBehavior: Clip.antiAlias, // corta a barrinha de cima certinho
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // barrinha colorida de cima
-          Container(height: 4, color: corBarra),
-          Padding(
-            padding: EdgeInsets.all(14.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            if (snapshot.hasError) {
+              return const Center(
+                child: Text('Erro ao carregar os pacientes.'),
+              );
+            }
+
+            final pacientes = snapshot.data ?? [];
+
+            return ListView(
+              padding: const EdgeInsets.all(16),
               children: [
-                // linha com nome e horário
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      nome,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Material(
-                      color: Colors.grey.shade100,
-                      borderRadius: BorderRadius.circular(4),
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
-                        child: Text(
-                          horario,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.grey.shade700,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 6),
-                // linha com o local
-                Row(
-                  children: [
-                    Icon(
-                      Icons.location_on_outlined,
-                      size: 14,
-                      color: Colors.grey.shade500,
-                    ),
-                    SizedBox(width: 4),
-                    Expanded(
-                      child: Text(
-                        local,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.grey.shade600,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 12),
-                // badges e texto de ação
-                Row(
-                  children: [
-                    _badgeStatus(
-                      label: idaAtiva ? 'IDA ✓' : 'IDA',
-                      ativo: idaAtiva,
-                      corAtivo: corBarra,
-                    ),
-                    SizedBox(width: 6),
-                    _badgeStatus(
-                      label: voltaAtiva ? 'VOLTA ✓' : 'VOLTA',
-                      ativo: voltaAtiva,
-                      corAtivo: corBarra,
-                    ),
-                    Spacer(),
-                    Text(
-                      textoAcao,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: corAcao,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+                for (final paciente in pacientes)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Dismissible(
+                      key: ValueKey(
+                        paciente['nomePaciente'],
+                      ), // trocar isso pelo ID depois
+                      direction: switch (paciente['status'] as int) {
+                        0 => DismissDirection.endToStart,
+                        3 => DismissDirection.startToEnd,
+                        4 => DismissDirection.none,
+                        _ => DismissDirection.horizontal,
+                      },
 
-  // badge usando Material com borderRadius
-  static Widget _badgeStatus({
-    required String label,
-    required bool ativo,
-    required Color corAtivo,
-  }) {
-    return Material(
-      color: ativo ? corAtivo.withValues(alpha: 0.12) : Colors.grey.shade100,
-      borderRadius: BorderRadius.circular(6),
-      child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.bold,
-            color: ativo ? corAtivo : Colors.grey.shade500,
-          ),
+                      background: Container(
+                        padding: EdgeInsets.only(left: 16),
+                        alignment: Alignment.centerLeft,
+                        decoration: BoxDecoration(
+                          color: Colors.red.withAlpha(100),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.arrow_back,
+                              color: Colors.white,
+                              size: 50,
+                            ),
+                            Text(
+                              'Retroceder',
+                              style: TextStyle(color: Colors.white),
+                            ),
+                          ],
+                        ),
+                      ),
+                      secondaryBackground: Container(
+                        padding: EdgeInsets.only(right: 16),
+                        alignment: Alignment.centerRight,
+                        decoration: BoxDecoration(
+                          color: Colors.green.withAlpha(100),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.arrow_forward,
+                              color: Colors.white,
+                              size: 50,
+                            ),
+                            Text(
+                              'Avançar',
+                              style: TextStyle(color: Colors.white),
+                            ),
+                          ],
+                        ),
+                      ),
+                      confirmDismiss: (direction) async {
+                        final int statusAtual = paciente['status'] as int;
+                        int novoStatus = statusAtual;
+
+                        if (direction == DismissDirection.startToEnd) {
+                          // INSERIR LÓGICA DE RETROCEDER STATUS
+                          if (statusAtual > 0 && statusAtual < 4) {
+                            novoStatus = statusAtual - 1;
+                          }
+                          // Possivel ideia: ter múltiplas listas e ao puxar ela se move para outra lista
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Puxado da Esquerda para a Direita',
+                              ),
+                            ),
+                          );
+                        } else if (direction == DismissDirection.endToStart) {
+                          // INSERIR LÓGICA DE AVANÇAR STATUS
+                          if (statusAtual >= 0 && statusAtual < 3) {
+                            novoStatus = statusAtual + 1;
+                          }
+                          // Possivel ideia: ter múltiplas listas e ao puxar ela se move para outra lista
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Puxado da Direita para a Esquerda',
+                              ),
+                            ),
+                          );
+                        }
+                        if (novoStatus != statusAtual) {
+                          setState(() {
+                            paciente['status'] = novoStatus;
+                          });
+                        }
+                        return false;
+                      },
+                      child: CardPaciente(
+                        nomePaciente: paciente['nomePaciente'],
+                        enderecoPaciente: paciente['enderecoPaciente'],
+                        telPaciente: paciente['telPaciente'],
+                        localConsulta: paciente['localConsulta'],
+                        localSaida: paciente['localSaida'],
+                        status: paciente['status'],
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          },
         ),
       ),
     );
