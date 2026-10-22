@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:trans_saude/administrativo.dart';
-import 'package:trans_saude/login.dart';
+import 'package:trans_saude/Outdated/administrativo.dart';
+import 'package:trans_saude/Outdated/login.dart';
 import 'package:trans_saude/motorista.dart';
-import 'package:trans_saude/paciente.dart';
-import 'package:trans_saude/register.dart';
+import 'package:trans_saude/Outdated/paciente.dart';
+import 'package:trans_saude/Outdated/register.dart';
 
 void main() {
   testWidgets('Tela do paciente carrega corretamente', (
@@ -44,12 +44,12 @@ void main() {
     expect(find.text('Salvar Paciente'), findsOneWidget);
   });
 
-  testWidgets('Tela motorista carrega lista e botão gerar lista para assinar', (
+  testWidgets('Tela motorista carrega lista e footer de lugares e relatório', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(MaterialApp(home: Motorista()));
     expect(find.text('Lista de Passageiros'), findsOneWidget);
-    expect(find.text('Maria das Dores Silva'), findsOneWidget);
-    expect(find.text('Gerar lista para assinar'), findsOneWidget);
+    expect(find.text('Lugares: 7 / 15'), findsOneWidget);
+    expect(find.text('Gerar Relatório'), findsOneWidget);
   });
 }
