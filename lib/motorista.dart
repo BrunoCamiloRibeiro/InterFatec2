@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // Disponibiliza rootBundle, usado para ler o arquivo JSON dos assets do aplicativo
 
 import 'components/card_paciente.dart';
+import 'components/footer_pacientes.dart';
 
 class Motorista extends StatefulWidget {
   const Motorista({super.key});
@@ -169,6 +170,11 @@ class _MotoristaState extends State<Motorista> {
             );
           },
         ),
+      ),
+      // Rodapé compacto fixo na parte inferior da tela do motorista
+      bottomNavigationBar: const FooterPacientes(
+        lugaresPreenchidos: 7,
+        lugaresTotais: 15,
       ),
     );
   }
