@@ -206,11 +206,36 @@ class CardPaciente extends StatelessWidget {
                     color: corStatus.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: IndicadorProgresso(
-                    valorAtual: status,
-                    valorMaximo: (status == 0) ? 1 : 3,
-                    corAtiva: corStatus.withAlpha(255),
-                    corInativa: Colors.grey,
+                  child: Column(
+                    children: [
+                      Container(
+                        child: Row(
+                          children: [
+                            // const Icon(Icons.exit_to_app_outlined, size: 20),
+                            // const SizedBox(width: 5),
+                            Expanded(
+                              child: Text(
+                                textoStatus,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color.lerp(corStatus, Colors.black, 0.4)!, // Escurece o texto
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      SizedBox(height: 10),
+                      IndicadorProgresso(
+                        valorAtual: status,
+                        valorMaximo: (status == 0) ? 1 : 3,
+                        corAtiva: corStatus.withAlpha(255),
+                        corInativa: Colors.grey,
+                      ),
+                    ],
                   ),
                 ),
               ],
