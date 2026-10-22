@@ -11,8 +11,8 @@ class IndicadorProgresso extends StatelessWidget {
     super.key,
     required this.valorAtual,
     this.valorMaximo = 1,
-    required this.corAtiva,
-    required this.corInativa,
+    this.corAtiva = Colors.blueAccent,
+    this.corInativa = Colors.grey,
   });
 
   @override
