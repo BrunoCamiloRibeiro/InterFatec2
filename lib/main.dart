@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 
-import 'administrativo.dart';
-import 'login.dart';
+import 'Outdated/administrativo.dart';
+import 'Outdated/login.dart';
+import 'Outdated/paciente.dart';
+import 'Outdated/register.dart';
 import 'motorista.dart';
-import 'paciente.dart';
-import 'register.dart';
 
-// main feita pelo aluno na véspera da entrega, sem const nenhum pq o prof não gosta
 void main() {
   runApp(MyApp());
 }
@@ -19,13 +18,15 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Transporte Saúde',
-      initialRoute: '/login',
+      // Abre direto na tela do motorista
+      initialRoute: '/motorista',
       routes: {
-        '/': (context) => Login(),
+        '/': (context) => Motorista(),
+        '/motorista': (context) => Motorista(),
+        // Telas antigas arquivadas em Outdated (mantidas nas rotas para consulta dos devs)
         '/login': (context) => Login(),
         '/register': (context) => Register(),
         '/administrativo': (context) => Administrativo(),
-        '/motorista': (context) => Motorista(),
         '/paciente': (context) => Paciente(),
       },
     );
