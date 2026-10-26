@@ -1,0 +1,176 @@
+import 'package:flutter/material.dart';
+
+class Veiculos extends StatefulWidget {
+  const Veiculos({super.key});
+
+  @override
+  State<Veiculos> createState() => _VeiculosState();
+}
+
+class _VeiculosState extends State<Veiculos> {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: const Text('Lista de Veículos'),
+      ),
+      body: Container(
+        padding: EdgeInsets.all(16),
+        decoration: BoxDecoration(color: Colors.red),
+        child: ListView(
+          children: [
+            Card(
+              elevation: 12,
+              child: Padding(
+                padding: EdgeInsets.all(16),
+                child: Column(
+                  spacing: 20,
+                  children: [
+                    // IDENTIFICAÇÃO E STATUS
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // IDENTIFICAÇÃO
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'XXX-1234',
+                              style: TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Text(
+                              'Marca Modelo · YYYY',
+                              style: TextStyle(
+                                fontSize: 14,
+                                // fontWeight: FontWeight.bold,
+                                color: Colors.black,
+                              ),
+                            ),
+                            Row(
+                              children: [
+                                Icon(
+                                  // IMPLEMENTAR MUDANÇA DE ÍCONE DE ACORDO COM TIPO
+                                  size: 20,
+                                  Icons.directions_car_outlined,
+                                  color: Colors.grey[700],
+                                ),
+                                SizedBox(width: 5),
+                                Text(
+                                  'Tipo de Veículo',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    // fontWeight: FontWeight.bold,
+                                    color: Colors.grey[700],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        // STATUS
+                        Column(
+                          children: [
+                            Container(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 10,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.green.withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(30),
+                              ),
+                              child: Row(
+                                // IMPLEMENTAR MUDANÇA DE STATUS?
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.circle,
+                                    size: 10,
+                                    color: Color.lerp(
+                                      Colors.green,
+                                      Colors.black,
+                                      0.5,
+                                    ),
+                                  ),
+                                  SizedBox(width: 10),
+                                  Text(
+                                    'Disponível',
+                                    style: TextStyle(
+                                      color: Color.lerp(
+                                        Colors.green,
+                                        Colors.black,
+                                        0.5,
+                                      ),
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    // INFORMAÇÕES OPERACIONAIS
+                    Row(
+                      spacing: 20,
+                      children: [
+                        Column(
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.speed_outlined,
+                                  size: 20,
+                                  color: Colors.grey[700],
+                                ),
+                                SizedBox(width: 10),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Quilometragem Atual',
+                                      style: TextStyle(
+                                        color: Color.lerp(
+                                          Colors.grey,
+                                          Colors.black,
+                                          0.5,
+                                        ),
+                                        fontSize: 12,
+                                        // fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    Text(
+                                      '67.670 km',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        // fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

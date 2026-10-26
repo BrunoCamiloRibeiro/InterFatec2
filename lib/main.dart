@@ -5,6 +5,7 @@ import 'Outdated/login.dart';
 import 'Outdated/paciente.dart';
 import 'Outdated/register.dart';
 import 'motorista.dart';
+import 'lista_veiculos.dart';
 
 void main() {
   runApp(MyApp());
@@ -19,7 +20,7 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'Transporte Saúde',
       // Abre direto na tela do motorista
-      initialRoute: '/motorista',
+      initialRoute: '/veiculos',
       routes: {
         '/': (context) => Motorista(),
         '/motorista': (context) => Motorista(),
@@ -28,6 +29,7 @@ class MyApp extends StatelessWidget {
         '/register': (context) => Register(),
         '/administrativo': (context) => Administrativo(),
         '/paciente': (context) => Paciente(),
+        '/veiculos': (context) => Veiculos(),
       },
     );
   }

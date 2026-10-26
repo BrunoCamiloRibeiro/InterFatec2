@@ -1,0 +1,41 @@
+
+[
+  {
+    "id": "veiculo001",
+    "placa": "ABC1D23",
+    "tipo": "van",
+    "marca": "Renault",
+    "modelo": "Master",
+    "ano": 2023,
+    "qtdAssentos": 15,
+    "status": "disponivel",
+    "quilometragemAtual": 45280,
+    "motoristaResponsavelId": null,
+    "ultimoMotoristaId": null,
+    "possuiAC": true,
+    "possuiPreferencial": false,
+    "observacoes": "Veículo utilizado para viagens intermunicipais.",
+    "criadoEm": "2026-10-01T08:00:00",
+    "atualizadoEm": "2026-10-01T08:00:00",
+    "atualizadoPor": null
+  },
+  {
+    "id": "veiculo002",
+    "placa": "DEF4G56",
+    "tipo": "ambulancia",
+    "marca": "Fiat",
+    "modelo": "Ducato",
+    "ano": 2022,
+    "qtdAssentos": 4,
+    "status": "emManutencao",
+    "quilometragemAtual": 62150,
+    "motoristaResponsavelId": null,
+    "ultimoMotoristaId": "motorista001",
+    "possuiAC": true,
+    "possuiPreferencial": true,
+    "observacoes": "Revisão preventiva pendente.",
+    "criadoEm": "2026-09-15T10:30:00",
+    "atualizadoEm": "2026-10-20T14:00:00",
+    "atualizadoPor": "usuario001"
+  }
+]
