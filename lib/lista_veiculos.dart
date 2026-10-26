@@ -125,10 +125,13 @@ class _VeiculosState extends State<Veiculos> {
                       spacing: 20,
                       children: [
                         Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           spacing: 20,
                           children: [
+                            // QUILOMETRAGEM E QTD DE ASSENTOS
                             Row(
                               children: [
+                                // QUILOMETRAGEM
                                 Row(
                                   children: [
                                     Icon(
@@ -165,6 +168,7 @@ class _VeiculosState extends State<Veiculos> {
                                   ],
                                 ),
                                 SizedBox(width: 16),
+                                // QTD DE ASSENTOS
                                 Row(
                                   children: [
                                     Icon(
@@ -202,12 +206,13 @@ class _VeiculosState extends State<Veiculos> {
                                 ),
                               ],
                             ),
+                            // ÚLTIMO MOTORISTA
                             Row(
                               children: [
                                 Row(
                                   children: [
                                     Icon(
-                                      Icons.speed_outlined,
+                                      Icons.person_outline_outlined,
                                       size: 20,
                                       color: Colors.grey[700],
                                     ),
@@ -217,7 +222,7 @@ class _VeiculosState extends State<Veiculos> {
                                           CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          'Quilometragem Atual',
+                                          'Último Motorista',
                                           style: TextStyle(
                                             color: Color.lerp(
                                               Colors.grey,
@@ -229,43 +234,7 @@ class _VeiculosState extends State<Veiculos> {
                                           ),
                                         ),
                                         Text(
-                                          '67.670 km',
-                                          style: TextStyle(
-                                            fontSize: 14,
-                                            // fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                                SizedBox(width: 16),
-                                Row(
-                                  children: [
-                                    Icon(
-                                      Icons.chair_outlined,
-                                      size: 20,
-                                      color: Colors.grey[700],
-                                    ),
-                                    SizedBox(width: 10),
-                                    Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          'Qtd. de Assentos',
-                                          style: TextStyle(
-                                            color: Color.lerp(
-                                              Colors.grey,
-                                              Colors.black,
-                                              0.5,
-                                            ),
-                                            fontSize: 12,
-                                            // fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                        Text(
-                                          '67',
+                                          'Nome do Último Motorista',
                                           style: TextStyle(
                                             fontSize: 14,
                                             // fontWeight: FontWeight.w600,
@@ -281,6 +250,12 @@ class _VeiculosState extends State<Veiculos> {
                         ),
                       ],
                     ),
+                    // TAGS / EXTRAS DO VEÍCULO
+                    // - ADICIONAR FUTURAMENTE
+                    Divider(height: 2,),
+                    Row(
+                      
+                    )
                   ],
                 ),
               ),
