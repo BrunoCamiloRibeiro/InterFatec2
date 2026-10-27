@@ -91,3 +91,4 @@ ehthumbs_vista.db
 # --- Logs ---
 *.log
 .vscode/settings.json
+lib/motorista.dart

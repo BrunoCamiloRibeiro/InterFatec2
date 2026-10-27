@@ -68,21 +68,51 @@ class _MotoristaState extends State<Motorista> {
               padding: const EdgeInsets.all(16),
               children: [
                 // PACIENTES ATIVOS
-                ExpansionTile(
-                  title: Text('Em Viagem'),
-                  initiallyExpanded: true,
-                  children: [
-                    for (final paciente in pacientesAtivos)
-                      _construirCardPaciente(paciente),
-                  ],
-                ),
+                // ExpansionTile(
+                //   title: Text('Em Viagem'),
+                //   initiallyExpanded: true,
+                //   children: [
+                //     for (final paciente in pacientesAtivos)
+                //       _construirCardPaciente(paciente),
+                //   ],
+                // ),
+                for (final paciente in pacientesAtivos)
+                  _construirCardPaciente(paciente),
                 // PACIENTES PENDENTES
                 ExpansionTile(
                   title: Text('Pendentes'),
                   initiallyExpanded: false,
+                  backgroundColor: Colors.grey[300],
+                  minTileHeight: 70,
                   children: [
                     for (final paciente in pacientesPendentes)
                       _construirCardPaciente(paciente),
+                  ],
+                ),
+                // BOTÃO DE NOVO PASSAGEIRO
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        // Futuramente, abrir a tela de cadastro
+                      },
+                      icon: const Icon(Icons.person_add),
+                      label: const Text(
+                        'Novo Passageiro',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.black, // Fundo preto
+                        foregroundColor: Colors.white, // Texto e ícone brancos
+                        padding: const EdgeInsets.all(
+                          16,
+                        ), // Espaçamento interno
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ), // Bordas pouco arredondadas
+                      ),
+                    ),
                   ],
                 ),
               ],
@@ -97,6 +127,7 @@ class _MotoristaState extends State<Motorista> {
       ),
     );
   }
+
   // CONSTRUTOR DOS CARDS DE PACIENTES
   Widget _construirCardPaciente(dynamic paciente) {
     return Padding(
@@ -174,4 +205,3 @@ class _MotoristaState extends State<Motorista> {
     );
   }
 }
-
