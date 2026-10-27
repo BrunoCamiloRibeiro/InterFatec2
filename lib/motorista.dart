@@ -5,6 +5,7 @@ import 'package:flutter/services.dart'; // Disponibiliza rootBundle, usado para 
 
 import 'components/card_paciente.dart';
 import 'components/footer_pacientes.dart';
+import 'components/formulario_novo_passageiro.dart';
 
 class Motorista extends StatefulWidget {
   const Motorista({super.key});
@@ -94,19 +95,18 @@ class _MotoristaState extends State<Motorista> {
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
                     ElevatedButton.icon(
-                      onPressed: () {
-                        // Futuramente, abrir a tela de cadastro
-                      },
+                      onPressed: _abrirFormularioPassageiro,
                       icon: const Icon(Icons.person_add),
                       label: const Text(
                         'Novo Passageiro',
                         style: TextStyle(fontWeight: FontWeight.bold),
                       ),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.black, // Fundo preto
+                        backgroundColor: Colors.green[700], // Fundo preto
                         foregroundColor: Colors.white, // Texto e ícone brancos
-                        padding: const EdgeInsets.all(
-                          16,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 16,
                         ), // Espaçamento interno
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10),
@@ -202,6 +202,13 @@ class _MotoristaState extends State<Motorista> {
           status: paciente['status'],
         ),
       ),
+    );
+  }
+
+  void _abrirFormularioPassageiro() {
+    showDialog(
+      context: context,
+      builder: (context) => const FormularioNovoPassageiro(),
     );
   }
 }
