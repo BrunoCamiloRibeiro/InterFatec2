@@ -313,6 +313,11 @@ class _VeiculosState extends State<Veiculos> {
                                   style: TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w600,
+                                    color: Color.lerp(
+                                      Colors.grey,
+                                      Colors.black,
+                                      0.5,
+                                    ),
                                   ),
                                 ),
                               ],
@@ -343,6 +348,11 @@ class _VeiculosState extends State<Veiculos> {
                                   style: TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w600,
+                                    color: Color.lerp(
+                                      Colors.grey,
+                                      Colors.black,
+                                      0.5,
+                                    ),
                                   ),
                                 ),
                                 SizedBox(width: 10),
