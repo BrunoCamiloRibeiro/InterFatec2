@@ -260,14 +260,10 @@ class _VeiculosState extends State<Veiculos> {
                         TextButton.icon(
                           onPressed: () {}, // FUTURAMENTE fazer aplicar filtro pela tag
                           icon: Icon(Icons.ac_unit_outlined, size: 16),
-                          label: Text('Ar-condicionado'),
+                          label: Text('Ar-condicionado', style: TextStyle(fontWeight: FontWeight.bold),),
                           style: TextButton.styleFrom(
                             backgroundColor: Colors.blue.withValues(alpha: 0.1),
-                            foregroundColor: Color.lerp(
-                              Colors.blue,
-                              Colors.black,
-                              0.4,
-                            ),
+                            foregroundColor: Color.lerp(Colors.blue, Colors.black, 0.4),
                             padding: EdgeInsets.symmetric(
                               horizontal: 10,
                               vertical: 6,
