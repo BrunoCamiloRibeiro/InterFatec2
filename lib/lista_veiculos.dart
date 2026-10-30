@@ -28,7 +28,8 @@ class _VeiculosState extends State<Veiculos> {
               child: Padding(
                 padding: EdgeInsets.all(16),
                 child: Column(
-                  spacing: 20,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  spacing: 14,
                   children: [
                     // IDENTIFICAÇÃO E STATUS
                     Row(
@@ -122,11 +123,11 @@ class _VeiculosState extends State<Veiculos> {
                     ),
                     // INFORMAÇÕES OPERACIONAIS
                     Row(
-                      spacing: 20,
+                      spacing: 12,
                       children: [
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
-                          spacing: 20,
+                          spacing: 12,
                           children: [
                             // QUILOMETRAGEM E QTD DE ASSENTOS
                             Row(
@@ -251,79 +252,108 @@ class _VeiculosState extends State<Veiculos> {
                       ],
                     ),
                     // TAGS / EXTRAS DO VEÍCULO
-                    // - ADICIONAR FUTURAMENTE
-                    Column(
+                    Wrap(
+                      alignment: WrapAlignment.start,
+                      spacing: 8,
+                      runSpacing: 4,
                       children: [
-                        Divider(height: 2),
-                        SizedBox(height: 10),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            TextButton(
-                              style: ButtonStyle(
-                                padding: WidgetStateProperty.all(
-                                  EdgeInsets.all(20),
-                                ),
-                                shape: WidgetStateProperty.all(
-                                  RoundedRectangleBorder(
-                                    borderRadius:
-                                        BorderRadiusGeometry.circular(8),
-                                  ),
-                                ),
+                        TextButton.icon(
+                          onPressed: () {}, // FUTURAMENTE fazer aplicar filtro pela tag
+                          icon: Icon(Icons.ac_unit_outlined, size: 16),
+                          label: Text('Ar-condicionado'),
+                          style: TextButton.styleFrom(
+                            backgroundColor: Colors.blue.withValues(alpha: 0.1),
+                            foregroundColor: Color.lerp(
+                              Colors.blue,
+                              Colors.black,
+                              0.4,
+                            ),
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            // shape: RoundedRectangleBorder(
+                            //   borderRadius: BorderRadius.circular(8),
+                            // ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    // BOTÕES DE EDITAR E VER DETALHES
+                    Divider(height: 2),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: TextButton(
+                            style: ButtonStyle(
+                              padding: WidgetStateProperty.all(
+                                EdgeInsets.all(20),
                               ),
-                              onPressed: () {},
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.start,
-                                children: [
-                                  Icon(
-                                    Icons.edit_outlined,
-                                    size: 25,
-                                    color: Colors.grey[700],
+                              shape: WidgetStateProperty.all(
+                                RoundedRectangleBorder(
+                                  borderRadius: BorderRadiusGeometry.circular(
+                                    8,
                                   ),
-                                  SizedBox(width: 10),
-                                  Text(
-                                    'Editar',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
+                                ),
                               ),
                             ),
-                            TextButton(
-                              style: ButtonStyle(
-                                padding: WidgetStateProperty.all(
-                                  EdgeInsets.all(20),
+                            onPressed: () {},
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.start,
+                              children: [
+                                Icon(
+                                  Icons.edit_outlined,
+                                  size: 25,
+                                  color: Colors.grey[700],
                                 ),
-                                shape: WidgetStateProperty.all(
-                                  RoundedRectangleBorder(
-                                    borderRadius:
-                                        BorderRadiusGeometry.circular(8),
+                                SizedBox(width: 10),
+                                Text(
+                                  'Editar',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
                                   ),
                                 ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        SizedBox(width: 100),
+                        Expanded(
+                          child: TextButton(
+                            style: ButtonStyle(
+                              padding: WidgetStateProperty.all(
+                                EdgeInsets.all(20),
                               ),
-                              onPressed: () {},
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.end,
-                                children: [
-                                  Text(
-                                    'Ver Detalhes',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                    ),
+                              shape: WidgetStateProperty.all(
+                                RoundedRectangleBorder(
+                                  borderRadius: BorderRadiusGeometry.circular(
+                                    8,
                                   ),
-                                  SizedBox(width: 10),
-                                  Icon(
-                                    Icons.arrow_forward_outlined,
-                                    size: 25,
-                                    color: Colors.grey[700],
-                                  ),
-                                ],
+                                ),
                               ),
                             ),
-                          ],
+                            onPressed: () {},
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                Text(
+                                  'Ver Detalhes',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                SizedBox(width: 10),
+                                Icon(
+                                  Icons.arrow_forward_outlined,
+                                  size: 25,
+                                  color: Colors.grey[700],
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       ],
                     ),
