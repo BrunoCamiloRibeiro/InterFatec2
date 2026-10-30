@@ -252,10 +252,81 @@ class _VeiculosState extends State<Veiculos> {
                     ),
                     // TAGS / EXTRAS DO VEÍCULO
                     // - ADICIONAR FUTURAMENTE
-                    Divider(height: 2,),
-                    Row(
-                      
-                    )
+                    Column(
+                      children: [
+                        Divider(height: 2),
+                        SizedBox(height: 10),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            TextButton(
+                              style: ButtonStyle(
+                                padding: WidgetStateProperty.all(
+                                  EdgeInsets.all(20),
+                                ),
+                                shape: WidgetStateProperty.all(
+                                  RoundedRectangleBorder(
+                                    borderRadius:
+                                        BorderRadiusGeometry.circular(8),
+                                  ),
+                                ),
+                              ),
+                              onPressed: () {},
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.start,
+                                children: [
+                                  Icon(
+                                    Icons.edit_outlined,
+                                    size: 25,
+                                    color: Colors.grey[700],
+                                  ),
+                                  SizedBox(width: 10),
+                                  Text(
+                                    'Editar',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            TextButton(
+                              style: ButtonStyle(
+                                padding: WidgetStateProperty.all(
+                                  EdgeInsets.all(20),
+                                ),
+                                shape: WidgetStateProperty.all(
+                                  RoundedRectangleBorder(
+                                    borderRadius:
+                                        BorderRadiusGeometry.circular(8),
+                                  ),
+                                ),
+                              ),
+                              onPressed: () {},
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  Text(
+                                    'Ver Detalhes',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  SizedBox(width: 10),
+                                  Icon(
+                                    Icons.arrow_forward_outlined,
+                                    size: 25,
+                                    color: Colors.grey[700],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
