@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 
 import 'Outdated/administrativo.dart';
 import 'Outdated/login.dart';
@@ -6,7 +8,13 @@ import 'Outdated/paciente.dart';
 import 'Outdated/register.dart';
 import 'motorista.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+    // Firebase foi importado estilo dezani pra cá, mas foi feito a options pra definir qual cara tá abrindo a sessão
+    
+  );
   runApp(MyApp());
 }
 
