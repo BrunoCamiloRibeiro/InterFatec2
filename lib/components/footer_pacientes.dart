@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
+import 'formulario_encerramento.dart';
+
 // Componente visual do Footer (rodapé) da lista de pacientes do motorista.
-// Estrutura compacta em linha única: ocupação de lugares na esquerda e botão de relatório na direita.
+// Estrutura compacta em linha única: ocupação de lugares na esquerda e botão que abre o Popup de encerramento na direita.
 class FooterPacientes extends StatelessWidget {
   // Quantidade de lugares ocupados atualmente no veículo
   final int lugaresPreenchidos;
@@ -52,7 +54,7 @@ class FooterPacientes extends StatelessWidget {
             ],
           ),
 
-          // DIREITA: Botão compacto para gerar o relatório final (apenas visual)
+          // DIREITA: Botão compacto que abre o POPUP do Formulário de Encerramento
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.blueGrey[900],
@@ -72,24 +74,11 @@ class FooterPacientes extends StatelessWidget {
               ),
             ),
             onPressed: () {
-              // Popup simples de confirmação visual ao clicar no botão
+              // Abre o POPUP do Formulário de Encerramento (Retorno, Km Retorno, Km Rodado)
               showDialog(
                 context: context,
                 builder: (BuildContext context) {
-                  return AlertDialog(
-                    title: const Text('Relatório Final'),
-                    content: const Text(
-                      'Geração do relatório final acionada! (Apenas visual)',
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () {
-                          Navigator.of(context).pop();
-                        },
-                        child: const Text('Fechar'),
-                      ),
-                    ],
-                  );
+                  return const FormularioEncerramento();
                 },
               );
             },

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+
 import '../components/abreviar_textos.dart';
+import '../components/indicador_progresso.dart';
 
 class CardPaciente extends StatelessWidget {
   final String nomePaciente;
@@ -21,13 +23,18 @@ class CardPaciente extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (Color corStatus, String textoStatus) = switch (status) {
-      0 => (Colors.grey, 'Pendente'),
-      1 => (Colors.blue, 'Embarcou'),
-      2 => (Colors.orange, 'Desembarcou'),
-      3 => (Colors.green, 'Concluído'),
-      4 => (Colors.red, 'Cancelado'),
-      _ => (Colors.black, 'Desconhecido'),
+    final (
+      Color corStatus,
+      String textoStatus,
+      IconData iconeStatus,
+    ) = switch (status) {
+      0 => (Colors.grey, 'Pendente', Icons.schedule_outlined),
+      1 => (Colors.blue, 'Embarcou para Ida', Icons.near_me_outlined),
+      2 => (Colors.orange, 'Desembarcou para Consulta', Icons.exit_to_app),
+      3 => (Colors.indigo, 'Reembarcou para Volta', Icons.reply_outlined),
+      4 => (Colors.green, 'Concluído', Icons.check_outlined),
+      5 => (Colors.red, 'Cancelado', Icons.cancel),
+      _ => (Colors.black, 'Desconhecido', Icons.help),
     };
 
     return Card(
@@ -149,7 +156,7 @@ class CardPaciente extends StatelessWidget {
                 // Local de Consulta
                 Row(
                   children: [
-                    const Icon(Icons.local_hospital_outlined, size: 20),
+                    const Icon(Icons.medical_services_outlined, size: 20),
                     const SizedBox(width: 5),
                     Expanded(
                       child: Text(
@@ -185,17 +192,59 @@ class CardPaciente extends StatelessWidget {
                 ),
                 SizedBox(height: 8),
                 // Badge de Status
-                Badge(
-                  backgroundColor: corStatus,
-                  label: Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 8.0,
-                      vertical: 2.0,
-                    ),
-                    child: Text(
-                      textoStatus,
-                      style: TextStyle(fontSize: 12.0, color: Colors.white),
-                    ),
+                // Badge(
+                //   backgroundColor: corStatus,
+                //   label: Container(
+                //     padding: EdgeInsets.symmetric(
+                //       horizontal: 8.0,
+                //       vertical: 2.0,
+                //     ),
+                //     child: Text(
+                //       textoStatus,
+                //       style: TextStyle(fontSize: 12.0, color: Colors.white),
+                //     ),
+                //   ),
+                // ),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: corStatus.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    children: [
+                      Container(
+                        child: Row(
+                          children: [
+                            Icon(iconeStatus, size: 20,),
+                            const SizedBox(width: 5),
+                            Expanded(
+                              child: Text(
+                                textoStatus,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color.lerp(
+                                    corStatus,
+                                    Colors.black,
+                                    0.4,
+                                  )!, // Escurece o texto
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      SizedBox(height: 10),
+                      IndicadorProgresso(
+                        valorAtual: status,
+                        valorMaximo: (status == 0) ? 1 : 4,
+                        corAtiva: corStatus.withAlpha(255),
+                        corInativa: Colors.grey,
+                      ),
+                    ],
                   ),
                 ),
               ],

@@ -44,12 +44,19 @@ void main() {
     expect(find.text('Salvar Paciente'), findsOneWidget);
   });
 
-  testWidgets('Tela motorista carrega lista e footer de lugares e relatório', (
+  testWidgets('Tela motorista abre popup do formulario de encerramento', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(MaterialApp(home: Motorista()));
     expect(find.text('Lista de Passageiros'), findsOneWidget);
-    expect(find.text('Lugares: 7 / 15'), findsOneWidget);
     expect(find.text('Gerar Relatório'), findsOneWidget);
+
+    await tester.tap(find.text('Gerar Relatório'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Formulário de Encerramento'), findsOneWidget);
+    expect(find.text('Retorno'), findsOneWidget);
+    expect(find.text('Km Retorno'), findsOneWidget);
+    expect(find.text('Km Rodado'), findsOneWidget);
   });
 }

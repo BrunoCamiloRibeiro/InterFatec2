@@ -102,8 +102,8 @@ class _MotoristaState extends State<Motorista> {
                       ),
                       direction: switch (paciente.status) {
                         0 => DismissDirection.endToStart,
-                        3 => DismissDirection.startToEnd,
-                        4 => DismissDirection.none,
+                        4 => DismissDirection.startToEnd,
+                        5 => DismissDirection.none,
                         _ => DismissDirection.horizontal,
                       },
                       background: Container(
@@ -155,8 +155,8 @@ class _MotoristaState extends State<Motorista> {
                         int novoStatus = statusAtual;
 
                         if (direction == DismissDirection.startToEnd) {
-                          // Lógica de retroceder status
-                          if (statusAtual > 0 && statusAtual < 4) {
+                          // INSERIR LÓGICA DE RETROCEDER STATUS
+                          if (statusAtual > 0 && statusAtual < 5) {
                             novoStatus = statusAtual - 1;
                           }
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -165,8 +165,8 @@ class _MotoristaState extends State<Motorista> {
                             ),
                           );
                         } else if (direction == DismissDirection.endToStart) {
-                          // Lógica de avançar status
-                          if (statusAtual >= 0 && statusAtual < 3) {
+                          // INSERIR LÓGICA DE AVANÇAR STATUS
+                          if (statusAtual >= 0 && statusAtual < 4) {
                             novoStatus = statusAtual + 1;
                           }
                           ScaffoldMessenger.of(context).showSnackBar(
