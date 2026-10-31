@@ -1,29 +1,100 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:trans_saude/models/motorista_model.dart';
 import 'package:trans_saude/models/paciente_model.dart';
+import 'package:trans_saude/models/viagem_model.dart';
+import 'package:trans_saude/services/viagem_service.dart';
 
 import 'components/card_paciente.dart';
 import 'components/footer_pacientes.dart';
 
 class Motorista extends StatefulWidget {
-  const Motorista({super.key});
+  // Viagem inicial informada para exibição dos dados na tela
+  final ViagemModel? viagemInicial;
+  // Instância customizada do serviço de viagens
+  final ViagemService? viagemServiceOverride;
+  // Stream de pacientes injetada externamente
+  final Stream<List<PacienteModel>>? pacientesStreamOverride;
+
+  const Motorista({
+    super.key,
+    this.viagemInicial,
+    this.viagemServiceOverride,
+    this.pacientesStreamOverride,
+  });
 
   @override
   State<Motorista> createState() => _MotoristaState();
 }
 
 class _MotoristaState extends State<Motorista> {
-  // Capacidade do veículo puxada diretamente do motorista no Firebase
+  // Instância do serviço de viagens
+  late final ViagemService _viagemService;
+
+  // Inscrição para escutar mudanças no estado da viagem ativa
+  StreamSubscription<ViagemModel?>? _subViagemAtiva;
+
+  // Viagem ativa associada à sessão do motorista
+  ViagemModel? _viagemAtiva;
+
+  // Capacidade do veículo obtida dos dados do motorista
   int _capacidadeVeiculo = 0;
+
+  // Verifica se existem instâncias ativas do Firebase inicializadas
+  bool _isFirebaseDisponivel() {
+    try {
+      return Firebase.apps.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
 
   @override
   void initState() {
     super.initState();
-    _ouvirDadosMotorista();
+    _viagemService = widget.viagemServiceOverride ?? ViagemService();
+
+    // Inicializa a variável com a viagem fornecida no construtor
+    _viagemAtiva = widget.viagemInicial;
+
+    // Assina a stream de atualização da viagem ativa
+    _subViagemAtiva = _viagemService.viagemAtivaStream.listen((viagem) {
+      if (mounted) {
+        setState(() {
+          _viagemAtiva = viagem;
+        });
+      }
+    });
+
+    // Inicia a escuta dos dados do motorista caso o Firebase esteja disponível
+    if (_isFirebaseDisponivel()) {
+      _ouvirDadosMotorista();
+    }
   }
 
-  // Puxa e escuta em tempo real os dados do motorista (veículo, capacidade)
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Obtém os argumentos de rota contendo a viagem iniciada
+    if (_viagemAtiva == null) {
+      final args = ModalRoute.of(context)?.settings.arguments;
+      if (args is ViagemModel) {
+        _viagemAtiva = args;
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    // Cancela a inscrição na stream de viagem ativa
+    _subViagemAtiva?.cancel();
+    super.dispose();
+  }
+
+  // Consulta os dados do motorista na coleção 'usuarios' do Firestore
   void _ouvirDadosMotorista() {
     FirebaseFirestore.instance
         .collection('usuarios')
@@ -31,39 +102,95 @@ class _MotoristaState extends State<Motorista> {
         .limit(1)
         .snapshots()
         .listen((snapshot) {
-      if (snapshot.docs.isNotEmpty && mounted) {
-        final motorista = MotoristaModel.fromMap(
-          snapshot.docs.first.data(),
-          docId: snapshot.docs.first.id,
-        );
-        setState(() {
-          _capacidadeVeiculo = motorista.capacidadeVeiculo;
+          if (snapshot.docs.isNotEmpty && mounted) {
+            final motorista = MotoristaModel.fromMap(
+              snapshot.docs.first.data(),
+              docId: snapshot.docs.first.id,
+            );
+            setState(() {
+              _capacidadeVeiculo = motorista.capacidadeVeiculo;
+            });
+          }
         });
-      }
-    });
   }
 
-  // Troca por stream, para mudança de status imediata
-  // Relacionando com o paciente_model.dart
-  // Pegando o documento por id
+  // Retorna a stream de pacientes cadastrados
   Stream<List<PacienteModel>> carregarPacientes() {
-    return FirebaseFirestore.instance
-        .collection('usuarios')
-        .where('role', isEqualTo: 'paciente')
-        .snapshots()
-        .map((snapshot) {
-      return snapshot.docs.map((doc) {
-        return PacienteModel.fromMap(doc.data(), docId: doc.id);
-      }).toList();
-    });
+    if (widget.pacientesStreamOverride != null) {
+      return widget.pacientesStreamOverride!;
+    }
+
+    if (_isFirebaseDisponivel()) {
+      return FirebaseFirestore.instance
+          .collection('usuarios')
+          .where('role', isEqualTo: 'paciente')
+          .snapshots()
+          .map((snapshot) {
+            return snapshot.docs.map((doc) {
+              return PacienteModel.fromMap(doc.data(), docId: doc.id);
+            }).toList();
+          });
+    }
+
+    // Retorna lista com pacientes de teste quando o Firebase não está disponível
+    return Stream.value([
+      PacienteModel(
+        id: 'p1',
+        nome: 'Maria das Graças Aparecida',
+        cpf: '123.456.789-00',
+        enderecoPaciente: 'Rua das Flores, 125 - Centro',
+        telefone: '(17) 99123-4567',
+        localConsulta: 'Hospital de Base',
+        localSaida: 'Laboratório de Análises Clínicas',
+        status: 0,
+      ),
+      PacienteModel(
+        id: 'p2',
+        nome: 'Carlos Eduardo Martins',
+        cpf: '987.654.321-00',
+        enderecoPaciente: 'Rua dos Ipês, 310',
+        telefone: '(17) 99456-7890',
+        localConsulta: 'AME São José do Rio Preto',
+        localSaida: 'Centro de Diagnóstico por Imagem',
+        status: 1,
+      ),
+    ]);
   }
 
   @override
   Widget build(BuildContext context) {
+    // Define lista inicial de pacientes quando o Firebase não está disponível
+    final pacientesIniciais = _isFirebaseDisponivel()
+        ? null
+        : [
+            PacienteModel(
+              id: 'p1',
+              nome: 'Maria das Graças Aparecida',
+              cpf: '123.456.789-00',
+              enderecoPaciente: 'Rua das Flores, 125 - Centro',
+              telefone: '(17) 99123-4567',
+              localConsulta: 'Hospital de Base',
+              localSaida: 'Laboratório de Análises Clínicas',
+              status: 0,
+            ),
+            PacienteModel(
+              id: 'p2',
+              nome: 'Carlos Eduardo Martins',
+              cpf: '987.654.321-00',
+              enderecoPaciente: 'Rua dos Ipês, 310',
+              telefone: '(17) 99456-7890',
+              localConsulta: 'AME São José do Rio Preto',
+              localSaida: 'Centro de Diagnóstico por Imagem',
+              status: 1,
+            ),
+          ];
+
     return StreamBuilder<List<PacienteModel>>(
+      initialData: pacientesIniciais,
       stream: carregarPacientes(),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+        if (snapshot.connectionState == ConnectionState.waiting &&
+            !snapshot.hasData) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
           );
@@ -76,16 +203,50 @@ class _MotoristaState extends State<Motorista> {
         }
 
         final pacientes = snapshot.data ?? [];
-        // Calcula os lugares ocupados (pacientes com status == 1 "Embarcou")
+        // Calcula a quantidade de pacientes com status igual a 1 (Embarcou)
         final preenchidos = pacientes.where((p) => p.status == 1).length;
 
         return Scaffold(
           appBar: AppBar(
             leading: IconButton(
               icon: const Icon(Icons.arrow_back),
-              onPressed: () => Navigator.of(context).pop(),
+              onPressed: () {
+                // Retorna à tela anterior ou redireciona para a rota inicial
+                if (Navigator.of(context).canPop()) {
+                  Navigator.of(context).pop();
+                } else {
+                  Navigator.of(context).pushReplacementNamed('/');
+                }
+              },
             ),
             title: const Text('Lista de Passageiros'),
+            actions: [
+              // Exibe a placa do veículo associado à viagem ativa
+              if (_viagemAtiva != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.green.shade700,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        'Em Viagem: ${_viagemAtiva!.veiculoPlaca}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
           ),
           backgroundColor: Colors.white,
           body: SafeArea(
@@ -98,7 +259,6 @@ class _MotoristaState extends State<Motorista> {
                     child: Dismissible(
                       key: ValueKey(
                         paciente.id.isNotEmpty ? paciente.id : paciente.nome,
-                        // Agora que é um objeto não mais JSON puro ex: paciente['nomePaciente']
                       ),
                       direction: switch (paciente.status) {
                         0 => DismissDirection.endToStart,
@@ -110,7 +270,7 @@ class _MotoristaState extends State<Motorista> {
                         padding: const EdgeInsets.only(left: 16),
                         alignment: Alignment.centerLeft,
                         decoration: BoxDecoration(
-                          color: Colors.red.withAlpha(100),
+                          color: Colors.red.withValues(alpha: 0.4),
                           borderRadius: BorderRadius.circular(16),
                         ),
                         child: const Column(
@@ -132,7 +292,7 @@ class _MotoristaState extends State<Motorista> {
                         padding: const EdgeInsets.only(right: 16),
                         alignment: Alignment.centerRight,
                         decoration: BoxDecoration(
-                          color: Colors.green.withAlpha(100),
+                          color: Colors.green.withValues(alpha: 0.4),
                           borderRadius: BorderRadius.circular(16),
                         ),
                         child: const Column(
@@ -154,28 +314,34 @@ class _MotoristaState extends State<Motorista> {
                         final int statusAtual = paciente.status;
                         int novoStatus = statusAtual;
 
+                        // Decrementa o status do paciente ao arrastar da esquerda para a direita
                         if (direction == DismissDirection.startToEnd) {
-                          // INSERIR LÓGICA DE RETROCEDER STATUS
                           if (statusAtual > 0 && statusAtual < 5) {
                             novoStatus = statusAtual - 1;
                           }
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
-                              content: Text('Puxado da Esquerda para a Direita'),
+                              content: Text(
+                                'Puxado da Esquerda para a Direita',
+                              ),
                             ),
                           );
+                          // Incrementa o status do paciente ao arrastar da direita para a esquerda
                         } else if (direction == DismissDirection.endToStart) {
-                          // INSERIR LÓGICA DE AVANÇAR STATUS
                           if (statusAtual >= 0 && statusAtual < 4) {
                             novoStatus = statusAtual + 1;
                           }
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
-                              content: Text('Puxado da Direita para a Esquerda'),
+                              content: Text(
+                                'Puxado da Direita para a Esquerda',
+                              ),
                             ),
                           );
                         }
-                        if (novoStatus != statusAtual) {
+                        // Atualiza o status do paciente no Firestore caso tenha sido alterado
+                        if (novoStatus != statusAtual &&
+                            _isFirebaseDisponivel()) {
                           await FirebaseFirestore.instance
                               .collection('usuarios')
                               .doc(paciente.id)
@@ -184,7 +350,6 @@ class _MotoristaState extends State<Motorista> {
                         return false;
                       },
                       child: CardPaciente(
-                        // Alteração para objeto, não json
                         nomePaciente: paciente.nome,
                         enderecoPaciente: paciente.enderecoPaciente,
                         telPaciente: paciente.telefone,
@@ -197,10 +362,8 @@ class _MotoristaState extends State<Motorista> {
               ],
             ),
           ),
-          // Rodapé compacto fixo na parte inferior da tela do motorista
           bottomNavigationBar: FooterPacientes(
             lugaresPreenchidos: preenchidos,
-            // Puxa a capacidade real do veículo do motorista direto do Firestore!
             lugaresTotais: _capacidadeVeiculo,
           ),
         );
