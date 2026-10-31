@@ -358,3 +358,24 @@ Branch de trabalho: `17-formulário-de-viagem`
 - `dart format`: 100% dos arquivos formatados dentro do padrão oficial do Dart.
 - `dart analyze`: Zero warnings ou erros encontrados (`No issues found!`).
 - `flutter test`: 21 de 21 testes executados e aprovados com sucesso.
+
+---
+
+## 9. Publicação da Branch e Criação da Pull Request (#51)
+
+### 9.1 Sincronização com o Repositório Remoto
+- Configurado remote origin para SSH (`git@github.com:BrunoCamiloRibeiro/InterFatec2.git`).
+- Push dos 5 commits realizado com sucesso:
+  - `aa02e80 feat(motorista): adicionar modelos e servicos de viagem com validacoes e controle de concorrencia`
+  - `8d73cce feat(motorista): implementar formulario de inicio de viagem e integracao na tela inicial`
+  - `d297b2e test(motorista): adicionar testes unitarios, concorrencia e widgets do inicio de viagem`
+  - `d5529b7 docs(motorista): adicionar log de implementacao do formulario de inicio de viagem`
+  - `46cad63 docs(motorista): adicionar screenshots de execucao dos estados do formulario de viagem`
+
+### 9.2 Abertura Oficial da Pull Request
+- **Pull Request:** [#51 - feat(motorista): implementar formulario de inicio de viagem (#17)](https://github.com/BrunoCamiloRibeiro/InterFatec2/pull/51)
+- **Branch Base (Destino):** `develop`
+- **Branch Comparada (Origem):** `17-formulário-de-viagem`
+- **Estado:** Aberta (`open`)
+- **Mesclabilidade:** Sem conflitos (`Mergeable: True`)
+- **Conteúdo:** Título padronizado, descrição detalhada das 4 camadas, tabela de prints dos estados visuais, provas dos 21 testes automatizados e checklist de exclusão da branch após merge conforme `CONTRIBUTING.md`.
