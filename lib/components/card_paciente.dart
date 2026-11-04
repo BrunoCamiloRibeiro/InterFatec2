@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../components/abreviar_textos.dart';
 import '../components/indicador_progresso.dart';
+import '../components/bloco_acompanhante.dart';
 
 class CardPaciente extends StatelessWidget {
   final String nomePaciente;
@@ -10,6 +11,9 @@ class CardPaciente extends StatelessWidget {
   final String localConsulta;
   final String localSaida;
   final int status;
+  // Dados do acompanhante vinculados ao paciente (Issue #10)
+  final String? nomeAcompanhante;
+  final String? telAcompanhante;
 
   CardPaciente({
     super.key,
@@ -19,6 +23,8 @@ class CardPaciente extends StatelessWidget {
     required this.localConsulta,
     required this.localSaida,
     required this.status,
+    this.nomeAcompanhante,
+    this.telAcompanhante,
   });
 
   @override
@@ -138,11 +144,17 @@ class CardPaciente extends StatelessWidget {
                         style: const TextStyle(
                           fontSize: 13.5,
                           fontWeight: FontWeight.bold,
-                        ),
+                        ),           
                       ),
-                    ),
+                    ),                
                   ],
                 ),
+                // Exibe o card do acompanhante caso esteja preenchido
+                if (nomeAcompanhante != null && nomeAcompanhante!.trim().isNotEmpty)
+                  CardAcompanhante(
+                    nomeAcompanhante: nomeAcompanhante!,
+                    telAcompanhante:  telAcompanhante ?? '', // Fallback vazio caso nulo no Firestore
+                  ), 
               ],
             ),
 
