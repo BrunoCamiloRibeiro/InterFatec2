@@ -203,8 +203,13 @@ class _MotoristaState extends State<Motorista> {
         }
 
         final pacientes = snapshot.data ?? [];
-        // Calcula a quantidade de pacientes com status igual a 1 (Embarcou)
-        final preenchidos = pacientes.where((p) => p.status == 1).length;
+        // Calcula os lugares ocupados (pacientes com status == 1 "Embarcou")
+
+        int preenchidos = 0;
+        // Passageiros a bordo: status 1 (Ida) ou status 3 (Volta). Se houver acompanhante, ocupa 2 vagas
+        for (var p in pacientes.where((p) => p.status == 1 || p.status == 3)) {
+          preenchidos += (p.nomeAcompanhante?.isNotEmpty == true) ? 2 : 1;
+        }
 
         return Scaffold(
           appBar: AppBar(
@@ -356,6 +361,9 @@ class _MotoristaState extends State<Motorista> {
                         localConsulta: paciente.localConsulta,
                         localSaida: paciente.localSaida,
                         status: paciente.status,
+                        // Repassa os dados do acompanhante para o card
+                        nomeAcompanhante: paciente.nomeAcompanhante,
+                        telAcompanhante: paciente.telAcompanhante,
                       ),
                     ),
                   ),
