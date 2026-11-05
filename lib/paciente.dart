@@ -91,7 +91,7 @@ class _PacienteState extends State<Paciente> {
         if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
           return const Scaffold(
-            backgroundColor: Color(0xFFF7F8FA),
+            backgroundColor: Colors.white,
             body: Center(child: CircularProgressIndicator()),
           );
         }
@@ -101,11 +101,8 @@ class _PacienteState extends State<Paciente> {
         // Caso nenhum registro seja localizado
         if (paciente == null) {
           return Scaffold(
-            backgroundColor: const Color(0xFFF7F8FA),
-            appBar: AppBar(
-              backgroundColor: Colors.white,
-              title: const Text('Painel do Paciente'),
-            ),
+            backgroundColor: Colors.white,
+            appBar: AppBar(title: const Text('Painel do Paciente')),
             body: const Center(
               child: Text(
                 'Nenhum dado de paciente encontrado.',
@@ -116,12 +113,10 @@ class _PacienteState extends State<Paciente> {
         }
 
         return Scaffold(
-          backgroundColor: const Color(0xFFF7F8FA),
+          backgroundColor: Colors.white,
           appBar: AppBar(
-            backgroundColor: Colors.white,
-            elevation: 1,
             leading: IconButton(
-              icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)),
+              icon: const Icon(Icons.arrow_back),
               onPressed: () {
                 if (Navigator.of(context).canPop()) {
                   Navigator.of(context).pop();
@@ -130,14 +125,7 @@ class _PacienteState extends State<Paciente> {
                 }
               },
             ),
-            title: const Text(
-              'Painel do Paciente',
-              style: TextStyle(
-                color: Color(0xFF0F172A),
-                fontWeight: FontWeight.bold,
-                fontSize: 18,
-              ),
-            ),
+            title: const Text('Painel do Paciente'),
           ),
           // Layout responsivo adaptável a 100% da largura da tela, assim como a Lista de Passageiros
           body: SafeArea(
