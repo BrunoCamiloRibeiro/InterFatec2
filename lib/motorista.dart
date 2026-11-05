@@ -10,6 +10,7 @@ import 'package:trans_saude/services/viagem_service.dart';
 
 import 'components/card_paciente.dart';
 import 'components/footer_pacientes.dart';
+import 'components/motorista_header.dart';
 
 class Motorista extends StatefulWidget {
   // Viagem inicial informada para exibição dos dados na tela
@@ -258,6 +259,16 @@ class _MotoristaState extends State<Motorista> {
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                // TODO(#13): ligar ao ViagemModel
+                MotoristaHeader(
+                  tituloViagem:
+                      _viagemAtiva != null && _viagemAtiva!.id.isNotEmpty
+                      ? 'Viagem ${_viagemAtiva!.id}'
+                      : 'Viagem 1',
+                  onAnterior: null,
+                  onProxima: null,
+                ),
+                const SizedBox(height: 12),
                 for (final paciente in pacientes)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 10),
