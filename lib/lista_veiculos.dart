@@ -23,6 +23,31 @@ class _VeiculosState extends State<Veiculos> {
         decoration: BoxDecoration(color: Colors.red),
         child: ListView(
           children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                ElevatedButton.icon(
+                  onPressed: () {},
+                  icon: const Icon(Icons.add_outlined),
+                  label: const Text(
+                    'Novo Veículo',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green[700], // Fundo preto
+                    foregroundColor: Colors.white, // Texto e ícone brancos
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 20,
+                    ), // Espaçamento interno
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ), // Bordas pouco arredondadas
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 10),
             Card(
               elevation: 12,
               child: Padding(
@@ -260,10 +285,17 @@ class _VeiculosState extends State<Veiculos> {
                         TextButton.icon(
                           onPressed: () {}, // FUTURAMENTE fazer aplicar filtro pela tag
                           icon: Icon(Icons.ac_unit_outlined, size: 16),
-                          label: Text('Ar-condicionado', style: TextStyle(fontWeight: FontWeight.bold),),
+                          label: Text(
+                            'Ar-condicionado',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
                           style: TextButton.styleFrom(
                             backgroundColor: Colors.blue.withValues(alpha: 0.1),
-                            foregroundColor: Color.lerp(Colors.blue, Colors.black, 0.4),
+                            foregroundColor: Color.lerp(
+                              Colors.blue,
+                              Colors.black,
+                              0.4,
+                            ),
                             padding: EdgeInsets.symmetric(
                               horizontal: 10,
                               vertical: 6,
