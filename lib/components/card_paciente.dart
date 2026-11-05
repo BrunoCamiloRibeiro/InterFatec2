@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../models/paciente_model.dart';
+
 import '../components/abreviar_textos.dart';
 import '../components/indicador_progresso.dart';
 import '../components/bloco_acompanhante.dart';
@@ -29,19 +31,9 @@ class CardPaciente extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (
-      Color corStatus,
-      String textoStatus,
-      IconData iconeStatus,
-    ) = switch (status) {
-      0 => (Colors.grey, 'Pendente', Icons.schedule_outlined),
-      1 => (Colors.blue, 'Embarcou para Ida', Icons.near_me_outlined),
-      2 => (Colors.orange, 'Desembarcou para Consulta', Icons.exit_to_app),
-      3 => (Colors.indigo, 'Reembarcou para Volta', Icons.reply_outlined),
-      4 => (Colors.green, 'Concluído', Icons.check_outlined),
-      5 => (Colors.red, 'Cancelado', Icons.cancel),
-      _ => (Colors.black, 'Desconhecido', Icons.help),
-    };
+    final (textoStatus, corStatus, iconeStatus) = PacienteModel.dadosStatus(
+      status,
+    );
 
     return Card(
       elevation: 12,
@@ -144,17 +136,20 @@ class CardPaciente extends StatelessWidget {
                         style: const TextStyle(
                           fontSize: 13.5,
                           fontWeight: FontWeight.bold,
-                        ),           
+                        ),
                       ),
-                    ),                
+                    ),
                   ],
                 ),
                 // Exibe o card do acompanhante caso esteja preenchido
-                if (nomeAcompanhante != null && nomeAcompanhante!.trim().isNotEmpty)
+                if (nomeAcompanhante != null &&
+                    nomeAcompanhante!.trim().isNotEmpty)
                   CardAcompanhante(
                     nomeAcompanhante: nomeAcompanhante!,
-                    telAcompanhante:  telAcompanhante ?? '', // Fallback vazio caso nulo no Firestore
-                  ), 
+                    telAcompanhante:
+                        telAcompanhante ??
+                        '', // Fallback vazio caso nulo no Firestore
+                  ),
               ],
             ),
 
@@ -225,29 +220,27 @@ class CardPaciente extends StatelessWidget {
                   ),
                   child: Column(
                     children: [
-                      Container(
-                        child: Row(
-                          children: [
-                            Icon(iconeStatus, size: 20,),
-                            const SizedBox(width: 5),
-                            Expanded(
-                              child: Text(
-                                textoStatus,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color.lerp(
-                                    corStatus,
-                                    Colors.black,
-                                    0.4,
-                                  )!, // Escurece o texto
-                                ),
+                      Row(
+                        children: [
+                          Icon(iconeStatus, size: 20),
+                          const SizedBox(width: 5),
+                          Expanded(
+                            child: Text(
+                              textoStatus,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Color.lerp(
+                                  corStatus,
+                                  Colors.black,
+                                  0.4,
+                                )!, // Escurece o texto
                               ),
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                       SizedBox(height: 10),
                       IndicadorProgresso(

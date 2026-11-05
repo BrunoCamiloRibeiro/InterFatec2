@@ -5,7 +5,7 @@ import 'firebase_options.dart';
 
 import 'Outdated/administrativo.dart';
 import 'Outdated/login.dart';
-import 'Outdated/paciente.dart';
+import 'paciente.dart';
 import 'Outdated/register.dart';
 import 'components/formulario_inicio_viagem.dart';
 import 'motorista.dart';

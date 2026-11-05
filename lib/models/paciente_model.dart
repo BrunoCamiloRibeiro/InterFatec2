@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart';
+
 class PacienteModel {
   final String id;
   final String nome;
@@ -30,6 +32,40 @@ class PacienteModel {
     this.ativo = true,
     this.criadoEm,
   });
+
+  // Mapeamento centralizado de status numérico para texto, cor e ícone em todo o app
+  static (String texto, Color cor, IconData icone) dadosStatus(int status) {
+    return switch (status) {
+      0 => (
+        'Aguardando Transporte',
+        const Color(0xFF2563EB),
+        Icons.schedule_outlined,
+      ),
+      1 => (
+        'Embarcou para Ida',
+        const Color(0xFF1D4ED8),
+        Icons.near_me_outlined,
+      ),
+      2 => (
+        'Desembarcou para Consulta',
+        const Color(0xFFD97706),
+        Icons.exit_to_app,
+      ),
+      3 => (
+        'Reembarcou para Volta',
+        const Color(0xFF4338CA),
+        Icons.reply_outlined,
+      ),
+      4 => ('Concluído', const Color(0xFF16A34A), Icons.check_outlined),
+      5 => ('Cancelado', const Color(0xFFB83227), Icons.cancel),
+      _ => ('Pendente', Colors.grey, Icons.help),
+    };
+  }
+
+  // Getters utilitários para acesso rápido na instância do paciente
+  String get textoStatus => dadosStatus(status).$1;
+  Color get corStatus => dadosStatus(status).$2;
+  IconData get iconeStatus => dadosStatus(status).$3;
 
   // Salvar no Firebase
   Map<String, dynamic> toMap() {
