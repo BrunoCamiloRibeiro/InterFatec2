@@ -1,40 +1,101 @@
+// ============================================================================
+// ARQUIVO: test/services/auth_service_test.dart
+// ----------------------------------------------------------------------------
+// O QUE FAZ:
+// Suíte de testes unitários para o serviço de autenticação FirebaseAuthService
+// (lib/services/auth_service.dart). Cobre:
+// - Mapeamento amigável de exceções FirebaseAuthException para mensagens em PT-BR.
+// - Fluxo de login via CPF com resolução para e-mail institucional e verificação
+//   de perfis de acesso autorizados (motorista, admin).
+// - Rejeição e signOut compulsório para perfis não autorizados (paciente) ou
+//   inexistentes no Cloud Firestore.
+// - Resolução do papel funcional do usuário (resolveUserRole) a partir de UID.
+// - Tratamento de exceções transitórias (unavailable) e permissões (permission-denied).
+// - Mecanismo estático de cache de perfis (armazenamento, invalidação e compartilhamento
+//   entre múltiplas instâncias do serviço).
+//
+// PAPEL NA ARQUITETURA (CAMADA):
+// Camada de Testes Automatizados Unitários de Serviços (test/services/).
+//
+// ONDE É USADO:
+// Executado pelo executor oficial de testes do Flutter (`flutter test`).
+//
+// DE ONDE RECEBE DADOS:
+// - Mocks de FirebaseAuth, User e UserCredential implementados no arquivo.
+//
+// O QUE EXPORTA / EXPÕE:
+// - class FakeUser implements User
+// - class FakeUserCredential implements UserCredential
+// - class FakeFirebaseAuth implements FirebaseAuth
+// - void main(): Ponto de entrada da suíte de testes.
+//
+// ORIGEM HISTÓRICA:
+// Criado no commit 600ea8b (feat: implementar tela de login, rotas protegidas
+// e gate de autenticação).
+//
+// DEPENDÊNCIAS EXTERNAS E EFEITOS COLATERAIS:
+// - package:firebase_auth/firebase_auth.dart
+// - package:flutter_test/flutter_test.dart
+// - Sem efeitos colaterais externos.
+// ============================================================================
+// Importa a biblioteca do Firebase Auth para mocks e exceções
 import 'package:firebase_auth/firebase_auth.dart';
+// Importa o framework oficial de testes do Flutter
 import 'package:flutter_test/flutter_test.dart';
+// Importa o enum de papéis funcionais do sistema
 import 'package:trans_saude/models/user_role.dart';
+// Importa o serviço de autenticação e a exceção AuthException
 import 'package:trans_saude/services/auth_service.dart';
 
+// Classe mock que implementa a interface User do Firebase Auth
 class FakeUser implements User {
+  // Identificador único do usuário mockado
   @override
   final String uid;
 
+  // Construtor do FakeUser
   FakeUser({required this.uid});
 
+  // Trata métodos não implementados repassando para o comportamento padrão
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+// Classe mock que implementa a interface UserCredential do Firebase Auth
 class FakeUserCredential implements UserCredential {
+  // Usuário associado às credenciais
   @override
   final User? user;
 
+  // Construtor do FakeUserCredential
   FakeUserCredential({this.user});
 
+  // Trata métodos não implementados
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+// Classe mock que implementa FirebaseAuth para simular operações sem backend real
 class FakeFirebaseAuth implements FirebaseAuth {
+  // Usuário retornado por currentUser
   final User? currentUserOverride;
+  // Erro a ser disparado no login
   final FirebaseAuthException? errorToThrow;
+  // Armazena o último e-mail submetido
   String? lastSignedInEmail;
+  // Armazena a última senha submetida
   String? lastSignedInPassword;
+  // Flag indicando se signOut foi executado
   bool signedOut = false;
 
+  // Construtor do FakeFirebaseAuth
   FakeFirebaseAuth({this.currentUserOverride, this.errorToThrow});
 
+  // Getter do usuário autenticado no momento
   @override
   User? get currentUser => currentUserOverride;
 
+  // Simula a autenticação com e-mail e senha
   @override
   Future<UserCredential> signInWithEmailAndPassword({
     required String email,
@@ -48,16 +109,20 @@ class FakeFirebaseAuth implements FirebaseAuth {
     return FakeUserCredential(user: currentUserOverride);
   }
 
+  // Simula o encerramento de sessão no Firebase
   @override
   Future<void> signOut() async {
     signedOut = true;
   }
 
+  // Trata métodos não implementados
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+// Ponto de entrada da suíte de testes do AuthService
 void main() {
+  // Grupo 1: Mapeamento de exceções
   group(
     'AuthService - Mapeamento de Códigos de Erro FirebaseAuthException',
     () {
@@ -109,6 +174,7 @@ void main() {
     },
   );
 
+  // Grupo 2: Resolução de perfil via CPF
   group('AuthService - Resolução de Perfil e Autorização via CPF', () {
     test(
       'login com CPF resolve para motorista e autentica corretamente',
@@ -261,6 +327,7 @@ void main() {
     });
   });
 
+  // Grupo 3: Resolução de perfil via resolveUserRole
   group('AuthService - Resolução de Perfil de Usuário (Issue #28)', () {
     test('resolveUserRole retorna UserRole.motorista', () async {
       final service = FirebaseAuthService(
@@ -414,6 +481,7 @@ void main() {
       await instanciaA.resolveUserRole('uid_compartilhado');
 
       // Instância B deve enxergar o perfil em cache resolvido por Instância A sem novo fetch
+      // Valida compartilhamento estático do cache
       expect(
         instanciaB.getCachedRole('uid_compartilhado'),
         equals(UserRole.admin),
