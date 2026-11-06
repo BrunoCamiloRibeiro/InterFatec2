@@ -365,11 +365,11 @@ class CardVeiculo extends StatelessWidget {
                       style: TextStyle(fontWeight: FontWeight.bold),
                     ),
                     style: TextButton.styleFrom(
-                      backgroundColor: Colors.purple.withValues(alpha: 0.1),
+                      backgroundColor: Color(0xFF2D2F8D).withValues(alpha: 1),
                       foregroundColor: Color.lerp(
-                        Colors.purple,
-                        Colors.black,
-                        0.4,
+                        Color(0xFF2D2F8D),
+                        Colors.white,
+                        0.8,
                       ),
                       padding: const EdgeInsets.symmetric(
                         horizontal: 10,
