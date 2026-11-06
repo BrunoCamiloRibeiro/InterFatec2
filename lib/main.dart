@@ -5,6 +5,7 @@ import 'Outdated/administrativo.dart';
 import 'Outdated/register.dart';
 import 'components/formulario_inicio_viagem.dart';
 import 'firebase_options.dart';
+import 'lista_pessoas.dart';
 import 'routes/route_guard.dart';
 import 'screens/auth_gate.dart';
 import 'screens/login_screen.dart';
@@ -64,6 +65,8 @@ class MyApp extends StatelessWidget {
         // Telas de autenticação e registro
         '/login': (context) => LoginScreen(),
         '/register': (context) => Register(),
+        // Gestão de Pessoas (Issue #34)
+        '/lista-pessoas': (context) => const ListaPessoas(),
         // Telas antigas arquivadas em Outdated (mantidas com prefixo para consulta dos devs)
         '/outdated-administrativo': (context) => Administrativo(),
       },

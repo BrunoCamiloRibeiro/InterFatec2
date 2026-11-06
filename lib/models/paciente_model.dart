@@ -86,25 +86,40 @@ class PacienteModel {
     };
   }
 
+  static DateTime? _parsearData(dynamic valor) {
+    if (valor == null) return null;
+    if (valor is DateTime) return valor;
+    try {
+      return (valor as dynamic).toDate() as DateTime;
+    } catch (_) {}
+    try {
+      return DateTime.tryParse(valor.toString());
+    } catch (_) {}
+    return null;
+  }
+
   // Ler do Firebase
   factory PacienteModel.fromMap(Map<String, dynamic> map, {String? docId}) {
+    final statusRaw = map['status'];
+    final int statusInt = (statusRaw is num)
+        ? statusRaw.toInt()
+        : (int.tryParse(statusRaw?.toString() ?? '') ?? 0);
+
     return PacienteModel(
       id: docId ?? '',
-      nome: map['nome'] ?? '',
-      cpf: map['cpf'] ?? '',
-      telefone: map['telefone'] ?? '',
-      enderecoPaciente: map['enderecoPaciente'] ?? '',
-      localConsulta: map['localConsulta'] ?? '',
-      localSaida: map['localSaida'] ?? 'Residência',
-      horarioConsulta: map['horarioConsulta'] ?? '',
-      status: map['status'] ?? 0,
-      nomeAcompanhante: map['nomeAcompanhante'],
-      telAcompanhante: map['telAcompanhante'],
-      role: map['role'] ?? 'paciente',
-      ativo: map['ativo'] ?? true,
-      criadoEm: map['criadoEm'] != null
-          ? DateTime.tryParse(map['criadoEm'].toString())
-          : null,
+      nome: (map['nome'] ?? '').toString(),
+      cpf: (map['cpf'] ?? '').toString(),
+      telefone: (map['telefone'] ?? '').toString(),
+      enderecoPaciente: (map['enderecoPaciente'] ?? '').toString(),
+      localConsulta: (map['localConsulta'] ?? '').toString(),
+      localSaida: (map['localSaida'] ?? 'Residência').toString(),
+      horarioConsulta: (map['horarioConsulta'] ?? '').toString(),
+      status: statusInt,
+      nomeAcompanhante: map['nomeAcompanhante']?.toString(),
+      telAcompanhante: map['telAcompanhante']?.toString(),
+      role: (map['role'] ?? 'paciente').toString(),
+      ativo: map['ativo'] == true || map['ativo'] == null || map['ativo'] == 'true',
+      criadoEm: _parsearData(map['criadoEm']),
     );
   }
 }
