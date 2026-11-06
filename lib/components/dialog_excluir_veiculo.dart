@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
+import '../controllers/veiculo_controller.dart';
 
 class DialogExcluirVeiculo extends StatelessWidget {
+  final String id;
   final String placa;
   final String modelo;
   final VoidCallback? onConfirmar;
 
   const DialogExcluirVeiculo({
     super.key,
+    required this.id,
     required this.placa,
     required this.modelo,
     this.onConfirmar,
@@ -14,6 +17,7 @@ class DialogExcluirVeiculo extends StatelessWidget {
 
   static Future<bool?> mostrar(
     BuildContext context, {
+    required String id,
     required String placa,
     required String modelo,
     VoidCallback? onConfirmar,
@@ -21,6 +25,7 @@ class DialogExcluirVeiculo extends StatelessWidget {
     return showDialog<bool>(
       context: context,
       builder: (context) => DialogExcluirVeiculo(
+        id: id,
         placa: placa,
         modelo: modelo,
         onConfirmar: onConfirmar,
@@ -45,17 +50,19 @@ class DialogExcluirVeiculo extends StatelessWidget {
             foregroundColor: Colors.red[700],
           ),
           onPressed: () {
+            // Exclusão real no controller
+            VeiculoController().removerVeiculo(id);
             Navigator.of(context).pop(true);
             if (onConfirmar != null) {
               onConfirmar!();
-            } else {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  backgroundColor: Colors.red[700],
-                  content: Text('Veículo $placa excluído! (Apenas visual)'),
-                ),
-              );
             }
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                backgroundColor: Colors.red[700],
+                duration: const Duration(seconds: 2),
+                content: Text('Veículo $placa excluído com sucesso!'),
+              ),
+            );
           },
           child: const Text(
             'Confirmar',

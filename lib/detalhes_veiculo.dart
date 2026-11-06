@@ -6,11 +6,13 @@ import 'components/formulario_novo_veiculo.dart';
 class DetalhesVeiculo extends StatefulWidget {
   final Map<String, dynamic> veiculo;
   final ValueChanged<String>? onStatusChanged;
+  final VoidCallback? onExcluir;
 
   const DetalhesVeiculo({
     super.key,
     required this.veiculo,
     this.onStatusChanged,
+    this.onExcluir,
   });
 
   @override
@@ -23,39 +25,29 @@ class _DetalhesVeiculoState extends State<DetalhesVeiculo> {
       context: context,
       builder: (context) => FormularioNovoVeiculo(
         veiculoParaEditar: widget.veiculo,
-        onSalvo: () {
-          setState(() {});
+        onSalvar: (veiculoAtualizado) {
+          setState(() {
+            widget.veiculo.addAll(veiculoAtualizado);
+          });
         },
       ),
     );
   }
 
   void _confirmarExclusao(BuildContext context) {
+    final veiculo = widget.veiculo;
     DialogExcluirVeiculo.mostrar(
       context,
-      placa: widget.veiculo['placa']?.toString() ?? '',
-      modelo: '${widget.veiculo['marca']} ${widget.veiculo['modelo']}',
+      id: veiculo['id']?.toString() ?? '',
+      placa: veiculo['placa']?.toString() ?? '',
+      modelo: '${veiculo['marca']} ${veiculo['modelo']}',
       onConfirmar: () {
-        Navigator.of(context).pop(); // Volta para a lista
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            backgroundColor: Colors.red[700],
-            content: Text(
-              'Veículo ${widget.veiculo['placa']} excluído! (Apenas visual)',
-            ),
-          ),
-        );
+        if (widget.onExcluir != null) {
+          widget.onExcluir!();
+        }
+        Navigator.of(context).pop(); // Retorna à lista
       },
     );
-  }
-
-  void _atualizarStatus(String novoStatus) {
-    setState(() {
-      widget.veiculo['status'] = novoStatus;
-    });
-    if (widget.onStatusChanged != null) {
-      widget.onStatusChanged!(novoStatus);
-    }
   }
 
   @override
@@ -91,12 +83,19 @@ class _DetalhesVeiculoState extends State<DetalhesVeiculo> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            // CARD PRINCIPAL DO VEÍCULO (Com dropdown de status funcional)
+            // CARD PRINCIPAL DO VEÍCULO (Estilo original idêntico)
             CardVeiculo(
               veiculo: veiculo,
               onEditar: () => _abrirEdicao(context),
               onDetalhes: () {},
-              onStatusChanged: _atualizarStatus,
+              onStatusChanged: (novoStatus) {
+                setState(() {
+                  veiculo['status'] = novoStatus;
+                });
+                if (widget.onStatusChanged != null) {
+                  widget.onStatusChanged!(novoStatus);
+                }
+              },
             ),
 
             const SizedBox(height: 16),

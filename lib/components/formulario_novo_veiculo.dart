@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 
 class FormularioNovoVeiculo extends StatefulWidget {
   final Map<String, dynamic>? veiculoParaEditar;
-  final VoidCallback? onSalvo;
+  final ValueChanged<Map<String, dynamic>>? onSalvar;
 
   const FormularioNovoVeiculo({
     super.key,
     this.veiculoParaEditar,
-    this.onSalvo,
+    this.onSalvar,
   });
 
   @override
@@ -17,13 +17,13 @@ class FormularioNovoVeiculo extends StatefulWidget {
 class _FormularioNovoVeiculoState extends State<FormularioNovoVeiculo> {
   final _formKey = GlobalKey<FormState>();
 
-  late TextEditingController _placaController;
-  late TextEditingController _marcaController;
-  late TextEditingController _modeloController;
-  late TextEditingController _anoController;
-  late TextEditingController _kmController;
-  late TextEditingController _assentosController;
-  late TextEditingController _observacoesController;
+  late final TextEditingController _placaController;
+  late final TextEditingController _marcaController;
+  late final TextEditingController _modeloController;
+  late final TextEditingController _anoController;
+  late final TextEditingController _kmController;
+  late final TextEditingController _assentosController;
+  late final TextEditingController _observacoesController;
 
   late String _tipoSelecionado;
   late String _statusSelecionado;
@@ -33,21 +33,21 @@ class _FormularioNovoVeiculoState extends State<FormularioNovoVeiculo> {
 
   bool get _isEdicao => widget.veiculoParaEditar != null;
 
-  final List<Map<String, String>> _tipos = [
+  static const List<Map<String, String>> _tipos = [
     {'valor': 'van', 'nome': 'Van'},
     {'valor': 'ambulancia', 'nome': 'Ambulância'},
     {'valor': 'microonibus', 'nome': 'Micro-ônibus'},
     {'valor': 'carro', 'nome': 'Carro de Apoio'},
   ];
 
-  final List<Map<String, String>> _statusOpcoes = [
+  static const List<Map<String, String>> _statusOpcoes = [
     {'valor': 'disponivel', 'nome': 'Disponível'},
     {'valor': 'emManutencao', 'nome': 'Em Manutenção'},
     {'valor': 'emViagem', 'nome': 'Em Viagem'},
     {'valor': 'inativo', 'nome': 'Inativo'},
   ];
 
-  final List<String> _motoristasMock = [
+  static const List<String> _motoristasMock = [
     'motorista001',
     'Carlos Silva (Matrícula: 1042)',
     'Mariana Santos (Matrícula: 1055)',
@@ -63,12 +63,14 @@ class _FormularioNovoVeiculoState extends State<FormularioNovoVeiculo> {
     _placaController = TextEditingController(text: v['placa']?.toString() ?? '');
     _marcaController = TextEditingController(text: v['marca']?.toString() ?? '');
     _modeloController = TextEditingController(text: v['modelo']?.toString() ?? '');
-    _anoController = TextEditingController(text: v['ano']?.toString() ?? '');
+    _anoController = TextEditingController(
+      text: v['ano'] != null ? v['ano'].toString() : DateTime.now().year.toString(),
+    );
     _kmController = TextEditingController(
-      text: v['quilometragemAtual'] != null ? v['quilometragemAtual'].toString() : '',
+      text: v['quilometragemAtual'] != null ? v['quilometragemAtual'].toString() : '0',
     );
     _assentosController = TextEditingController(
-      text: v['qtdAssentos'] != null ? v['qtdAssentos'].toString() : '',
+      text: v['qtdAssentos'] != null ? v['qtdAssentos'].toString() : '15',
     );
     _observacoesController = TextEditingController(
       text: v['observacoes']?.toString() ?? '',
@@ -86,10 +88,6 @@ class _FormularioNovoVeiculoState extends State<FormularioNovoVeiculo> {
 
     _motoristaSelecionado =
         v['ultimoMotoristaId']?.toString() ?? v['motoristaResponsavelId']?.toString();
-    if (_motoristaSelecionado != null &&
-        !_motoristasMock.contains(_motoristaSelecionado)) {
-      _motoristasMock.insert(0, _motoristaSelecionado!);
-    }
 
     _possuiAC = v['possuiAC'] == true;
     _possuiPreferencial = v['possuiPreferencial'] == true;
@@ -134,15 +132,70 @@ class _FormularioNovoVeiculoState extends State<FormularioNovoVeiculo> {
     );
   }
 
+  void _salvar() {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    final agora = DateTime.now().toIso8601String();
+    final placa = _placaController.text.trim().toUpperCase();
+
+    final dadosVeiculo = {
+      'id': widget.veiculoParaEditar?['id'] ?? 'veiculo_${DateTime.now().millisecondsSinceEpoch}',
+      'placa': placa,
+      'tipo': _tipoSelecionado,
+      'marca': _marcaController.text.trim(),
+      'modelo': _modeloController.text.trim(),
+      'ano': int.tryParse(_anoController.text.trim()) ?? DateTime.now().year,
+      'qtdAssentos': int.tryParse(_assentosController.text.trim()) ?? 15,
+      'status': _statusSelecionado,
+      'quilometragemAtual': int.tryParse(_kmController.text.trim()) ?? 0,
+      'motoristaResponsavelId': _motoristaSelecionado,
+      'ultimoMotoristaId': widget.veiculoParaEditar?['ultimoMotoristaId'],
+      'possuiAC': _possuiAC,
+      'possuiPreferencial': _possuiPreferencial,
+      'observacoes': _observacoesController.text.trim().isNotEmpty
+          ? _observacoesController.text.trim()
+          : null,
+      'criadoEm': widget.veiculoParaEditar?['criadoEm'] ?? agora,
+      'atualizadoEm': agora,
+      'atualizadoPor': widget.veiculoParaEditar?['atualizadoPor'],
+    };
+
+    if (widget.onSalvar != null) {
+      widget.onSalvar!(dadosVeiculo);
+    }
+
+    Navigator.of(context).pop();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: Colors.green[700],
+        duration: const Duration(seconds: 2),
+        content: Text(
+          _isEdicao
+              ? 'Veículo $placa atualizado com sucesso!'
+              : 'Veículo $placa cadastrado com sucesso!',
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Usamos SingleChildScrollView com altura fixa e sem resize a cada caractere
+    // Isso evita completamente o tremor / piscar ao digitar no Windows e Mobile
     return Dialog(
       backgroundColor: Colors.white,
       insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 550, maxHeight: 680),
+        constraints: BoxConstraints(
+          maxWidth: 550,
+          maxHeight: MediaQuery.sizeOf(context).height * 0.85,
+        ),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
             // CABEÇALHO DO DIALOG
             Container(
@@ -180,309 +233,351 @@ class _FormularioNovoVeiculoState extends State<FormularioNovoVeiculo> {
               ),
             ),
 
-            // FORMULÁRIO COM EXPANSIONTILE
-            Expanded(
-              child: Form(
-                key: _formKey,
-                child: ListView(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  children: [
-                    // 1. IDENTIFICAÇÃO DO VEÍCULO (EXPANSIONTILE)
-                    ExpansionTile(
-                      initiallyExpanded: true,
-                      shape: const Border(),
-                      collapsedShape: const Border(),
-                      backgroundColor: Colors.grey[50],
-                      collapsedBackgroundColor: Colors.grey[100],
-                      tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                      title: const Text(
-                        '1. Identificação do Veículo',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                      ),
-                      leading: Icon(Icons.badge_outlined, color: Colors.grey[800]),
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Column(
-                            children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    flex: 3,
-                                    child: TextFormField(
-                                      controller: _placaController,
-                                      textCapitalization: TextCapitalization.characters,
-                                      decoration: _campoDecoracao(
-                                        label: 'Placa',
-                                        hint: 'ABC1D23',
-                                        icone: Icons.pin_outlined,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    flex: 2,
-                                    child: TextFormField(
-                                      controller: _anoController,
-                                      keyboardType: TextInputType.number,
-                                      decoration: _campoDecoracao(
-                                        label: 'Ano',
-                                        hint: '2024',
-                                        icone: Icons.calendar_today_outlined,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: TextFormField(
-                                      controller: _marcaController,
-                                      decoration: _campoDecoracao(
-                                        label: 'Marca',
-                                        hint: 'Renault',
-                                        icone: Icons.directions_car_outlined,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: TextFormField(
-                                      controller: _modeloController,
-                                      decoration: _campoDecoracao(
-                                        label: 'Modelo',
-                                        hint: 'Master',
-                                        icone: Icons.info_outline,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
+            // FORMULÁRIO COM SCROLL SUAVE E EXPANSIONTILE ESTÁVEL
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    children: [
+                      // 1. IDENTIFICAÇÃO DO VEÍCULO (EXPANSIONTILE)
+                      ExpansionTile(
+                        initiallyExpanded: true,
+                        maintainState: true,
+                        shape: const Border(),
+                        collapsedShape: const Border(),
+                        backgroundColor: Colors.grey[50],
+                        collapsedBackgroundColor: Colors.grey[100],
+                        tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                        title: const Text(
+                          '1. Identificação do Veículo',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                         ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 10),
-
-                    // 2. CATEGORIA E STATUS (EXPANSIONTILE)
-                    ExpansionTile(
-                      initiallyExpanded: true,
-                      shape: const Border(),
-                      collapsedShape: const Border(),
-                      backgroundColor: Colors.grey[50],
-                      collapsedBackgroundColor: Colors.grey[100],
-                      tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                      title: const Text(
-                        '2. Classificação & Status',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                      ),
-                      leading: Icon(Icons.category_outlined, color: Colors.grey[800]),
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Column(
-                            children: [
-                              DropdownButtonFormField<String>(
-                                initialValue: _tipoSelecionado,
-                                decoration: _campoDecoracao(
-                                  label: 'Tipo de Veículo',
-                                  icone: Icons.local_shipping_outlined,
-                                ),
-                                items: _tipos.map((tipo) {
-                                  return DropdownMenuItem<String>(
-                                    value: tipo['valor'],
-                                    child: Text(tipo['nome']!),
-                                  );
-                                }).toList(),
-                                onChanged: (valor) {
-                                  if (valor != null) {
-                                    setState(() => _tipoSelecionado = valor);
-                                  }
-                                },
-                              ),
-                              const SizedBox(height: 12),
-                              DropdownButtonFormField<String>(
-                                initialValue: _statusSelecionado,
-                                decoration: _campoDecoracao(
-                                  label: 'Status do Veículo',
-                                  icone: Icons.flag_outlined,
-                                ),
-                                items: _statusOpcoes.map((st) {
-                                  return DropdownMenuItem<String>(
-                                    value: st['valor'],
-                                    child: Text(st['nome']!),
-                                  );
-                                }).toList(),
-                                onChanged: (valor) {
-                                  if (valor != null) {
-                                    setState(() => _statusSelecionado = valor);
-                                  }
-                                },
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 10),
-
-                    // 3. CAPACIDADE E OPERAÇÃO (EXPANSIONTILE)
-                    ExpansionTile(
-                      initiallyExpanded: false,
-                      shape: const Border(),
-                      collapsedShape: const Border(),
-                      backgroundColor: Colors.grey[50],
-                      collapsedBackgroundColor: Colors.grey[100],
-                      tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                      title: const Text(
-                        '3. Capacidade & Operação',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                      ),
-                      leading: Icon(Icons.speed_outlined, color: Colors.grey[800]),
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Column(
-                            children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: TextFormField(
-                                      controller: _assentosController,
-                                      keyboardType: TextInputType.number,
-                                      decoration: _campoDecoracao(
-                                        label: 'Qtd. Assentos',
-                                        hint: 'Ex: 15',
-                                        icone: Icons.chair_outlined,
+                        leading: Icon(Icons.badge_outlined, color: Colors.grey[800]),
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Column(
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      flex: 3,
+                                      child: TextFormField(
+                                        controller: _placaController,
+                                        // Sem textCapitalization para não disparar re-layout no Windows
+                                        validator: (valor) {
+                                          if (valor == null || valor.trim().isEmpty) {
+                                            return 'Informe a placa';
+                                          }
+                                          if (valor.trim().length < 7) {
+                                            return 'Placa incompleta';
+                                          }
+                                          return null;
+                                        },
+                                        decoration: _campoDecoracao(
+                                          label: 'Placa *',
+                                          hint: 'ABC1D23',
+                                          icone: Icons.pin_outlined,
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: TextFormField(
-                                      controller: _kmController,
-                                      keyboardType: TextInputType.number,
-                                      decoration: _campoDecoracao(
-                                        label: 'Km Atual',
-                                        hint: 'Ex: 45000',
-                                        icone: Icons.speed_outlined,
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      flex: 2,
+                                      child: TextFormField(
+                                        controller: _anoController,
+                                        keyboardType: TextInputType.number,
+                                        validator: (valor) {
+                                          if (valor == null || valor.trim().isEmpty) {
+                                            return 'Informe o ano';
+                                          }
+                                          final num = int.tryParse(valor.trim());
+                                          if (num == null || num < 1980 || num > DateTime.now().year + 1) {
+                                            return 'Ano inválido';
+                                          }
+                                          return null;
+                                        },
+                                        decoration: _campoDecoracao(
+                                          label: 'Ano *',
+                                          hint: '2024',
+                                          icone: Icons.calendar_today_outlined,
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-                              DropdownButtonFormField<String>(
-                                initialValue: _motoristaSelecionado,
-                                decoration: _campoDecoracao(
-                                  label: 'Motorista Responsável',
-                                  hint: 'Selecione o motorista',
-                                  icone: Icons.person_outline,
+                                  ],
                                 ),
-                                items: _motoristasMock.map((m) {
-                                  return DropdownMenuItem<String>(
-                                    value: m,
-                                    child: Text(
-                                      m,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(fontSize: 13),
+                                const SizedBox(height: 12),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: TextFormField(
+                                        controller: _marcaController,
+                                        validator: (valor) => (valor == null || valor.trim().isEmpty)
+                                            ? 'Informe a marca'
+                                            : null,
+                                        decoration: _campoDecoracao(
+                                          label: 'Marca *',
+                                          hint: 'Renault',
+                                          icone: Icons.directions_car_outlined,
+                                        ),
+                                      ),
                                     ),
-                                  );
-                                }).toList(),
-                                onChanged: (valor) {
-                                  setState(() => _motoristaSelecionado = valor);
-                                },
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 10),
-
-                    // 4. OPCIONAIS E EQUIPAMENTOS (EXPANSIONTILE)
-                    ExpansionTile(
-                      initiallyExpanded: false,
-                      shape: const Border(),
-                      collapsedShape: const Border(),
-                      backgroundColor: Colors.grey[50],
-                      collapsedBackgroundColor: Colors.grey[100],
-                      tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                      title: const Text(
-                        '4. Opcionais & Equipamentos',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                      ),
-                      leading: Icon(Icons.tune_outlined, color: Colors.grey[800]),
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Column(
-                            children: [
-                              SwitchListTile(
-                                title: const Text('Ar-condicionado'),
-                                subtitle: const Text('Climatização para os passageiros'),
-                                secondary: Icon(
-                                  Icons.ac_unit_outlined,
-                                  color: Colors.blue.shade700,
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: TextFormField(
+                                        controller: _modeloController,
+                                        validator: (valor) => (valor == null || valor.trim().isEmpty)
+                                            ? 'Informe o modelo'
+                                            : null,
+                                        decoration: _campoDecoracao(
+                                          label: 'Modelo *',
+                                          hint: 'Master',
+                                          icone: Icons.info_outline,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                value: _possuiAC,
-                                onChanged: (val) => setState(() => _possuiAC = val),
-                              ),
-                              const Divider(height: 1),
-                              SwitchListTile(
-                                title: const Text('Acesso Preferencial / PCD'),
-                                subtitle: const Text('Plataforma ou assento adaptado'),
-                                secondary: Icon(
-                                  Icons.accessible_outlined,
-                                  color: Colors.purple.shade700,
-                                ),
-                                value: _possuiPreferencial,
-                                onChanged: (val) =>
-                                    setState(() => _possuiPreferencial = val),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 10),
-
-                    // 5. OBSERVAÇÕES (EXPANSIONTILE)
-                    ExpansionTile(
-                      initiallyExpanded: false,
-                      shape: const Border(),
-                      collapsedShape: const Border(),
-                      backgroundColor: Colors.grey[50],
-                      collapsedBackgroundColor: Colors.grey[100],
-                      tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                      title: const Text(
-                        '5. Observações & Alertas',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                      ),
-                      leading: Icon(Icons.notes_outlined, color: Colors.grey[800]),
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: TextFormField(
-                            controller: _observacoesController,
-                            maxLines: 3,
-                            decoration: _campoDecoracao(
-                              label: 'Observações / Histórico de Manutenção',
-                              hint: 'Insira qualquer detalhe ou aviso sobre o veículo...',
-                              icone: Icons.edit_note_outlined,
+                              ],
                             ),
                           ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 10),
+
+                      // 2. CATEGORIA E STATUS (EXPANSIONTILE)
+                      ExpansionTile(
+                        initiallyExpanded: true,
+                        maintainState: true,
+                        shape: const Border(),
+                        collapsedShape: const Border(),
+                        backgroundColor: Colors.grey[50],
+                        collapsedBackgroundColor: Colors.grey[100],
+                        tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                        title: const Text(
+                          '2. Classificação & Status',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                         ),
-                      ],
-                    ),
-                  ],
+                        leading: Icon(Icons.category_outlined, color: Colors.grey[800]),
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Column(
+                              children: [
+                                DropdownButtonFormField<String>(
+                                  initialValue: _tipoSelecionado,
+                                  decoration: _campoDecoracao(
+                                    label: 'Tipo de Veículo',
+                                    icone: Icons.local_shipping_outlined,
+                                  ),
+                                  items: _tipos.map((tipo) {
+                                    return DropdownMenuItem<String>(
+                                      value: tipo['valor'],
+                                      child: Text(tipo['nome']!),
+                                    );
+                                  }).toList(),
+                                  onChanged: (valor) {
+                                    if (valor != null) {
+                                      _tipoSelecionado = valor;
+                                    }
+                                  },
+                                ),
+                                const SizedBox(height: 12),
+                                DropdownButtonFormField<String>(
+                                  initialValue: _statusSelecionado,
+                                  decoration: _campoDecoracao(
+                                    label: 'Status do Veículo',
+                                    icone: Icons.flag_outlined,
+                                  ),
+                                  items: _statusOpcoes.map((st) {
+                                    return DropdownMenuItem<String>(
+                                      value: st['valor'],
+                                      child: Text(st['nome']!),
+                                    );
+                                  }).toList(),
+                                  onChanged: (valor) {
+                                    if (valor != null) {
+                                      _statusSelecionado = valor;
+                                    }
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 10),
+
+                      // 3. CAPACIDADE E OPERAÇÃO (EXPANSIONTILE)
+                      ExpansionTile(
+                        initiallyExpanded: false,
+                        maintainState: true,
+                        shape: const Border(),
+                        collapsedShape: const Border(),
+                        backgroundColor: Colors.grey[50],
+                        collapsedBackgroundColor: Colors.grey[100],
+                        tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                        title: const Text(
+                          '3. Capacidade & Operação',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                        ),
+                        leading: Icon(Icons.speed_outlined, color: Colors.grey[800]),
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Column(
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: TextFormField(
+                                        controller: _assentosController,
+                                        keyboardType: TextInputType.number,
+                                        validator: (val) {
+                                          final n = int.tryParse(val ?? '');
+                                          if (n == null || n <= 0) return 'Mínimo 1';
+                                          return null;
+                                        },
+                                        decoration: _campoDecoracao(
+                                          label: 'Qtd. Assentos *',
+                                          hint: 'Ex: 15',
+                                          icone: Icons.chair_outlined,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: TextFormField(
+                                        controller: _kmController,
+                                        keyboardType: TextInputType.number,
+                                        validator: (val) {
+                                          final n = int.tryParse(val ?? '');
+                                          if (n == null || n < 0) return 'Km inválido';
+                                          return null;
+                                        },
+                                        decoration: _campoDecoracao(
+                                          label: 'Km Atual *',
+                                          hint: 'Ex: 45000',
+                                          icone: Icons.speed_outlined,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                DropdownButtonFormField<String>(
+                                  initialValue: _motoristaSelecionado,
+                                  decoration: _campoDecoracao(
+                                    label: 'Motorista Responsável',
+                                    hint: 'Selecione o motorista',
+                                    icone: Icons.person_outline,
+                                  ),
+                                  items: _motoristasMock.map((m) {
+                                    return DropdownMenuItem<String>(
+                                      value: m,
+                                      child: Text(
+                                        m,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(fontSize: 13),
+                                      ),
+                                    );
+                                  }).toList(),
+                                  onChanged: (valor) {
+                                    _motoristaSelecionado = valor;
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 10),
+
+                      // 4. OPCIONAIS E EQUIPAMENTOS (EXPANSIONTILE)
+                      ExpansionTile(
+                        initiallyExpanded: false,
+                        maintainState: true,
+                        shape: const Border(),
+                        collapsedShape: const Border(),
+                        backgroundColor: Colors.grey[50],
+                        collapsedBackgroundColor: Colors.grey[100],
+                        tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                        title: const Text(
+                          '4. Opcionais & Equipamentos',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                        ),
+                        leading: Icon(Icons.tune_outlined, color: Colors.grey[800]),
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Column(
+                              children: [
+                                SwitchListTile(
+                                  title: const Text('Ar-condicionado'),
+                                  subtitle: const Text('Climatização para os passageiros'),
+                                  secondary: Icon(
+                                    Icons.ac_unit_outlined,
+                                    color: Colors.blue.shade700,
+                                  ),
+                                  value: _possuiAC,
+                                  onChanged: (val) => setState(() => _possuiAC = val),
+                                ),
+                                const Divider(height: 1),
+                                SwitchListTile(
+                                  title: const Text('Acesso Preferencial / PCD'),
+                                  subtitle: const Text('Plataforma ou assento adaptado'),
+                                  secondary: Icon(
+                                    Icons.accessible_outlined,
+                                    color: Colors.purple.shade700,
+                                  ),
+                                  value: _possuiPreferencial,
+                                  onChanged: (val) =>
+                                      setState(() => _possuiPreferencial = val),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 10),
+
+                      // 5. OBSERVAÇÕES (EXPANSIONTILE)
+                      ExpansionTile(
+                        initiallyExpanded: false,
+                        maintainState: true,
+                        shape: const Border(),
+                        collapsedShape: const Border(),
+                        backgroundColor: Colors.grey[50],
+                        collapsedBackgroundColor: Colors.grey[100],
+                        tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                        title: const Text(
+                          '5. Observações & Alertas',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                        ),
+                        leading: Icon(Icons.notes_outlined, color: Colors.grey[800]),
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: TextFormField(
+                              controller: _observacoesController,
+                              maxLines: 3,
+                              decoration: _campoDecoracao(
+                                label: 'Observações / Histórico de Manutenção',
+                                hint: 'Insira qualquer detalhe ou aviso sobre o veículo...',
+                                icone: Icons.edit_note_outlined,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -511,22 +606,7 @@ class _FormularioNovoVeiculoState extends State<FormularioNovoVeiculo> {
                   ),
                   const SizedBox(width: 12),
                   ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.of(context).pop();
-                      if (widget.onSalvo != null) {
-                        widget.onSalvo!();
-                      }
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          backgroundColor: Colors.green[700],
-                          content: Text(
-                            _isEdicao
-                                ? 'Veículo alterado com sucesso! (Apenas visual)'
-                                : 'Veículo cadastrado com sucesso! (Apenas visual)',
-                          ),
-                        ),
-                      );
-                    },
+                    onPressed: _salvar,
                     icon: const Icon(Icons.check, size: 18),
                     label: Text(
                       _isEdicao ? 'Salvar Alterações' : 'Salvar Veículo',

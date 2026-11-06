@@ -25,12 +25,12 @@ class CardVeiculo extends StatelessWidget {
     final dynamic km = veiculo['quilometragemAtual'] ?? 0;
     final dynamic assentos = veiculo['qtdAssentos'] ?? 0;
     final String ultimoMotorista =
-        (veiculo['ultimoMotoristaId'] ?? veiculo['motoristaResponsavelId'] ?? 'Não informado').toString();
+        (veiculo['ultimoMotoristaId'] ?? veiculo['motoristaResponsavelId'] ?? 'Nome do Último Motorista').toString();
     final bool possuiAC = veiculo['possuiAC'] == true;
     final bool possuiPreferencial = veiculo['possuiPreferencial'] == true;
     final String? observacoes = veiculo['observacoes']?.toString();
 
-    // Ícone e label do tipo mantendo o estilo original
+    // Ícone e tipo de acordo com a categoria
     final (IconData iconeTipo, String labelTipo) = switch (tipoRaw) {
       'van' => (Icons.airport_shuttle_outlined, 'Van'),
       'ambulancia' => (Icons.emergency_outlined, 'Ambulância'),
@@ -38,7 +38,7 @@ class CardVeiculo extends StatelessWidget {
       _ => (Icons.directions_car_outlined, 'Carro'),
     };
 
-    // Cores e texto do status com Color.lerp igual ao original
+    // Cores e texto do status no estilo original com Color.lerp
     final (Color corBase, String textoStatus) = switch (statusRaw) {
       'disponivel' => (Colors.green, 'Disponível'),
       'emManutencao' => (Colors.orange, 'Em Manutenção'),
@@ -47,7 +47,6 @@ class CardVeiculo extends StatelessWidget {
       _ => (Colors.grey, statusRaw),
     };
 
-    // Lista de opções para o Dropdown funcional
     final List<Map<String, dynamic>> statusOpcoes = [
       {'valor': 'disponivel', 'label': 'Disponível', 'cor': Colors.green},
       {'valor': 'emViagem', 'label': 'Em Viagem', 'cor': Colors.blue},
@@ -62,14 +61,14 @@ class CardVeiculo extends StatelessWidget {
     };
 
     return Card(
-      elevation: 12,
+      elevation: 12, // Estilo original mantido exatamente
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          spacing: 14,
+          spacing: 14, // Estilo original mantido exatamente
           children: [
-            // IDENTIFICAÇÃO E STATUS DROPDOWN
+            // IDENTIFICAÇÃO E STATUS
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -112,13 +111,13 @@ class CardVeiculo extends StatelessWidget {
                   ],
                 ),
 
-                // STATUS INDICATOR COMO DROPDOWN (MANTENDO O MESMO ESTILO)
+                // STATUS INDICATOR COM DROPDOWN FUNCIONAL MANTENDO O MESMO ESTILO
                 Column(
                   children: [
                     Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 4,
+                        horizontal: 14,
+                        vertical: 6,
                       ),
                       decoration: BoxDecoration(
                         color: corBase.withValues(alpha: 0.2),
@@ -131,7 +130,7 @@ class CardVeiculo extends StatelessWidget {
                           borderRadius: BorderRadius.circular(16),
                           icon: Icon(
                             Icons.arrow_drop_down,
-                            size: 22,
+                            size: 20,
                             color: Color.lerp(
                               corBase,
                               Colors.black,
@@ -437,7 +436,7 @@ class CardVeiculo extends StatelessWidget {
                 ),
               ),
 
-            // BOTÕES DE EDITAR E VER DETALHES
+            // BOTÕES DE EDITAR E VER DETALHES (Estilo original 100% preservado)
             const Divider(height: 2),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
