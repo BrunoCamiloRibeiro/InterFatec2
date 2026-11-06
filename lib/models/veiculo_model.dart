@@ -112,7 +112,8 @@ enum TipoVeiculo {
   }
 }
 
-/// Modelo de dados imutável do Veículo
+/// Modelo de dados unificado do Veículo, compatível com a gestão de frotas (CRUD)
+/// e o fluxo de viagens operacionais do transporte municipal de saúde.
 class VeiculoModel {
   final String id;
   final String placa;
@@ -135,22 +136,42 @@ class VeiculoModel {
   const VeiculoModel({
     required this.id,
     required this.placa,
-    required this.tipo,
-    required this.marca,
-    required this.modelo,
-    required this.ano,
-    required this.qtdAssentos,
-    required this.status,
-    required this.quilometragemAtual,
+    this.tipo = TipoVeiculo.carro,
+    this.marca = '',
+    this.modelo = '',
+    int? ano,
+    int? qtdAssentos,
+    int? capacidade,
+    StatusVeiculo? status,
+    bool? emUso,
+    this.quilometragemAtual = 0,
     this.motoristaResponsavelId,
     this.ultimoMotoristaId,
+    String? motoristaAtualId,
     this.possuiAC = false,
     this.possuiPreferencial = false,
     this.observacoes,
     this.criadoEm,
     this.atualizadoEm,
     this.atualizadoPor,
-  });
+  })  : ano = ano ?? 2024,
+        qtdAssentos = qtdAssentos ?? capacidade ?? 4,
+        status = status ??
+            (emUso == true
+                ? StatusVeiculo.emViagem
+                : StatusVeiculo.disponivel);
+
+  /// Alias de capacidade para compatibilidade com o serviço de viagens
+  int get capacidade => qtdAssentos;
+
+  /// Alias de status de viagem concorrente para o serviço de viagens
+  bool get emUso => status == StatusVeiculo.emViagem;
+
+  /// Alias do motorista atual condutor do veículo
+  String? get motoristaAtualId => ultimoMotoristaId ?? motoristaResponsavelId;
+
+  /// Alias da última quilometragem do hodômetro registrada
+  int get ultimaKmRegistrada => quilometragemAtual;
 
   VeiculoModel copyWith({
     String? id,
@@ -160,10 +181,13 @@ class VeiculoModel {
     String? modelo,
     int? ano,
     int? qtdAssentos,
+    int? capacidade,
     StatusVeiculo? status,
+    bool? emUso,
     int? quilometragemAtual,
     String? motoristaResponsavelId,
     String? ultimoMotoristaId,
+    String? motoristaAtualId,
     bool? possuiAC,
     bool? possuiPreferencial,
     String? observacoes,
@@ -178,12 +202,16 @@ class VeiculoModel {
       marca: marca ?? this.marca,
       modelo: modelo ?? this.modelo,
       ano: ano ?? this.ano,
-      qtdAssentos: qtdAssentos ?? this.qtdAssentos,
-      status: status ?? this.status,
+      qtdAssentos: qtdAssentos ?? capacidade ?? this.qtdAssentos,
+      status: status ??
+          (emUso != null
+              ? (emUso ? StatusVeiculo.emViagem : StatusVeiculo.disponivel)
+              : this.status),
       quilometragemAtual: quilometragemAtual ?? this.quilometragemAtual,
       motoristaResponsavelId:
           motoristaResponsavelId ?? this.motoristaResponsavelId,
-      ultimoMotoristaId: ultimoMotoristaId ?? this.ultimoMotoristaId,
+      ultimoMotoristaId:
+          ultimoMotoristaId ?? motoristaAtualId ?? this.ultimoMotoristaId,
       possuiAC: possuiAC ?? this.possuiAC,
       possuiPreferencial: possuiPreferencial ?? this.possuiPreferencial,
       observacoes: observacoes ?? this.observacoes,
@@ -193,22 +221,44 @@ class VeiculoModel {
     );
   }
 
-  factory VeiculoModel.fromMap(Map<String, dynamic> map) {
+  factory VeiculoModel.fromMap(Map<String, dynamic> map, {String? docId}) {
+    final rawAssentos = map['qtdAssentos'] ?? map['capacidade'];
+    final int assentos = (rawAssentos is num)
+        ? rawAssentos.toInt()
+        : (int.tryParse(rawAssentos?.toString() ?? '') ?? 4);
+
+    final rawKm = map['quilometragemAtual'] ?? map['ultimaKmRegistrada'];
+    final int km = (rawKm is num)
+        ? rawKm.toInt()
+        : (int.tryParse(rawKm?.toString() ?? '') ?? 0);
+
+    final rawAno = map['ano'];
+    final int anoInt = (rawAno is num)
+        ? rawAno.toInt()
+        : (int.tryParse(rawAno?.toString() ?? '') ?? DateTime.now().year);
+
+    final rawStatus = map['status']?.toString();
+    final bool rawEmUso = map['emUso'] == true || map['emUso'] == 'true';
+    final StatusVeiculo statusCalculado = rawStatus != null
+        ? StatusVeiculo.fromString(rawStatus)
+        : (rawEmUso ? StatusVeiculo.emViagem : StatusVeiculo.disponivel);
+
     return VeiculoModel(
-      id: (map['id'] ?? DateTime.now().millisecondsSinceEpoch.toString()).toString(),
+      id: (docId ?? map['id'] ?? DateTime.now().millisecondsSinceEpoch.toString()).toString(),
       placa: (map['placa'] ?? 'SEM-PLACA').toString(),
       tipo: TipoVeiculo.fromString(map['tipo']?.toString()),
       marca: (map['marca'] ?? '').toString(),
       modelo: (map['modelo'] ?? '').toString(),
-      ano: int.tryParse(map['ano']?.toString() ?? '') ?? DateTime.now().year,
-      qtdAssentos: int.tryParse(map['qtdAssentos']?.toString() ?? '') ?? 0,
-      status: StatusVeiculo.fromString(map['status']?.toString()),
-      quilometragemAtual:
-          int.tryParse(map['quilometragemAtual']?.toString() ?? '') ?? 0,
+      ano: anoInt,
+      qtdAssentos: assentos,
+      status: statusCalculado,
+      quilometragemAtual: km,
       motoristaResponsavelId: map['motoristaResponsavelId']?.toString(),
-      ultimoMotoristaId: map['ultimoMotoristaId']?.toString(),
-      possuiAC: map['possuiAC'] == true,
-      possuiPreferencial: map['possuiPreferencial'] == true,
+      ultimoMotoristaId:
+          (map['ultimoMotoristaId'] ?? map['motoristaAtualId'])?.toString(),
+      possuiAC: map['possuiAC'] == true || map['possuiAC'] == 'true',
+      possuiPreferencial:
+          map['possuiPreferencial'] == true || map['possuiPreferencial'] == 'true',
       observacoes: map['observacoes']?.toString(),
       criadoEm: map['criadoEm']?.toString(),
       atualizadoEm: map['atualizadoEm']?.toString(),
@@ -225,10 +275,14 @@ class VeiculoModel {
       'modelo': modelo,
       'ano': ano,
       'qtdAssentos': qtdAssentos,
+      'capacidade': qtdAssentos,
       'status': status.valor,
+      'emUso': emUso,
       'quilometragemAtual': quilometragemAtual,
+      'ultimaKmRegistrada': quilometragemAtual,
       'motoristaResponsavelId': motoristaResponsavelId,
       'ultimoMotoristaId': ultimoMotoristaId,
+      'motoristaAtualId': motoristaAtualId,
       'possuiAC': possuiAC,
       'possuiPreferencial': possuiPreferencial,
       'observacoes': observacoes,
@@ -237,4 +291,15 @@ class VeiculoModel {
       'atualizadoPor': atualizadoPor,
     };
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is VeiculoModel &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          placa == other.placa;
+
+  @override
+  int get hashCode => id.hashCode ^ placa.hashCode;
 }

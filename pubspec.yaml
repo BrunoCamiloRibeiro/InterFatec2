@@ -1,7 +1,36 @@
+# ============================================================================
+# ARQUIVO: pubspec.yaml
+# ----------------------------------------------------------------------------
+# O QUE FAZ:
+# Manifesto central de configuração, dependências e ativos do projeto Flutter
+# TransSaúde. Define nome do pacote, descrição, versão semântica da aplicação,
+# restrições de versão do Dart SDK, dependências de produção (Firebase, Geolocator,
+# Google Maps, PDF, Provider), dependências de desenvolvimento e declaração de
+# fontes tipográficas e arquivos de dados JSON estáticos embarcados.
+#
+# PAPEL NA ARQUITETURA (CAMADA):
+# Manifesto de Pacote e Gestão de Dependências (raiz do projeto).
+#
+# ONDE É USADO:
+# - Gerenciador de dependências `flutter pub` / `dart pub`.
+# - Compilador do Flutter para empacotamento de assets e plugins nativos.
+# - Definição do nome do pacote para importações internas (package:trans_saude/...).
+#
+# O QUE EXPORTA / EXPÕE:
+# - Nome do pacote (trans_saude), versão (1.0.0+1) e assets registrados.
+#
+# ORIGEM HISTÓRICA:
+# Scaffold inicial gerado pelo Flutter (commit e34c23d), evoluído pela equipe
+# ao longo das sprints para adicionar Firebase, mapas, PDF e fontes Liberation.
+# ============================================================================
+
+# Nome único do pacote/módulo Dart utilizado nos imports internos
 name: trans_saude
+# Descrição concisa do projeto
 description: "A new Flutter project."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
+# Bloqueia publicação acidental no repositório público do pub.dev
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 
 # The following defines the version and build number for your application.
@@ -16,10 +45,13 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
+# Versão semântica (1.0.0) e número sequencial de build (+1)
 version: 1.0.0+1
 
+# Restrições de compatibilidade da máquina virtual e SDK do Dart
 environment:
-  sdk: ^3.13.4
+  # Versão mínima e máxima compatível do SDK do Dart
+  sdk: ">=3.13.0 <4.0.0"
 
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions
@@ -27,28 +59,47 @@ environment:
 # dependencies can be manually updated by changing the version numbers below to
 # the latest version available on pub.dev. To see which dependencies have newer
 # versions available, run `flutter pub outdated`.
+# Dependências externas de tempo de execução (produção)
 dependencies:
+  # Framework oficial do Flutter
   flutter:
+    # Vinculado ao SDK instalado
     sdk: flutter
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
+  # Conjunto de ícones no estilo visual do iOS (Cupertino)
   cupertino_icons: ^1.0.8
+  # Núcleo de inicialização do ecossistema Firebase
   firebase_core: ^4.15.0
+  # Biblioteca de autenticação com Firebase Auth
   firebase_auth: ^6.7.0
+  # Banco de dados NoSQL Cloud Firestore em tempo real
   cloud_firestore: ^6.10.0
+  # Armazenamento de arquivos e mídias no Cloud Storage
   firebase_storage: ^13.6.0
+  # Obtenção de localização geográfica e coordenadas GPS do dispositivo
   geolocator: ^14.0.3
+  # Integração e renderização de mapas interativos do Google Maps
   google_maps_flutter: ^2.18.1
+  # Geração programática de documentos PDF
   pdf: ^3.13.1
+  # Utilitários de impressão e pré-visualização de relatórios PDF
   printing: ^5.15.1
+  # Gerenciamento de estado reativo e injeção de dependências
   provider: ^6.1.5+1
+  # Utilitários de internacionalização e formatação de datas e moedas
   intl: ^0.20.3
+  # Componente de timeline e etapas sequenciais
   timeline_tile: ^2.0.0
+  # Extensão de timelines para interface gráfica
   timelines_plus: ^2.0.0
 
+# Dependências restritas ao ambiente de desenvolvimento e testes
 dev_dependencies:
+  # Utilitários e framework de testes do Flutter
   flutter_test:
+    # Vinculado ao SDK do Flutter
     sdk: flutter
 
   # The "flutter_lints" package below contains a set of recommended lints to
@@ -56,23 +107,33 @@ dev_dependencies:
   # activated in the `analysis_options.yaml` file located at the root of your
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
+  # Conjunto recomendado de regras estáticas do linter
   flutter_lints: ^6.0.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 
 # The following section is specific to Flutter packages.
+# Configurações específicas da plataforma Flutter
 flutter:
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
   # the material Icons class.
+  # Habilita o uso dos ícones oficiais do Material Design
   uses-material-design: true
 
   # To add assets to your application, add an assets section, like this:
+  # Seção de ativos estáticos embutidos no pacote da aplicação
   assets:
-      - assets/
-      - assets/data/
+      # Arquivo JSON com dados simulados de pacientes
+      - assets/data/dados_pacientes.json
+      # Arquivo JSON com catálogo e frota de veículos
+      - assets/data/dados_veiculos.json
+      # Fonte TrueType Liberation Sans Regular para geração de PDF
+      - assets/fonts/LiberationSans-Regular.ttf
+      # Fonte TrueType Liberation Sans Bold para geração de PDF
+      - assets/fonts/LiberationSans-Bold.ttf
   #   - images/a_dot_burr.jpeg
   #   - images/a_dot_ham.jpeg
 

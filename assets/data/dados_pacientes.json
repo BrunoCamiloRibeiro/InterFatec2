@@ -30,5 +30,13 @@
     "localConsulta": "AME São José do Rio Preto",
     "localSaida": "Centro de Diagnóstico por Imagem",
     "status": 3
+  },
+  {
+    "nomePaciente": "Reinalda Siqueira dos Çantos",
+    "enderecoPaciente": "Rua dos Ipês, 777",
+    "telPaciente": "(17) 98765-4321",
+    "localConsulta": "AME São José do Rio Preto",
+    "localSaida": "Centro de Radiologia",
+    "status": 4
   }
 ]
