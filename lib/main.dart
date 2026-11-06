@@ -33,10 +33,11 @@ class MyApp extends StatelessWidget {
       initialRoute: '/',
       routes: {
         // Rota inicial exibindo a tela com o formulário de início de viagem
-        '/': (context) => const ListaPessoas(),
+        '/': (context) => const TelaInicioViagem(),
         '/inicio-viagem': (context) => const TelaInicioViagem(),
         // Rota da tela do motorista com a lista de passageiros
         '/motorista': (context) => const Motorista(),
+        '/lista-passageiros': (context) => const Motorista(),
         // Rota com o formulário no estado padrão
         '/formulario-normal': (context) => const Scaffold(
           backgroundColor: Color(0xFFF7F8FA),
@@ -67,7 +68,9 @@ class MyApp extends StatelessWidget {
         '/register': (context) => Register(),
         '/administrativo': (context) => Administrativo(),
         '/paciente': (context) => Paciente(),
-        '/lista-pessoas': (context) => ListaPessoas(),
+        // Rota da tela de Gestão de Pessoas (CRUD - Issue #34)
+        '/lista-pessoas': (context) => const ListaPessoas(),
+        '/crud-pessoas': (context) => const ListaPessoas(),
       },
     );
   }
