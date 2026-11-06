@@ -102,7 +102,11 @@ class PessoaItem {
     badgeLabel: 'Motorista',
     badgeCor: const Color(0xFF0F172A),
     status: 0,
-    detalheExtra: 'Veículo: ${m.veiculoModelo} (${m.veiculoPlaca})',
+    detalheExtra: m.cnh.isNotEmpty
+        ? 'CNH: ${m.cnh}'
+        : (m.veiculoModelo.isNotEmpty || m.veiculoPlaca.isNotEmpty
+            ? 'Veículo: ${m.veiculoModelo} (${m.veiculoPlaca})'.trim()
+            : null),
     ativo: m.ativo,
     cnh: m.cnh,
     veiculoModelo: m.veiculoModelo,

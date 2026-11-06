@@ -9,7 +9,7 @@ import 'package:trans_saude/lista_pessoas.dart';
 /// Valida o ciclo completo do formulário polimórfico de pessoas:
 /// 1. Validação de obrigatoriedade e máscaras na criação de novo registro.
 /// 2. Alternância de campos contextuais conforme o perfil (Paciente, Motorista, Admin).
-/// 3. Pré-carregamento e preservação de campos específicos (CNH, Veículo) na edição.
+/// 3. Pré-carregamento e preservação de campos específicos (CNH) na edição.
 /// 4. Submissão bem-sucedida e emissão de callbacks com modelos tipados.
 void main() {
   /// Helper puro para envolver widgets de teste sob um MaterialApp com Scaffold
@@ -54,10 +54,10 @@ void main() {
         await tester.tap(find.text('Motorista'));
         await tester.pumpAndSettle();
 
-        // Verificação: Exibe campos de CNH, modelo e placa; esconde campos de consulta
+        // Verificação: Exibe campo de CNH; não exibe campos de modelo e placa de veículo; esconde campos de consulta
         expect(find.text('Número da CNH'), findsOneWidget);
-        expect(find.text('Modelo do Veículo'), findsOneWidget);
-        expect(find.text('Placa'), findsOneWidget);
+        expect(find.text('Modelo do Veículo'), findsNothing);
+        expect(find.text('Placa'), findsNothing);
         expect(find.text('Local da Consulta Médica'), findsNothing);
 
         // Ação: Seleciona o perfil de Administrador
@@ -125,7 +125,7 @@ void main() {
     );
 
     testWidgets(
-      'Modo Edição Motorista: Preserva CNH, modelo e placa do veículo',
+      'Modo Edição Motorista: Não exibe campos de veículo/placa e preserva CNH e dados existentes',
       (WidgetTester tester) async {
         // Arranjo: Mock de motorista com dados de veículo e habilitação
         PessoaItem? pessoaRetornada;
@@ -141,7 +141,7 @@ void main() {
           cnh: '12345678901',
           veiculoModelo: 'Renault Master',
           veiculoPlaca: 'ABC1D23',
-          detalheExtra: 'Veículo: Renault Master (ABC1D23)',
+          detalheExtra: 'CNH: 12345678901',
         );
 
         await tester.pumpWidget(
@@ -153,10 +153,10 @@ void main() {
           ),
         );
 
-        // Verificação: Garante que os campos de CNH e Veículo vieram pré-carregados
+        // Verificação: Garante que o campo de CNH veio pré-carregado e não há campos de veículo/placa
         expect(find.text('12345678901'), findsOneWidget);
-        expect(find.text('Renault Master'), findsOneWidget);
-        expect(find.text('ABC1D23'), findsOneWidget);
+        expect(find.text('Modelo do Veículo'), findsNothing);
+        expect(find.text('Placa'), findsNothing);
 
         // Ação: Modifica apenas o nome, sem tocar nos campos de veículo
         await tester.enterText(
@@ -169,7 +169,7 @@ void main() {
         await tester.tap(find.text('Salvar Alterações'));
         await tester.pumpAndSettle();
 
-        // Verificação: Dados essenciais do veículo e CNH não podem ser apagados ou perdidos
+        // Verificação: Dados essenciais do veículo pré-existente e CNH são preservados
         expect(pessoaRetornada, isNotNull);
         expect(pessoaRetornada!.nome, equals('Marcos Silveira Atualizado'));
         expect(pessoaRetornada!.cnh, equals('12345678901'));
@@ -177,7 +177,7 @@ void main() {
         expect(pessoaRetornada!.veiculoPlaca, equals('ABC1D23'));
         expect(
           pessoaRetornada!.detalheExtra,
-          contains('Renault Master (ABC1D23)'),
+          contains('12345678901'),
         );
       },
     );
@@ -216,6 +216,47 @@ void main() {
         expect(novaPessoa!.nome, equals('João Batista Ferreira'));
         expect(novaPessoa!.role, equals('paciente'));
         expect(novaPessoa!.detalheExtra, contains('Hospital das Clínicas'));
+      },
+    );
+
+    testWidgets(
+      'Criação de motorista com sucesso cadastra apenas com CNH sem campos de veículo e placa',
+      (WidgetTester tester) async {
+        PessoaItem? novoMotorista;
+
+        await tester.pumpWidget(
+          criarAppTeste(FormularioPessoa(onSalvo: (p) => novoMotorista = p)),
+        );
+
+        // Ação: Seleciona Motorista
+        await tester.tap(find.text('Motorista'));
+        await tester.pumpAndSettle();
+
+        // Verificação: Garante ausência dos campos de veículo e placa
+        expect(find.text('Modelo do Veículo'), findsNothing);
+        expect(find.text('Placa'), findsNothing);
+
+        // Preenche dados do motorista
+        await tester.enterText(
+          find.byType(TextFormField).at(0),
+          'Antônio Carlos Ferreira',
+        );
+        await tester.enterText(find.byType(TextFormField).at(1), '52998224725');
+        await tester.enterText(find.byType(TextFormField).at(2), '14997776655');
+        await tester.enterText(find.byType(TextFormField).at(3), '01234567890');
+        await tester.pumpAndSettle();
+
+        // Dispara criação
+        await tester.tap(find.text('Cadastrar'));
+        await tester.pumpAndSettle();
+
+        expect(novoMotorista, isNotNull);
+        expect(novoMotorista!.nome, equals('Antônio Carlos Ferreira'));
+        expect(novoMotorista!.role, equals('motorista'));
+        expect(novoMotorista!.cnh, equals('01234567890'));
+        expect(novoMotorista!.veiculoModelo, isNull);
+        expect(novoMotorista!.veiculoPlaca, isNull);
+        expect(novoMotorista!.detalheExtra, equals('CNH: 01234567890'));
       },
     );
   });

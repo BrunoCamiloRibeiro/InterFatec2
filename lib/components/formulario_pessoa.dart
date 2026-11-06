@@ -93,8 +93,6 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
 
   // Campos específicos de Motorista
   late TextEditingController _cnhController;
-  late TextEditingController _veiculoModeloController;
-  late TextEditingController _veiculoPlacaController;
 
   // Campos específicos de Admin
   late TextEditingController _emailController;
@@ -114,12 +112,10 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
     _cpfController = TextEditingController(text: p?.cpf ?? '');
     _telefoneController = TextEditingController(text: p?.telefone ?? '');
 
-    // Inicializa campos contextuais com os valores já existentes (preservando CNH e veículo na edição)
+    // Inicializa campos contextuais com os valores já existentes (preservando CNH na edição)
     _enderecoController = TextEditingController(text: p?.endereco ?? '');
     _consultaController = TextEditingController(text: p?.localConsulta ?? '');
     _cnhController = TextEditingController(text: p?.cnh ?? '');
-    _veiculoModeloController = TextEditingController(text: p?.veiculoModelo ?? '');
-    _veiculoPlacaController = TextEditingController(text: p?.veiculoPlaca ?? '');
     _emailController = TextEditingController(text: p?.email ?? '');
 
     // Se estiver em modo edição, extrai detalhes contextuais conhecidos caso algum campo ainda esteja vazio
@@ -129,17 +125,8 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
         _consultaController.text = extra.replaceFirst('Consulta: ', '');
       } else if (extra.startsWith('E-mail: ') && _emailController.text.isEmpty) {
         _emailController.text = extra.replaceFirst('E-mail: ', '');
-      } else if (extra.startsWith('Veículo: ')) {
-        // Exemplo: "Veículo: Chevrolet Spin (BRA2E19)"
-        final match = RegExp(r'^Veículo:\s*(.*?)(?:\s*\((.*?)\))?$').firstMatch(extra);
-        if (match != null) {
-          if (_veiculoModeloController.text.isEmpty) {
-            _veiculoModeloController.text = (match.group(1) ?? '').trim();
-          }
-          if (_veiculoPlacaController.text.isEmpty && match.group(2) != null) {
-            _veiculoPlacaController.text = (match.group(2) ?? '').trim();
-          }
-        }
+      } else if (extra.startsWith('CNH: ') && _cnhController.text.isEmpty) {
+        _cnhController.text = extra.replaceFirst('CNH: ', '');
       }
     }
   }
@@ -152,8 +139,6 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
     _enderecoController.dispose();
     _consultaController.dispose();
     _cnhController.dispose();
-    _veiculoModeloController.dispose();
-    _veiculoPlacaController.dispose();
     _emailController.dispose();
     super.dispose();
   }
@@ -183,11 +168,9 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
     final cnhInput = _cnhController.text.trim();
     final cnhFinal = cnhInput.isNotEmpty ? cnhInput : (widget.pessoaParaEditar?.cnh ?? '');
 
-    final modeloInput = _veiculoModeloController.text.trim();
-    final modeloFinal = modeloInput.isNotEmpty ? modeloInput : (widget.pessoaParaEditar?.veiculoModelo ?? '');
-
-    final placaInput = _veiculoPlacaController.text.trim().toUpperCase();
-    final placaFinal = placaInput.isNotEmpty ? placaInput : (widget.pessoaParaEditar?.veiculoPlaca ?? '');
+    // Na edição, preserva modelo e placa pré-existentes caso o registro já possua
+    final modeloFinal = widget.pessoaParaEditar?.veiculoModelo ?? '';
+    final placaFinal = widget.pessoaParaEditar?.veiculoPlaca ?? '';
 
     final consultaInput = _consultaController.text.trim();
     final consultaFinal = consultaInput.isNotEmpty ? consultaInput : (widget.pessoaParaEditar?.localConsulta ?? '');
@@ -210,7 +193,9 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
     } else if (role == 'motorista') {
       badgeCor = const Color(0xFF0F172A);
       badgeLabel = 'Motorista';
-      if (modeloFinal.isNotEmpty || placaFinal.isNotEmpty) {
+      if (cnhFinal.isNotEmpty) {
+        detalheExtra = 'CNH: $cnhFinal';
+      } else if (modeloFinal.isNotEmpty || placaFinal.isNotEmpty) {
         detalheExtra = 'Veículo: $modeloFinal ${placaFinal.isNotEmpty ? '($placaFinal)' : ''}'.trim();
       }
     } else {
@@ -240,8 +225,8 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
             payload['enderecoPaciente'] = enderecoFinal;
           } else if (role == 'motorista') {
             payload['cnh'] = cnhFinal;
-            payload['veiculoModelo'] = modeloFinal;
-            payload['veiculoPlaca'] = placaFinal;
+            if (modeloFinal.isNotEmpty) payload['veiculoModelo'] = modeloFinal;
+            if (placaFinal.isNotEmpty) payload['veiculoPlaca'] = placaFinal;
           } else if (role == 'admin') {
             payload['email'] = emailFinal;
           }
@@ -270,8 +255,6 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
             payload['status'] = 0;
           } else if (role == 'motorista') {
             payload['cnh'] = cnhFinal;
-            payload['veiculoModelo'] = modeloFinal;
-            payload['veiculoPlaca'] = placaFinal;
             payload['capacidadeVeiculo'] = 4;
             payload['emViagem'] = false;
           } else if (role == 'admin') {
@@ -542,38 +525,6 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
                       isDense: true,
                       border: OutlineInputBorder(),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        flex: 3,
-                        child: TextFormField(
-                          controller: _veiculoModeloController,
-                          decoration: const InputDecoration(
-                            labelText: 'Modelo do Veículo',
-                            hintText: 'Chevrolet Spin',
-                            prefixIcon: Icon(Icons.directions_car_outlined, size: 20),
-                            isDense: true,
-                            border: OutlineInputBorder(),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        flex: 2,
-                        child: TextFormField(
-                          controller: _veiculoPlacaController,
-                          textCapitalization: TextCapitalization.characters,
-                          decoration: const InputDecoration(
-                            labelText: 'Placa',
-                            hintText: 'BRA2E19',
-                            isDense: true,
-                            border: OutlineInputBorder(),
-                          ),
-                        ),
-                      ),
-                    ],
                   ),
                 ] else if (_roleSelecionado == 'admin') ...[
                   TextFormField(
