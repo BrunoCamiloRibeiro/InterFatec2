@@ -55,7 +55,7 @@ class _VeiculosState extends State<Veiculos> {
           "qtdAssentos": 15,
           "status": "disponivel",
           "quilometragemAtual": 45280,
-          "motoristaResponsavelId": null,
+          // "motoristaResponsavelId": null, // Removido a pedido do PO (não há motorista responsável fixo)
           "ultimoMotoristaId": null,
           "possuiAC": true,
           "possuiPreferencial": false,
@@ -74,7 +74,7 @@ class _VeiculosState extends State<Veiculos> {
           "qtdAssentos": 4,
           "status": "emManutencao",
           "quilometragemAtual": 62150,
-          "motoristaResponsavelId": null,
+          // "motoristaResponsavelId": null, // Removido a pedido do PO (não há motorista responsável fixo)
           "ultimoMotoristaId": "motorista001",
           "possuiAC": true,
           "possuiPreferencial": true,
@@ -117,6 +117,7 @@ class _VeiculosState extends State<Veiculos> {
     showDialog(
       context: context,
       builder: (context) => FormularioNovoVeiculo(
+        placasExistentes: _veiculos.map((v) => (v['placa'] ?? '').toString()).toList(),
         onSalvar: (novoVeiculo) {
           setState(() {
             _veiculos.insert(0, novoVeiculo);
@@ -131,6 +132,7 @@ class _VeiculosState extends State<Veiculos> {
       context: context,
       builder: (context) => FormularioNovoVeiculo(
         veiculoParaEditar: veiculo,
+        placasExistentes: _veiculos.map((v) => (v['placa'] ?? '').toString()).toList(),
         onSalvar: (veiculoAtualizado) {
           setState(() {
             final idx = _veiculos.indexWhere((v) => v['id'] == veiculoAtualizado['id']);

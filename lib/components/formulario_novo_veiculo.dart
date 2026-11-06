@@ -3,15 +3,29 @@ import 'package:flutter/material.dart';
 class FormularioNovoVeiculo extends StatefulWidget {
   final Map<String, dynamic>? veiculoParaEditar;
   final ValueChanged<Map<String, dynamic>>? onSalvar;
+  final List<String>? placasExistentes;
 
   const FormularioNovoVeiculo({
     super.key,
     this.veiculoParaEditar,
     this.onSalvar,
+    this.placasExistentes,
   });
 
   @override
   State<FormularioNovoVeiculo> createState() => _FormularioNovoVeiculoState();
+}
+
+class _StatusPlacaInfo {
+  final IconData icone;
+  final Color cor;
+  final String mensagem;
+
+  const _StatusPlacaInfo({
+    required this.icone,
+    required this.cor,
+    required this.mensagem,
+  });
 }
 
 class _FormularioNovoVeiculoState extends State<FormularioNovoVeiculo> {
@@ -25,9 +39,14 @@ class _FormularioNovoVeiculoState extends State<FormularioNovoVeiculo> {
   late final TextEditingController _assentosController;
   late final TextEditingController _observacoesController;
 
+  late final FocusNode _marcaFocusNode;
+  late final FocusNode _modeloFocusNode;
+
+  late final ValueNotifier<_StatusPlacaInfo?> _avisoPlacaNotifier;
+
   late String _tipoSelecionado;
   late String _statusSelecionado;
-  String? _motoristaSelecionado;
+  // String? _motoristaSelecionado; // Desativado a pedido do PO (não há motorista responsável fixo)
   late bool _possuiAC;
   late bool _possuiPreferencial;
 
@@ -47,13 +66,32 @@ class _FormularioNovoVeiculoState extends State<FormularioNovoVeiculo> {
     {'valor': 'inativo', 'nome': 'Inativo'},
   ];
 
-  static const List<String> _motoristasMock = [
-    'motorista001',
-    'Carlos Silva (Matrícula: 1042)',
-    'Mariana Santos (Matrícula: 1055)',
-    'Roberto Albuquerque (Matrícula: 1089)',
-    'Sem motorista fixo',
-  ];
+  // Base de sugestões para marcas e modelos de frotas e suporte
+  static const Map<String, List<String>> _modelosPorMarca = {
+    'Renault': ['Master', 'Kangoo', 'Trafic', 'Logan', 'Sandero', 'Duster', 'Kwid'],
+    'Fiat': ['Ducato', 'Fiorino', 'Doblò', 'Scudo', 'Toro', 'Strada', 'Argo', 'Cronos', 'Mobi'],
+    'Mercedes-Benz': ['Sprinter', 'Vito', 'Accelo'],
+    'Iveco': ['Daily', 'Daily Minibus'],
+    'Ford': ['Transit', 'Ranger', 'Ka'],
+    'Chevrolet': ['Spin', 'Onix', 'Tracker', 'S10', 'Montana'],
+    'Volkswagen': ['Kombi', 'Crafter', 'Delivery Express', 'Gol', 'Voyage', 'Polo', 'T-Cross', 'Virtus', 'Saveiro'],
+    'Toyota': ['Hiace', 'Hilux', 'Corolla', 'Yaris', 'Etios'],
+    'Hyundai': ['HR', 'HB20', 'Creta'],
+    'Citroën': ['Jumper', 'Jumpy', 'Berlingo', 'C3', 'Aircross'],
+    'Peugeot': ['Boxer', 'Expert', 'Partner', '208'],
+    'Marcopolo': ['Volare V8L', 'Volare Attack 8', 'Volare Fly 9', 'Senior'],
+  };
+
+  static final List<String> _marcasSugeridas = _modelosPorMarca.keys.toList();
+
+  // REMOVIDO A PEDIDO DO PO: Não existe motorista fixo/responsável por veículo
+  // static const List<String> _motoristasMock = [
+  //   'motorista001',
+  //   'Carlos Silva (Matrícula: 1042)',
+  //   'Mariana Santos (Matrícula: 1055)',
+  //   'Roberto Albuquerque (Matrícula: 1089)',
+  //   'Sem motorista fixo',
+  // ];
 
   @override
   void initState() {
@@ -76,6 +114,15 @@ class _FormularioNovoVeiculoState extends State<FormularioNovoVeiculo> {
       text: v['observacoes']?.toString() ?? '',
     );
 
+    _marcaFocusNode = FocusNode();
+    _modeloFocusNode = FocusNode();
+    _avisoPlacaNotifier = ValueNotifier<_StatusPlacaInfo?>(null);
+
+    _placaController.addListener(_verificarPlaca);
+    if (_placaController.text.isNotEmpty) {
+      _verificarPlaca();
+    }
+
     _tipoSelecionado = (v['tipo'] ?? 'van').toString().toLowerCase();
     if (!_tipos.any((t) => t['valor'] == _tipoSelecionado)) {
       _tipoSelecionado = 'van';
@@ -86,8 +133,8 @@ class _FormularioNovoVeiculoState extends State<FormularioNovoVeiculo> {
       _statusSelecionado = 'disponivel';
     }
 
-    _motoristaSelecionado =
-        v['ultimoMotoristaId']?.toString() ?? v['motoristaResponsavelId']?.toString();
+    // _motoristaSelecionado =
+    //     v['ultimoMotoristaId']?.toString() ?? v['motoristaResponsavelId']?.toString();
 
     _possuiAC = v['possuiAC'] == true;
     _possuiPreferencial = v['possuiPreferencial'] == true;
@@ -95,6 +142,10 @@ class _FormularioNovoVeiculoState extends State<FormularioNovoVeiculo> {
 
   @override
   void dispose() {
+    _placaController.removeListener(_verificarPlaca);
+    _avisoPlacaNotifier.dispose();
+    _marcaFocusNode.dispose();
+    _modeloFocusNode.dispose();
     _placaController.dispose();
     _marcaController.dispose();
     _modeloController.dispose();
@@ -103,6 +154,181 @@ class _FormularioNovoVeiculoState extends State<FormularioNovoVeiculo> {
     _assentosController.dispose();
     _observacoesController.dispose();
     super.dispose();
+  }
+
+  bool _placaJaExiste(String placaLimpa) {
+    final placas = widget.placasExistentes ?? const ['ABC1D23', 'DEF4G56'];
+    final placaOriginal = widget.veiculoParaEditar?['placa']
+        ?.toString()
+        .replaceAll(RegExp(r'[^A-Za-z0-9]'), '')
+        .toUpperCase();
+
+    // Em modo de edição, se a placa for a mesma original do veículo, não é duplicada
+    if (_isEdicao && placaOriginal != null && placaOriginal == placaLimpa) {
+      return false;
+    }
+
+    return placas.any((p) {
+      final pLimpa = p.replaceAll(RegExp(r'[^A-Za-z0-9]'), '').toUpperCase();
+      if (_isEdicao && placaOriginal != null && pLimpa == placaOriginal) {
+        return false;
+      }
+      return pLimpa == placaLimpa;
+    });
+  }
+
+  void _verificarPlaca() {
+    final texto = _placaController.text;
+    final limpa = texto.replaceAll(RegExp(r'[^A-Za-z0-9]'), '').toUpperCase();
+
+    if (limpa.length < 7) {
+      _avisoPlacaNotifier.value = null;
+      return;
+    }
+
+    // 1. Verifica duplicidade
+    if (_placaJaExiste(limpa)) {
+      _avisoPlacaNotifier.value = const _StatusPlacaInfo(
+        icone: Icons.cancel_outlined,
+        cor: Colors.red,
+        mensagem: 'Já existe outro veículo cadastrado com esta placa.',
+      );
+      return;
+    }
+
+    // 2. Padrão Mercosul (LLLNLNN - 3 letras, 1 número, 1 letra, 2 números)
+    final isMercosul = RegExp(r'^[A-Z]{3}[0-9][A-Z][0-9]{2}$').hasMatch(limpa);
+    if (isMercosul) {
+      _avisoPlacaNotifier.value = const _StatusPlacaInfo(
+        icone: Icons.check_circle_outline,
+        cor: Colors.green,
+        mensagem: 'Padrão Mercosul válido (ABC1D23).',
+      );
+      return;
+    }
+
+    // 3. Padrão Antigo (LLLNNNN - 3 letras e 4 números, ex: placa cinza)
+    final isAntiga = RegExp(r'^[A-Z]{3}[0-9]{4}$').hasMatch(limpa);
+    if (isAntiga) {
+      _avisoPlacaNotifier.value = const _StatusPlacaInfo(
+        icone: Icons.info_outline,
+        cor: Colors.blueGrey,
+        mensagem: 'Padrão antigo (placa cinza). Válido para circulação.',
+      );
+      return;
+    }
+
+    // 4. Fora de ambos os padrões (aviso visual informativo, não bloqueante)
+    _avisoPlacaNotifier.value = const _StatusPlacaInfo(
+      icone: Icons.warning_amber_rounded,
+      cor: Colors.orange,
+      mensagem: 'Aviso: Formato fora do padrão Mercosul (ABC1D23) ou antigo (ABC1234).',
+    );
+  }
+
+  List<String> _obterSugestoesMarca(String query) {
+    if (query.trim().isEmpty) return const [];
+    final q = query.trim().toLowerCase();
+    return _marcasSugeridas.where((m) => m.toLowerCase().contains(q)).toList();
+  }
+
+  List<String> _obterSugestoesModelo(String query) {
+    if (query.trim().isEmpty) return const [];
+    final q = query.trim().toLowerCase();
+    final marcaAtual = _marcaController.text.trim();
+    List<String> pool;
+    if (marcaAtual.isNotEmpty && _modelosPorMarca.containsKey(marcaAtual)) {
+      pool = _modelosPorMarca[marcaAtual]!;
+    } else {
+      pool = _modelosPorMarca.values.expand((m) => m).toSet().toList();
+    }
+    return pool.where((m) => m.toLowerCase().contains(q)).toList();
+  }
+
+  Widget _construirCampoAutocomplete({
+    required TextEditingController controller,
+    required FocusNode focusNode,
+    required String label,
+    required String hint,
+    required IconData icone,
+    required List<String> Function(String query) opcoesCallback,
+    String? Function(String?)? validator,
+    void Function(String)? onSelecionado,
+  }) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return RawAutocomplete<String>(
+          textEditingController: controller,
+          focusNode: focusNode,
+          optionsBuilder: (TextEditingValue textEditingValue) {
+            if (textEditingValue.text.trim().isEmpty) {
+              return const Iterable<String>.empty();
+            }
+            return opcoesCallback(textEditingValue.text);
+          },
+          onSelected: (String selecao) {
+            controller.text = selecao;
+            if (onSelecionado != null) onSelecionado(selecao);
+          },
+          optionsViewBuilder: (context, onSelected, options) {
+            return Align(
+              alignment: Alignment.topLeft,
+              child: Material(
+                elevation: 8,
+                borderRadius: BorderRadius.circular(10),
+                color: Colors.white,
+                shadowColor: Colors.black38,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: 190,
+                    maxWidth: constraints.maxWidth > 0 ? constraints.maxWidth : 260,
+                  ),
+                  child: ListView.separated(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    shrinkWrap: true,
+                    itemCount: options.length,
+                    separatorBuilder: (_, _) => Divider(height: 1, color: Colors.grey[200]),
+                    itemBuilder: (BuildContext context, int index) {
+                      final String opcao = options.elementAt(index);
+                      return InkWell(
+                        onTap: () => onSelected(opcao),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          child: Row(
+                            children: [
+                              Icon(icone, size: 16, color: Colors.grey[600]),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  opcao,
+                                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            );
+          },
+          fieldViewBuilder: (context, fieldTextEditingController, fieldFocusNode, onFieldSubmitted) {
+            return TextFormField(
+              controller: fieldTextEditingController,
+              focusNode: fieldFocusNode,
+              validator: validator,
+              decoration: _campoDecoracao(
+                label: label,
+                hint: hint,
+                icone: icone,
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   InputDecoration _campoDecoracao({
@@ -150,7 +376,7 @@ class _FormularioNovoVeiculoState extends State<FormularioNovoVeiculo> {
       'qtdAssentos': int.tryParse(_assentosController.text.trim()) ?? 15,
       'status': _statusSelecionado,
       'quilometragemAtual': int.tryParse(_kmController.text.trim()) ?? 0,
-      'motoristaResponsavelId': _motoristaSelecionado,
+      // 'motoristaResponsavelId': _motoristaSelecionado, // Desativado a pedido do PO
       'ultimoMotoristaId': widget.veiculoParaEditar?['ultimoMotoristaId'],
       'possuiAC': _possuiAC,
       'possuiPreferencial': _possuiPreferencial,
@@ -261,26 +487,64 @@ class _FormularioNovoVeiculoState extends State<FormularioNovoVeiculo> {
                             child: Column(
                               children: [
                                 Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Expanded(
                                       flex: 3,
-                                      child: TextFormField(
-                                        controller: _placaController,
-                                        // Sem textCapitalization para não disparar re-layout no Windows
-                                        validator: (valor) {
-                                          if (valor == null || valor.trim().isEmpty) {
-                                            return 'Informe a placa';
-                                          }
-                                          if (valor.trim().length < 7) {
-                                            return 'Placa incompleta';
-                                          }
-                                          return null;
-                                        },
-                                        decoration: _campoDecoracao(
-                                          label: 'Placa *',
-                                          hint: 'ABC1D23',
-                                          icone: Icons.pin_outlined,
-                                        ),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          TextFormField(
+                                            controller: _placaController,
+                                            validator: (valor) {
+                                              final limpa = (valor ?? '')
+                                                  .replaceAll(RegExp(r'[^A-Za-z0-9]'), '')
+                                                  .toUpperCase();
+                                              if (limpa.isEmpty) {
+                                                return 'Informe a placa';
+                                              }
+                                              if (limpa.length < 7) {
+                                                return 'A placa deve ter 7 dígitos';
+                                              }
+                                              if (_placaJaExiste(limpa)) {
+                                                return 'Esta placa já pertence a outro veículo';
+                                              }
+                                              // Placa fora do padrão Mercosul/antigo NÃO bloqueia, apenas alerta visualmente
+                                              return null;
+                                            },
+                                            decoration: _campoDecoracao(
+                                              label: 'Placa *',
+                                              hint: 'Ex: ABC1D23 ou ABC1234',
+                                              icone: Icons.pin_outlined,
+                                            ),
+                                          ),
+                                          ValueListenableBuilder<_StatusPlacaInfo?>(
+                                            valueListenable: _avisoPlacaNotifier,
+                                            builder: (context, info, _) {
+                                              if (info == null) return const SizedBox.shrink();
+                                              return Padding(
+                                                padding: const EdgeInsets.only(top: 6, left: 4),
+                                                child: Row(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  children: [
+                                                    Icon(info.icone, size: 16, color: info.cor),
+                                                    const SizedBox(width: 6),
+                                                    Expanded(
+                                                      child: Text(
+                                                        info.mensagem,
+                                                        style: TextStyle(
+                                                          fontSize: 12,
+                                                          fontWeight: FontWeight.w500,
+                                                          color: info.cor,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              );
+                                            },
+                                          ),
+                                        ],
                                       ),
                                     ),
                                     const SizedBox(width: 10),
@@ -310,32 +574,44 @@ class _FormularioNovoVeiculoState extends State<FormularioNovoVeiculo> {
                                 ),
                                 const SizedBox(height: 12),
                                 Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Expanded(
-                                      child: TextFormField(
+                                      child: _construirCampoAutocomplete(
                                         controller: _marcaController,
+                                        focusNode: _marcaFocusNode,
+                                        label: 'Marca *',
+                                        hint: 'Ex: Renault, Fiat',
+                                        icone: Icons.directions_car_outlined,
+                                        opcoesCallback: _obterSugestoesMarca,
                                         validator: (valor) => (valor == null || valor.trim().isEmpty)
                                             ? 'Informe a marca'
                                             : null,
-                                        decoration: _campoDecoracao(
-                                          label: 'Marca *',
-                                          hint: 'Renault',
-                                          icone: Icons.directions_car_outlined,
-                                        ),
                                       ),
                                     ),
                                     const SizedBox(width: 10),
                                     Expanded(
-                                      child: TextFormField(
+                                      child: _construirCampoAutocomplete(
                                         controller: _modeloController,
+                                        focusNode: _modeloFocusNode,
+                                        label: 'Modelo *',
+                                        hint: 'Ex: Master, Ducato',
+                                        icone: Icons.info_outline,
+                                        opcoesCallback: _obterSugestoesModelo,
                                         validator: (valor) => (valor == null || valor.trim().isEmpty)
                                             ? 'Informe o modelo'
                                             : null,
-                                        decoration: _campoDecoracao(
-                                          label: 'Modelo *',
-                                          hint: 'Master',
-                                          icone: Icons.info_outline,
-                                        ),
+                                        onSelecionado: (modeloSelecionado) {
+                                          // Autopreenchimento inteligente da marca se ainda estiver em branco
+                                          if (_marcaController.text.trim().isEmpty) {
+                                            for (final entry in _modelosPorMarca.entries) {
+                                              if (entry.value.contains(modeloSelecionado)) {
+                                                _marcaController.text = entry.key;
+                                                break;
+                                              }
+                                            }
+                                          }
+                                        },
                                       ),
                                     ),
                                   ],
@@ -468,28 +744,29 @@ class _FormularioNovoVeiculoState extends State<FormularioNovoVeiculo> {
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 12),
-                                DropdownButtonFormField<String>(
-                                  initialValue: _motoristaSelecionado,
-                                  decoration: _campoDecoracao(
-                                    label: 'Motorista Responsável',
-                                    hint: 'Selecione o motorista',
-                                    icone: Icons.person_outline,
-                                  ),
-                                  items: _motoristasMock.map((m) {
-                                    return DropdownMenuItem<String>(
-                                      value: m,
-                                      child: Text(
-                                        m,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(fontSize: 13),
-                                      ),
-                                    );
-                                  }).toList(),
-                                  onChanged: (valor) {
-                                    _motoristaSelecionado = valor;
-                                  },
-                                ),
+                                // REMOVIDO A PEDIDO DO PO: Não existe motorista fixo/responsável por veículo
+                                // const SizedBox(height: 12),
+                                // DropdownButtonFormField<String>(
+                                //   initialValue: _motoristaSelecionado,
+                                //   decoration: _campoDecoracao(
+                                //     label: 'Motorista Responsável',
+                                //     hint: 'Selecione o motorista',
+                                //     icone: Icons.person_outline,
+                                //   ),
+                                //   items: _motoristasMock.map((m) {
+                                //     return DropdownMenuItem<String>(
+                                //       value: m,
+                                //       child: Text(
+                                //         m,
+                                //         overflow: TextOverflow.ellipsis,
+                                //         style: const TextStyle(fontSize: 13),
+                                //       ),
+                                //     );
+                                //   }).toList(),
+                                //   onChanged: (valor) {
+                                //     _motoristaSelecionado = valor;
+                                //   },
+                                // ),
                               ],
                             ),
                           ),
