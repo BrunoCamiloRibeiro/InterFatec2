@@ -1,3 +1,50 @@
+// ============================================================================
+// CABEÇALHO DE DOCUMENTAÇÃO DE ARQUIVO
+// ============================================================================
+// Arquivo: lib/services/relatorio_pdf_service.dart
+// Camada: Domínio / Serviços de Relatório e Impressão (Services)
+//
+// O QUE ESTE ARQUIVO FAZ:
+// Implementa a geração em formato PDF vetorial do documento oficial:
+// "Roteiro da Viagem - Ficha de Atendimento TFD" (Unidade Básica de Saúde de Poloni).
+// Segue rigorosamente a especificação visual e milimétrica obtida do modelo
+// físico oficial em folha padrão A4 (210 x 297 mm / 595.28 x 841.89 pt).
+// Configura tipografia embutida TrueType (Liberation Sans / Helvetica), cabeçalho
+// institucional em todas as páginas, relação de passageiros e data de emissão
+// na página 1, bloco de resumo contábil na última página e quebra dinâmica de
+// páginas por altura vertical disponível por bloco de paciente.
+//
+// PARA QUE SERVE NO PROJETO:
+// Gera a ficha impressa que os motoristas levam em viagem para controle de
+// assinatura, conferência de passageiros e prestação de contas na Secretaria
+// Municipal de Saúde de Poloni ao término do deslocamento.
+//
+// ONDE É USADO NO PROJETO:
+// - lib/components/formulario_encerramento.dart (disparo de impressão e exportação)
+// - test/relatorio_pdf_test.dart (testes de layout, casos limites e fidelidade visual)
+//
+// DE ONDE RECEBE DADOS:
+// - Instância de ViagemModel (motorista, veículo, KM inicial/final, data e destino)
+// - Lista de instâncias de PacienteModel (nomes, endereços, horários e acompanhantes)
+// - Fontes TrueType carregadas via rootBundle em 'assets/fonts/LiberationSans-*.ttf'
+//
+// O QUE EXPORTA / EXPÕE:
+// - class RelatorioPdfService
+//   * Constantes de layout e tipografia milimétrica
+//   * static Future<Uint8List> gerarRoteiroViagemPdf(...)
+//
+// ORIGEM HISTÓRICA:
+// Desenvolvido pela equipe de desenvolvimento no commit c0351c9 para a issue #16
+// ("gerar-o-pdf"). Não provém de template ou scaffold.
+//
+// DEPENDÊNCIAS EXTERNAS E EFEITOS COLATERAIS:
+// Depende de 'package:pdf/pdf.dart', 'package:pdf/widgets.dart',
+// 'package:intl/intl.dart' e 'package:flutter/services.dart' (rootBundle).
+// Operação funcional sem escrita em banco de dados: lê ativos de fontes embutidas
+// e retorna um buffer de memória em bytes (Uint8List).
+// ============================================================================
+
+// Importa suporte a buffers de bytes binários em memória para retorno do PDF gerado
 import 'dart:typed_data';
 
 import 'package:intl/intl.dart';
