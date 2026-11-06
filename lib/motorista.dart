@@ -384,6 +384,8 @@ class _MotoristaState extends State<Motorista> {
           bottomNavigationBar: FooterPacientes(
             lugaresPreenchidos: preenchidos,
             lugaresTotais: _capacidadeVeiculo,
+            viagem: _viagemAtiva,
+            pacientes: pacientes,
           ),
         );
       },
