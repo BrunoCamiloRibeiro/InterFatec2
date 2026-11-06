@@ -39,10 +39,12 @@
 
 // Linha em branco separadora entre cabeçalho de documentação e definição da classe
 // Declaração da classe utilitária TextAbbreviator
+// Elemento: Classe utilitária com construtor padrão privado implícito e métodos estáticos puros
 class TextAbbreviator {
   // Comentário original do autor mantido byte a byte:
   // Palavras de ligação comuns em português brasileiro.
-  // Conjunto imutável de stopwords da língua portuguesa que não devem ser abreviadas
+  // Constante estática _stopWords: conjunto imutável de stopwords da língua portuguesa
+  // Elemento: Set<String> imutável (const) para consulta em tempo constante O(1)
   static const Set<String> _stopWords = {
     // Artigos e preposições monossilábicas femininas e masculinas
     'a', 'à', 'às', 'ao', 'aos',
@@ -73,48 +75,55 @@ class TextAbbreviator {
   /// [maxWords]: limite de palavras.
   /// [keepWords]: número mínimo de palavras significativas
   /// que devem permanecer inteiras, além da primeira e da última.
-  // Método estático puro para abreviar textos que superem os limites configurados
+  // Método estático abbreviate: função pura que encurta nomes ou textos longos
+  // Recebe: text (String obrigatória) e parâmetros nomeados opcionais (maxCharacters, maxWords, keepWords)
+  // Retorna: String com o texto formatado e com os nomes intermediários abreviados
   static String abbreviate(
-    // Texto de entrada que será avaliado para abreviação
+    // Parâmetro posicional obrigatório: texto de entrada a ser avaliado e abreviado
     String text, {
-    // Limite de caracteres antes de iniciar a abreviação (padrão 45)
+    // Parâmetro nomeado opcional: quantidade máxima de caracteres permitida antes de abreviar (padrão 45)
     int maxCharacters = 45,
-    // Limite de quantidade de palavras (padrão 7)
+    // Parâmetro nomeado opcional: quantidade máxima de palavras permitida antes de abreviar (padrão 7)
     int maxWords = 7,
-    // Palavras do meio mantidas por extenso além das pontas (padrão 1)
+    // Parâmetro nomeado opcional: quantidade de palavras intermediárias significativas preservadas (padrão 1)
     int keepWords = 1,
   // Abre o corpo do método abbreviate
   }) {
     // Comentário original do autor mantido byte a byte:
     // Normaliza espaços e trata entradas vazias.
-    // Remove espaços repetidos e aparas nas extremidades
+    // Variável normalized: string com espaços extras colapsados e extremidades aparadas
+    // Elemento: Encadeamento de text.trim() com replaceAll aplicando expressão regular
     final normalized = text.trim().replaceAll(
-      // Expressão regular que casa com múltiplos espaços contíguos
+      // Expressão regular RegExp(r'\s+'): casa com uma ou mais ocorrências consecutivas de whitespace (espaços, tabs, quebras)
       RegExp(r'\s+'),
-      // Substitui por espaço simples
+      // String de substituição: substitui qualquer sequência de espaços por um único caractere de espaço em branco
       ' ',
+    // Fecha a chamada do método replaceAll
     );
 
     // Linha em branco separadora entre normalização e checagem de vazio
-    // Se a string normalizada for vazia, retorna imediatamente
+    // Cláusula de guarda condicional: se a string for vazia após normalização, retorna imediatamente
     if (normalized.isEmpty) return normalized;
 
     // Linha em branco separadora entre checagem de vazio e divisão de palavras
-    // Quebra a string em lista de palavras individuais
+    // Variável words: lista contendo os tokens individuais obtidos pela divisão nos espaços
+    // Elemento: normalized.split(' ') retorna List<String>
     final words = normalized.split(' ');
 
     // Linha em branco separadora entre split e verificação de extensão
     // Comentário original do autor mantido byte a byte:
     // Verifica os dois critérios: caracteres OU palavras.
-    // Avalia se o texto ultrapassa o limite de caracteres ou limite de palavras
+    // Variável isLong: flag booleana indicando se o texto excede os limites estabelecidos
     final isLong =
+        // Critério 1: comprimento total em caracteres maior que maxCharacters
         normalized.length > maxCharacters ||
+        // Critério 2: quantidade total de palavras maior que maxWords
         words.length > maxWords;
 
     // Linha em branco separadora entre avaliação e checagem de tamanho mínimo
-    // Não abrevia textos curtos ou frases com 2 ou menos palavras
+    // Cláusula de guarda: não abrevia se não for longo ou se tiver 2 ou menos palavras (apenas primeiro e último nome)
     if (!isLong || words.length <= 2) {
-      // Retorna o texto original normalizado sem modificação
+      // Retorna a string normalizada intacta sem modificações
       return normalized;
     // Fecha a checagem de texto curto
     }
@@ -122,14 +131,18 @@ class TextAbbreviator {
     // Linha em branco separadora entre checagem e função getWord
     // Comentário original do autor mantido byte a byte:
     // Identifica a primeira palavra alfabética de cada token.
-    // Função local para extrair sequência de letras descartando pontuações
+    // Função local getWord: isola os caracteres alfabéticos de uma palavra descartando pontuações adjacentes
+    // Recebe: token (String com a palavra potencialmente pontuada)
+    // Retorna: String contendo somente a parte alfabética
     String getWord(String token) {
-      // Expressão regular com suporte a caracteres latinos acentuados
+      // Executa a expressão regular no token capturando letras do alfabeto incluindo caracteres latinos acentuados
       final match = RegExp(
+        // Padrão regex cobrindo letras maiúsculas e minúsculas latinas básicas e acentuadas (À-ÿ)
         r'[A-Za-zÀ-ÖØ-öø-ÿ]+',
+      // Invocação de firstMatch para obter a primeira ocorrência
       ).firstMatch(token);
 
-      // Retorna o grupo alfabético casado ou o token original se não houver match
+      // Operador de navegação segura e coalescência nula: retorna o grupo casado ou o próprio token original
       return match?.group(0) ?? token;
     // Fecha a função getWord
     }
@@ -137,25 +150,27 @@ class TextAbbreviator {
     // Linha em branco separadora entre getWord e abbreviateWord
     // Comentário original do autor mantido byte a byte:
     // Abrevia somente palavras significativas.
-    // Função local para transformar uma palavra individual na inicial com ponto
+    // Função local abbreviateWord: transforma uma palavra intermediária em sua inicial maiúscula seguida de ponto
+    // Recebe: token (String com a palavra a ser avaliada para abreviação)
+    // Retorna: String contendo a abreviação (ex: "Carlos" -> "C.") ou o token original se não for elegível
     String abbreviateWord(String token) {
-      // Localiza o trecho alfabético da palavra
+      // Localiza o trecho alfabético da palavra com a regex de letras latinas
       final match = RegExp(
         r'[A-Za-zÀ-ÖØ-öø-ÿ]+',
       ).firstMatch(token);
 
-      // Se não houver trecho alfabético, retorna o token intacto
+      // Cláusula de guarda: se não houver trecho alfabético válido, retorna o token intacto
       if (match == null) return token;
 
-      // Extrai o texto da palavra encontrada
+      // Extrai o trecho casado garantidamente não nulo com o operador !
       final word = match.group(0)!;
-      // Converte para minúsculas para verificar no conjunto de stopwords
+      // Converte a palavra para letras minúsculas para verificar no conjunto de stopwords
       final lower = word.toLowerCase();
 
       // Linha em branco separadora entre extração e regras de descarte
       // Comentário original do autor mantido byte a byte:
       // Nunca abrevia palavras de ligação.
-      // Se for preposição ou artigo, preserva sem abreviar
+      // Cláusula de guarda: se o vocábulo for uma stopword da língua portuguesa (de, da, do, etc.), preserva sem abreviar
       if (_stopWords.contains(lower)) {
         return token;
       // Fecha checagem de stopWords
@@ -164,18 +179,21 @@ class TextAbbreviator {
       // Linha em branco separadora entre stopwords e palavras curtas
       // Comentário original do autor mantido byte a byte:
       // Palavras muito curtas já são compactas.
-      // Palavras de até 2 letras não precisam ser abreviadas
+      // Cláusula de guarda: palavras de até 2 letras já são compactas e não devem ser abreviadas
       if (word.length <= 2) return token;
 
       // Linha em branco separadora entre palavras curtas e formatação
-      // Gera a forma abreviada pegando a primeira letra em maiúscula seguida de ponto
+      // Interpolação de string: cria a abreviação pegando a primeira letra em maiúscula seguida de ponto final
       final abbreviation = '${word[0]}.';
 
       // Linha em branco separadora entre formatação e substituição
-      // Substitui o trecho alfabético pela abreviação dentro do token
+      // Invocação de token.replaceRange: substitui o trecho alfabético preservando eventuais pontuações adjacentes
       return token.replaceRange(
+        // Índice de início do casamento
         match.start,
+        // Índice de fim do casamento
         match.end,
+        // Texto abreviado de substituição
         abbreviation,
       );
     // Fecha a função abbreviateWord
@@ -184,25 +202,25 @@ class TextAbbreviator {
     // Linha em branco separadora entre abbreviateWord e montagem da lista de resultado
     // Comentário original do autor mantido byte a byte:
     // Mantém o início e o final do texto.
-    // Clona a lista de palavras para mutação seletiva
+    // Variável result: cópia mutável da lista de palavras para aplicar as abreviações nos índices selecionados
     final result = List<String>.from(words);
 
     // Linha em branco separadora entre clonagem e busca de índices
     // Comentário original do autor mantido byte a byte:
     // Localiza as palavras significativas do meio.
-    // Lista que acumulará os índices das palavras candidatas à abreviação
+    // Variável middleIndexes: lista de inteiros acumulando os índices das palavras candidatas à abreviação
     final middleIndexes = <int>[];
 
     // Linha em branco separadora entre declaração de lista e laço de iteração
-    // Itera pelas palavras intermediárias (excluindo o primeiro índice 0 e o último words.length - 1)
+    // Laço for: percorre as palavras intermediárias, excluindo propositalmente o primeiro índice (0) e o último (words.length - 1)
     for (int i = 1; i < words.length - 1; i++) {
-      // Extrai o termo alfabético em minúsculas
+      // Extrai o termo alfabético em letras minúsculas usando getWord
       final word = getWord(words[i]).toLowerCase();
 
       // Linha em branco separadora entre extração e checagem de elegibilidade
-      // Avalia se o termo tem mais de 2 letras e não é stopword
+      // Condicional: avalia se a palavra tem mais de 2 letras e não é stopword
       if (word.length > 2 && !_stopWords.contains(word)) {
-        // Registra o índice como apto para abreviação
+        // Adiciona o índice i à lista de índices intermediários elegíveis
         middleIndexes.add(i);
       // Fecha a checagem de elegibilidade
       }
@@ -212,20 +230,21 @@ class TextAbbreviator {
     // Linha em branco separadora entre coleta de índices e seleção com base em keepWords
     // Comentário original do autor mantido byte a byte:
     // Preserva algumas palavras intermediárias completas.
-    // Seleciona os primeiros índices respeitando o quantitativo keepWords preservado
+    // Expressão ternária: seleciona os primeiros índices respeitando o quantitativo de palavras preservadas (keepWords)
     final wordsToAbbreviate = middleIndexes.length > keepWords
         ? middleIndexes.take(middleIndexes.length - keepWords)
         : <int>[];
 
     // Linha em branco separadora entre seleção e aplicação de abreviações
-    // Itera pelos índices selecionados e aplica a abreviação no resultado
+    // Laço for-in: percorre os índices selecionados para aplicar a abreviação no array de resultado
     for (final index in wordsToAbbreviate) {
+      // Substitui o token pelo resultado de abbreviateWord
       result[index] = abbreviateWord(result[index]);
     // Fecha o laço de aplicação
     }
 
     // Linha em branco separadora entre laço de aplicação e retorno concatenado
-    // Junta as palavras com espaço e retorna a frase abreviada
+    // Invocação de result.join(' '): concatena todos os tokens separados por espaço simples
     return result.join(' ');
   // Fecha o método abbreviate
   }
