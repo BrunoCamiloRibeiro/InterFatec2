@@ -104,6 +104,12 @@ class _AuthGateState extends State<AuthGate> {
       _currentUid = null;
       _cachedRole = null;
       _authService.clearRoleCache();
+      // Se o usuário foi desconectado forçadamente por perfil inválido ou permissão negada,
+      // preserva o estado de feedback para que a mensagem de erro não seja sobrescrita de relance.
+      if (_state is AuthGatePerfilInvalido ||
+          _state is AuthGatePermissaoNegada) {
+        return;
+      }
       setState(() {
         _state = const AuthGateDeslogado();
       });

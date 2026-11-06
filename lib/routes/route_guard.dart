@@ -65,7 +65,10 @@ class RouteGuard {
       UserRole.motorista => const Motorista(),
       UserRole.admin => AdminPlaceholderScreen(authService: service),
       UserRole.paciente => const Paciente(),
-      null => LoginScreen(authService: service),
+      null =>
+        service.currentUserId != null
+            ? AuthGate(authService: service)
+            : LoginScreen(authService: service),
     };
 
     return MaterialPageRoute(settings: settings, builder: (_) => destino);

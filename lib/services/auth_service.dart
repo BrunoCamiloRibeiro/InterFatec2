@@ -44,7 +44,11 @@ class FirebaseAuthService implements AuthService {
   final FirebaseFirestore? customFirestore;
   final Future<Map<String, dynamic>?> Function(String uid)? userDocFetcher;
   final Future<String?> Function(String cleanCpf)? cpfEmailResolver;
-  final Map<String, UserRole> _roleCache = {};
+
+  /// Cache compartilhado em memória dos perfis resolvidos por UID.
+  /// Sendo estático, instâncias criadas dinamicamente pelo RouteGuard ou widgets
+  /// compartilham o perfil autenticado na sessão sem redundância de requisições.
+  static final Map<String, UserRole> _roleCache = {};
 
   FirebaseAuthService({
     FirebaseAuth? auth,
