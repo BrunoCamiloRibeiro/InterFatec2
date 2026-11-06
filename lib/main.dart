@@ -4,7 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 
 import 'Outdated/administrativo.dart';
-import 'Outdated/login.dart';
+import 'screens/login_screen.dart';
 import 'paciente.dart';
 import 'Outdated/register.dart';
 import 'components/formulario_inicio_viagem.dart';
@@ -62,7 +62,7 @@ class MyApp extends StatelessWidget {
           ),
         ),
         // Telas antigas arquivadas em Outdated (mantidas nas rotas para consulta dos devs)
-        '/login': (context) => Login(),
+        '/login': (context) => LoginScreen(),
         '/register': (context) => Register(),
         '/administrativo': (context) => Administrativo(),
         '/paciente': (context) => Paciente(),
