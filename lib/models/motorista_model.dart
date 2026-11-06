@@ -47,24 +47,39 @@ class MotoristaModel {
     };
   }
 
+  static DateTime? _parsearData(dynamic valor) {
+    if (valor == null) return null;
+    if (valor is DateTime) return valor;
+    try {
+      return (valor as dynamic).toDate() as DateTime;
+    } catch (_) {}
+    try {
+      return DateTime.tryParse(valor.toString());
+    } catch (_) {}
+    return null;
+  }
+
   // Ler do Firebase
   factory MotoristaModel.fromMap(Map<String, dynamic> map, {String? docId}) {
+    final capRaw = map['capacidadeVeiculo'];
+    final int capInt = (capRaw is num)
+        ? capRaw.toInt()
+        : (int.tryParse(capRaw?.toString() ?? '') ?? 4);
+
     return MotoristaModel(
       id: docId ?? '',
-      nome: map['nome'] ?? '',
-      cpf: map['cpf'] ?? '',
-      telefone: map['telefone'] ?? '',
-      email: map['email'] ?? '',
-      cnh: map['cnh'] ?? '',
-      veiculoModelo: map['veiculoModelo'] ?? '',
-      veiculoPlaca: map['veiculoPlaca'] ?? '',
-      capacidadeVeiculo: map['capacidadeVeiculo'] ?? 4,
-      emViagem: map['emViagem'] ?? false,
-      role: map['role'] ?? 'motorista',
-      ativo: map['ativo'] ?? true,
-      criadoEm: map['criadoEm'] != null
-          ? DateTime.tryParse(map['criadoEm'].toString())
-          : null,
+      nome: (map['nome'] ?? '').toString(),
+      cpf: (map['cpf'] ?? '').toString(),
+      telefone: (map['telefone'] ?? '').toString(),
+      email: (map['email'] ?? '').toString(),
+      cnh: (map['cnh'] ?? '').toString(),
+      veiculoModelo: (map['veiculoModelo'] ?? '').toString(),
+      veiculoPlaca: (map['veiculoPlaca'] ?? '').toString(),
+      capacidadeVeiculo: capInt,
+      emViagem: map['emViagem'] == true || map['emViagem'] == 'true',
+      role: (map['role'] ?? 'motorista').toString(),
+      ativo: map['ativo'] == true || map['ativo'] == null || map['ativo'] == 'true',
+      criadoEm: _parsearData(map['criadoEm']),
     );
   }
 }

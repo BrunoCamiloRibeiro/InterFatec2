@@ -5,6 +5,7 @@ import 'firebase_options.dart';
 
 import 'Outdated/administrativo.dart';
 import 'Outdated/login.dart';
+import 'lista_pessoas.dart';
 import 'paciente.dart';
 import 'Outdated/register.dart';
 import 'components/formulario_inicio_viagem.dart';
@@ -66,6 +67,7 @@ class MyApp extends StatelessWidget {
         '/register': (context) => Register(),
         '/administrativo': (context) => Administrativo(),
         '/paciente': (context) => Paciente(),
+        '/lista-pessoas': (context) => ListaPessoas(),
       },
     );
   }

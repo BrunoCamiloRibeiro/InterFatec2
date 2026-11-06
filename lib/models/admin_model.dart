@@ -32,19 +32,29 @@ class AdminModel {
     };
   }
 
+  static DateTime? _parsearData(dynamic valor) {
+    if (valor == null) return null;
+    if (valor is DateTime) return valor;
+    try {
+      return (valor as dynamic).toDate() as DateTime;
+    } catch (_) {}
+    try {
+      return DateTime.tryParse(valor.toString());
+    } catch (_) {}
+    return null;
+  }
+
   // Ler do Firebase
   factory AdminModel.fromMap(Map<String, dynamic> map, {String? docId}) {
     return AdminModel(
       id: docId ?? '',
-      nome: map['nome'] ?? '',
-      cpf: map['cpf'] ?? '',
-      email: map['email'] ?? '',
-      telefone: map['telefone'] ?? '',
-      role: map['role'] ?? 'admin',
-      ativo: map['ativo'] ?? true,
-      criadoEm: map['criadoEm'] != null
-          ? DateTime.tryParse(map['criadoEm'].toString())
-          : null,
+      nome: (map['nome'] ?? '').toString(),
+      cpf: (map['cpf'] ?? '').toString(),
+      email: (map['email'] ?? '').toString(),
+      telefone: (map['telefone'] ?? '').toString(),
+      role: (map['role'] ?? 'admin').toString(),
+      ativo: map['ativo'] == true || map['ativo'] == null || map['ativo'] == 'true',
+      criadoEm: _parsearData(map['criadoEm']),
     );
   }
 }
