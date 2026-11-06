@@ -127,6 +127,7 @@ class CardVeiculo extends StatelessWidget {
                         child: DropdownButton<String>(
                           value: statusNormalizado,
                           isDense: true,
+                          menuWidth: 180,
                           borderRadius: BorderRadius.circular(16),
                           icon: Icon(
                             Icons.arrow_drop_down,
