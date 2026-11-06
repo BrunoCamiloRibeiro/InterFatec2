@@ -33,7 +33,7 @@ class MyApp extends StatelessWidget {
       initialRoute: '/',
       routes: {
         // Rota inicial exibindo a tela com o formulário de início de viagem
-        '/': (context) => const TelaInicioViagem(),
+        '/': (context) => const ListaPessoas(),
         '/inicio-viagem': (context) => const TelaInicioViagem(),
         // Rota da tela do motorista com a lista de passageiros
         '/motorista': (context) => const Motorista(),

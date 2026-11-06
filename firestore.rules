@@ -3,84 +3,11 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // =========================================================================
-    // FUNÇÕES AUXILIARES DE SEGURANÇA E AUTORIZAÇÃO (RBAC)
-    // =========================================================================
-
-    /// Verifica se a requisição provém de um usuário devidamente autenticado
-    function isAuthenticated() {
-      return request.auth != null && request.auth.uid != null;
-    }
-
-    /// Retorna os dados do documento do usuário autenticado na coleção 'usuarios'
-    function currentUserData() {
-      return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data;
-    }
-
-    /// Retorna o papel (role) do usuário autenticado no sistema
-    function currentUserRole() {
-      return isAuthenticated() && exists(/databases/$(database)/documents/usuarios/$(request.auth.uid))
-        ? currentUserData().role
-        : null;
-    }
-
-    /// Verifica se o usuário atual possui privilégios de administrador
-    function isAdmin() {
-      return currentUserRole() == 'admin' || currentUserRole() == 'administrador';
-    }
-
-    /// Verifica se o usuário atual é motorista credenciado
-    function isMotorista() {
-      return currentUserRole() == 'motorista';
-    }
-
-    /// Verifica se o documento sob consulta/edição pertence ao próprio usuário logado
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
-    }
-
-    // =========================================================================
-    // VALIDADORES DE ESQUEMA E DADOS (DEFESA EM PROFUNDIDADE)
-    // =========================================================================
-
-    /// Valida campos comuns e obrigatórios para qualquer tipo de pessoa
-    function isValidPessoaBase(dados) {
-      return dados.nome is string && dados.nome.size() >= 3 && dados.nome.size() <= 120
-          && dados.cpf is string && dados.cpf.size() >= 11 && dados.cpf.size() <= 14
-          && dados.telefone is string
-          && dados.role in ['paciente', 'motorista', 'admin', 'administrador']
-          && dados.ativo is bool;
-    }
-
-    /// Valida integridade e imutabilidade na criação (Create)
-    function isValidPessoaCreate(dados) {
-      return isValidPessoaBase(dados)
-          && dados.criadoEm == request.time;
-    }
-
-    /// Valida integridade e imutabilidade na atualização (Update)
-    function isValidPessoaUpdate(novoDado, dadoAtual) {
-      return isValidPessoaBase(novoDado)
-          // Impede alteração retroativa da data de cadastro
-          && novoDado.criadoEm == dadoAtual.criadoEm
-          // Atualiza a marca temporal de modificação com o relógio do servidor
-          && novoDado.atualizadoEm == request.time
-          // Apenas administradores podem alterar o papel de uma pessoa
-          && (novoDado.role == dadoAtual.role || isAdmin());
-    }
-
-    // =========================================================================
     // COLEÇÃO: USUARIOS (PESSOAS: PACIENTES, MOTORISTAS, ADMINS)
     // =========================================================================
     match /usuarios/{userId} {
-      
-      // LEITURA:
-      // Permite leitura para alimentar as interfaces de pacientes, motoristas e administração
-      allow read: if true;
-
-      // CRIAÇÃO E ATUALIZAÇÃO:
-      // Permite cadastros e atualizações de dados operacionais
-      allow create: if true;
-      allow update: if true;
+      // Permite leitura e atualização para o funcionamento do app sem login forçado
+      allow read, create, update: if true;
 
       // EXCLUSÃO FÍSICA: TERMINANTEMENTE PROIBIDA (LGPD & AUDITORIA SUS)
       // Todo desligamento de registro deve ser estritamente lógico através de `ativo: false`.
