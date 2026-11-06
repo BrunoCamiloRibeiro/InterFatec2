@@ -5,20 +5,60 @@
 # IDEs (https://dart.dev/tools#ides-and-editors). The analyzer can also be
 # invoked from the command line by running `flutter analyze`.
 
+# ============================================================================
+# ARQUIVO: analysis_options.yaml
+# ----------------------------------------------------------------------------
+# O QUE FAZ:
+# Arquivo central de configuração da ferramenta de análise estática de código
+# Dart (Dart Analyzer) e do linter do ecossistema Flutter. Define quais pacotes
+# de regras são herdados (package:flutter_lints/flutter.yaml), quais diretórios
+# são excluídos da análise (build, plataformas nativas android/ios/web/etc.) e
+# quais regras específicas de linting são ativadas ou desativadas.
+#
+# PAPEL NA ARQUITETURA (CAMADA):
+# Configuração de Infraestrutura e Governança de Código (raiz do projeto).
+#
+# ONDE É USADO:
+# - Ferramenta CLI `flutter analyze` e `dart analyze`.
+# - Extensões de IDE (VS Code Dart/Flutter, Android Studio, IntelliJ).
+# - Pipelines de Integração Contínua (CI).
+#
+# DE ONDE RECEBE DADOS:
+# - package:flutter_lints/flutter.yaml (regras padrão recomendadas).
+#
+# O QUE EXPORTA / EXPÕE:
+# - Diretivas de análise e severidade de linters para o compilador e IDEs.
+#
+# ORIGEM HISTÓRICA:
+# Scaffold inicial gerado pelo Flutter (commit e34c23d), ajustado pela equipe
+# no commit 22b8657 para flexibilizar regras de construtores const.
+# ============================================================================
+
 # The following line activates a set of recommended lints for Flutter apps,
 # packages, and plugins designed to encourage good coding practices.
+# Herda o conjunto de regras e boas práticas recomendado pelo time do Flutter
 include: package:flutter_lints/flutter.yaml
 
+# Seção de configuração do analisador estático Dart
 analyzer:
+  # Diretórios e caminhos excluídos da análise estática para evitar ruídos de código gerado
   exclude:
+    # Exclui artefatos compilados de build
     - build/**
+    # Exclui código nativo e configurações do Android
     - android/**
+    # Exclui código nativo e pods do iOS
     - ios/**
+    # Exclui código hospedeiro da web
     - web/**
+    # Exclui código nativo do Windows
     - windows/**
+    # Exclui código nativo do macOS
     - macos/**
+    # Exclui código nativo do Linux
     - linux/**
 
+# Seção de regras de linting específicas do projeto
 linter:
   # The lint rules applied to this project can be customized in the
   # section below to disable rules from the `package:flutter_lints/flutter.yaml`
@@ -30,10 +70,14 @@ linter:
   # or a specific dart file by using the `// ignore: name_of_lint` and
   # `// ignore_for_file: name_of_lint` syntax on the line or in the file
   # producing the lint.
+  # Mapeamento de regras customizadas
   rules:
     # o professor não usa const então ignora tudo
+    # Desativa exigência de construtores const em instâncias imutáveis
     prefer_const_constructors: false
+    # Desativa exigência de const em coleções e literais imutáveis
     prefer_const_literals_to_create_immutables: false
+    # Desativa exigência de construtores const em classes imutáveis
     prefer_const_constructors_in_immutables: false
     # avoid_print: false  # Uncomment to disable the `avoid_print` rule
     # prefer_single_quotes: true  # Uncomment to enable the `prefer_single_quotes` rule
