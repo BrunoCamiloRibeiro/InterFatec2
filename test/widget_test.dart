@@ -1,15 +1,62 @@
+// ============================================================================
+// ARQUIVO: test/widget_test.dart
+// ----------------------------------------------------------------------------
+// O QUE FAZ:
+// Suíte principal de testes de widgets do projeto TransSaúde. Testa:
+// - Renderização inicial básica das telas legadas do protótipo
+//   (Paciente, Login, Register, Administrativo).
+// - Renderização da tela de início de viagem (TelaInicioViagem) com seus campos
+//   e botão de início.
+// - Fluxo de navegação: seleção de veículo no dropdown e transição para a tela
+//   do motorista com o veículo selecionado.
+// - Renderização da tela do motorista com viagem ativa em andamento e abertura
+//   do diálogo modal do formulário de encerramento da viagem.
+//
+// PAPEL NA ARQUITETURA (CAMADA):
+// Camada de Testes Automatizados de Interface / Widgets (test/widget_test.dart).
+//
+// ONDE É USADO:
+// Executado pelo executor oficial de testes do Flutter (`flutter test`).
+//
+// DE ONDE RECEBE DADOS:
+// - Mocks de VeiculoModel e ViagemModel criados inline nos testes.
+//
+// O QUE EXPORTA / EXPÕE:
+// - void main(): Ponto de entrada da suíte de testes.
+//
+// ORIGEM HISTÓRICA:
+// Arquivo originado do scaffold do Flutter (commit e34c23d) e evoluído pela equipe
+// para cobrir os fluxos do motorista e início de viagem (commit 8d73cce).
+//
+// DEPENDÊNCIAS EXTERNAS E EFEITOS COLATERAIS:
+// - package:flutter/material.dart
+// - package:flutter_test/flutter_test.dart
+// - Sem efeitos colaterais externos.
+// ============================================================================
+// Importa a biblioteca de componentes visuais Material Design do Flutter
 import 'package:flutter/material.dart';
+// Importa o framework oficial de testes do Flutter
 import 'package:flutter_test/flutter_test.dart';
+// Importa a tela administrativa legada
 import 'package:trans_saude/Outdated/administrativo.dart';
+// Importa a tela de login legada
 import 'package:trans_saude/Outdated/login.dart';
+// Importa a tela de paciente legada
 import 'package:trans_saude/Outdated/paciente.dart';
+// Importa a tela de registro legada
 import 'package:trans_saude/Outdated/register.dart';
+// Importa o componente e tela de início de viagem
 import 'package:trans_saude/components/formulario_inicio_viagem.dart';
+// Importa o modelo de dados representativo de veículos
 import 'package:trans_saude/models/veiculo_model.dart';
+// Importa o modelo de dados representativo de viagens
 import 'package:trans_saude/models/viagem_model.dart';
+// Importa a tela principal do motorista
 import 'package:trans_saude/motorista.dart';
 
+// Ponto de entrada da suíte principal de testes de widgets
 void main() {
+  // Teste de carregamento da tela de paciente legada
   testWidgets('Tela do paciente carrega corretamente', (
     WidgetTester tester,
   ) async {
@@ -17,6 +64,7 @@ void main() {
     expect(find.text('Painel Paciente'), findsOneWidget);
   });
 
+  // Teste de carregamento da tela de login legada
   testWidgets('Tela de login carrega com dropdown e botões', (
     WidgetTester tester,
   ) async {
@@ -27,6 +75,7 @@ void main() {
     expect(find.text('Admin'), findsOneWidget);
   });
 
+  // Teste de carregamento da tela de registro legada
   testWidgets('Tela de registro carrega com campos e botão entrar', (
     WidgetTester tester,
   ) async {
@@ -37,6 +86,7 @@ void main() {
     expect(find.text('Entrar'), findsOneWidget);
   });
 
+  // Teste de carregamento da tela administrativa legada
   testWidgets('Tela administrativo carrega cards e botões', (
     WidgetTester tester,
   ) async {
@@ -47,6 +97,7 @@ void main() {
     expect(find.text('Salvar Paciente'), findsOneWidget);
   });
 
+  // Teste de carregamento da tela inicial de início de viagem
   testWidgets(
     'Tela de início de viagem (inicial) carrega com campos e botão iniciar',
     (WidgetTester tester) async {
@@ -60,6 +111,7 @@ void main() {
     },
   );
 
+  // Teste do fluxo de transição: selecionar veículo e iniciar viagem
   testWidgets(
     'Ao iniciar viagem na tela inicial, navega para a tela do motorista',
     (WidgetTester tester) async {
@@ -91,21 +143,25 @@ void main() {
       await tester.pumpAndSettle();
 
       // Abre o menu dropdown e seleciona o veículo informado
+      // Abre o menu suspenso de veículos
       await tester.tap(find.byType(DropdownButtonFormField<VeiculoModel>));
       await tester.pumpAndSettle();
       await tester.tap(find.textContaining('BRA-2E19').last);
       await tester.pumpAndSettle();
 
       // Clica no botão para iniciar a viagem
+      // Inicia a viagem
       await tester.tap(find.byKey(const Key('botaoIniciarViagem')));
       await tester.pumpAndSettle();
 
       // Verifica a renderização da tela de passageiros e da identificação do veículo
+      // Valida que navegou para a tela de motorista exibindo a placa
       expect(find.text('Lista de Passageiros'), findsOneWidget);
       expect(find.textContaining('BRA-2E19'), findsOneWidget);
     },
   );
 
+  // Teste da tela de motorista com viagem ativa e abertura do formulário de encerramento
   testWidgets(
     'Tela motorista com viagem ativa abre lista de passageiros e popup do formulario de encerramento',
     (WidgetTester tester) async {
