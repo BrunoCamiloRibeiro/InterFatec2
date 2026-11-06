@@ -5,6 +5,7 @@ class CardVeiculo extends StatelessWidget {
   final VoidCallback? onEditar;
   final VoidCallback? onDetalhes;
   final ValueChanged<String>? onStatusChanged;
+  final ValueChanged<String>? onTagSelecionada;
 
   const CardVeiculo({
     super.key,
@@ -12,6 +13,7 @@ class CardVeiculo extends StatelessWidget {
     this.onEditar,
     this.onDetalhes,
     this.onStatusChanged,
+    this.onTagSelecionada,
   });
 
   @override
@@ -111,20 +113,22 @@ class CardVeiculo extends StatelessWidget {
                   ],
                 ),
 
-                // STATUS INDICATOR COM DROPDOWN FUNCIONAL MANTENDO O MESMO ESTILO
+                // STATUS INDICATOR COM ÁREA INTEIRA CLICÁVEL
                 Column(
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 6,
-                      ),
                       decoration: BoxDecoration(
                         color: corBase.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(30),
                       ),
+                      clipBehavior: Clip.antiAlias, // Garante que o splash cubra a pílula toda
                       child: DropdownButtonHideUnderline(
                         child: DropdownButton<String>(
+                          // O padding fica diretamente no DropdownButton para tornar a área toda clicável
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 6,
+                          ),
                           value: statusNormalizado,
                           isDense: true,
                           menuWidth: 180,
@@ -337,7 +341,7 @@ class CardVeiculo extends StatelessWidget {
               ],
             ),
 
-            // TAGS / EXTRAS DO VEÍCULO
+            // TAGS / EXTRAS DO VEÍCULO (CLICÁVEIS PARA FILTRAR)
             Wrap(
               alignment: WrapAlignment.start,
               spacing: 8,
@@ -345,7 +349,11 @@ class CardVeiculo extends StatelessWidget {
               children: [
                 if (possuiAC)
                   TextButton.icon(
-                    onPressed: () {},
+                    onPressed: () {
+                      if (onTagSelecionada != null) {
+                        onTagSelecionada!('ac');
+                      }
+                    },
                     icon: const Icon(Icons.ac_unit_outlined, size: 16),
                     label: const Text(
                       'Ar-condicionado',
@@ -366,7 +374,11 @@ class CardVeiculo extends StatelessWidget {
                   ),
                 if (possuiPreferencial)
                   TextButton.icon(
-                    onPressed: () {},
+                    onPressed: () {
+                      if (onTagSelecionada != null) {
+                        onTagSelecionada!('preferencial');
+                      }
+                    },
                     icon: const Icon(Icons.accessible_outlined, size: 16),
                     label: const Text(
                       'Acesso Preferencial',
