@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'components/card_veiculo.dart';
 import 'components/footer_veiculos.dart';
 import 'components/formulario_novo_veiculo.dart';
+import 'components/modal_filtros_veiculo.dart';
 import 'detalhes_veiculo.dart';
 
 class Veiculos extends StatefulWidget {
@@ -17,12 +18,19 @@ class Veiculos extends StatefulWidget {
 class _VeiculosState extends State<Veiculos> {
   late Future<List<dynamic>> _veiculosFuture;
   List<Map<String, dynamic>> _veiculos = [];
-  String _filtroSelecionado = 'todos';
+  final TextEditingController _buscaController = TextEditingController();
+  FiltroVeiculos _filtro = FiltroVeiculos();
 
   @override
   void initState() {
     super.initState();
     _veiculosFuture = carregarVeiculos();
+  }
+
+  @override
+  void dispose() {
+    _buscaController.dispose();
+    super.dispose();
   }
 
   Future<List<dynamic>> carregarVeiculos() async {
@@ -154,6 +162,23 @@ class _VeiculosState extends State<Veiculos> {
     );
   }
 
+  // Abertura do Modal Bottom Sheet de Filtros (Padrão mobile clássico)
+  void _abrirModalFiltros() async {
+    final novoFiltro = await showModalBottomSheet<FiltroVeiculos>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => ModalFiltrosVeiculo(filtroAtual: _filtro),
+    );
+
+    if (novoFiltro != null) {
+      setState(() {
+        _filtro = novoFiltro;
+      });
+    }
+  }
+
   Widget _construirCardVeiculo(Map<String, dynamic> veiculo) {
     return CardVeiculo(
       veiculo: veiculo,
@@ -162,7 +187,11 @@ class _VeiculosState extends State<Veiculos> {
       onStatusChanged: (novoStatus) => _alterarStatusVeiculo(veiculo, novoStatus),
       onTagSelecionada: (tag) {
         setState(() {
-          _filtroSelecionado = tag;
+          if (tag == 'ac') {
+            _filtro.possuiAC = true;
+          } else if (tag == 'preferencial') {
+            _filtro.possuiPreferencial = true;
+          }
         });
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
@@ -171,62 +200,12 @@ class _VeiculosState extends State<Veiculos> {
             backgroundColor: Colors.blueGrey[900],
             content: Text(
               tag == 'ac'
-                  ? 'Filtro aplicado: Ar-condicionado'
+                  ? 'Filtro aplicado: Com Ar-condicionado'
                   : 'Filtro aplicado: Acesso Preferencial',
             ),
           ),
         );
       },
-    );
-  }
-
-  Widget _construirChipFiltro({
-    required String id,
-    required String label,
-    required IconData icone,
-    Color? corIcone,
-  }) {
-    final bool selecionado = _filtroSelecionado == id;
-
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(20),
-        onTap: () {
-          setState(() {
-            _filtroSelecionado = id;
-          });
-        },
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          decoration: BoxDecoration(
-            color: selecionado ? Colors.blueGrey[900] : Colors.grey[100],
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: selecionado ? Colors.blueGrey[900]! : Colors.grey.shade300,
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icone,
-                size: 14,
-                color: selecionado ? Colors.white : (corIcone ?? Colors.grey[700]),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: selecionado ? Colors.white : Colors.grey[800],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 
@@ -249,27 +228,55 @@ class _VeiculosState extends State<Veiculos> {
               return const Center(child: CircularProgressIndicator());
             }
 
-            // APLICAÇÃO DOS FILTROS
+            // APLICAÇÃO DOS FILTROS (Busca por texto + Critérios do Modal)
+            final query = _buscaController.text.trim().toLowerCase();
+
             final veiculosFiltrados = _veiculos.where((v) {
-              if (_filtroSelecionado == 'todos') return true;
-              if (_filtroSelecionado == 'disponivel') return v['status'] == 'disponivel';
-              if (_filtroSelecionado == 'emViagem') {
-                return v['status'] == 'emViagem' || v['status'] == 'emUso';
+              // 1. Filtro de Busca por Texto
+              if (query.isNotEmpty) {
+                final placa = (v['placa'] ?? '').toString().toLowerCase();
+                final modelo = (v['modelo'] ?? '').toString().toLowerCase();
+                final marca = (v['marca'] ?? '').toString().toLowerCase();
+                final match = placa.contains(query) || modelo.contains(query) || marca.contains(query);
+                if (!match) return false;
               }
-              if (_filtroSelecionado == 'emManutencao') return v['status'] == 'emManutencao';
-              if (_filtroSelecionado == 'inativo') return v['status'] == 'inativo';
-              if (_filtroSelecionado == 'ac') return v['possuiAC'] == true;
-              if (_filtroSelecionado == 'preferencial') return v['possuiPreferencial'] == true;
-              if (_filtroSelecionado == 'van') {
-                return (v['tipo'] ?? '').toString().toLowerCase() == 'van';
+
+              // 2. Filtro de Status
+              if (_filtro.status != 'todos') {
+                final status = (v['status'] ?? '').toString();
+                if (_filtro.status == 'emViagem') {
+                  if (status != 'emViagem' && status != 'emUso') return false;
+                } else if (status != _filtro.status) {
+                  return false;
+                }
               }
-              if (_filtroSelecionado == 'ambulancia') {
-                return (v['tipo'] ?? '').toString().toLowerCase() == 'ambulancia';
+
+              // 3. Filtro de Tipo de Veículo
+              if (_filtro.tipo != 'todos') {
+                final tipo = (v['tipo'] ?? '').toString().toLowerCase();
+                if (tipo != _filtro.tipo) return false;
               }
+
+              // 4. Filtro de Opcionais
+              if (_filtro.possuiAC && v['possuiAC'] != true) return false;
+              if (_filtro.possuiPreferencial && v['possuiPreferencial'] != true) return false;
+
+              // 5. Filtro de Capacidade de Assentos
+              if (_filtro.faixaAssentos != 'todos') {
+                final assentos = int.tryParse(v['qtdAssentos']?.toString() ?? '') ?? 0;
+                if (_filtro.faixaAssentos == 'ate_5' && assentos > 5) return false;
+                if (_filtro.faixaAssentos == '6_a_15' && (assentos < 6 || assentos > 15)) {
+                  return false;
+                }
+                if (_filtro.faixaAssentos == 'mais_15' && assentos <= 15) return false;
+              }
+
               return true;
             }).toList();
 
-            // Separação de ativos vs pendentes quando filtro é 'todos'
+            final bool semFiltrosAtivos = !_filtro.temFiltrosAtivos && query.isEmpty;
+
+            // Separação de ativos vs pendentes quando não há filtros aplicados
             final veiculosAtivos = veiculosFiltrados.where((v) {
               final status = (v['status'] ?? '').toString();
               return status == 'disponivel' || status == 'emViagem' || status == 'emUso';
@@ -283,10 +290,123 @@ class _VeiculosState extends State<Veiculos> {
             return ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                // BOTÃO NOVO VEÍCULO NO TOPO (Estilo original 100% restaurado)
+                // PADRÃO VISUAL: BARRA DE PESQUISA + BOTÃO DE FILTROS MODAL AO LADO
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
                   children: [
+                    // CAMPO DE BUSCA
+                    Expanded(
+                      child: TextField(
+                        controller: _buscaController,
+                        onChanged: (_) => setState(() {}),
+                        decoration: InputDecoration(
+                          hintText: 'Buscar por placa, modelo ou marca...',
+                          hintStyle: TextStyle(color: Colors.grey[500], fontSize: 14),
+                          prefixIcon: Icon(Icons.search, size: 20, color: Colors.grey[700]),
+                          suffixIcon: _buscaController.text.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear, size: 18),
+                                  onPressed: () {
+                                    _buscaController.clear();
+                                    setState(() {});
+                                  },
+                                )
+                              : null,
+                          filled: true,
+                          fillColor: Colors.grey[100],
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 12,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: BorderSide(color: Colors.grey.shade300),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: BorderSide(color: Colors.grey.shade300),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: BorderSide(color: Colors.green.shade700, width: 2),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+
+                    // PEQUENO BOTÃO DE FILTRO COM BADGE INDICADOR
+                    Badge(
+                      isLabelVisible: _filtro.temFiltrosAtivos,
+                      label: Text(
+                        '${_filtro.quantidadeFiltrosAtivos}',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
+                      ),
+                      backgroundColor: Colors.green[700],
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(10),
+                        onTap: _abrirModalFiltros,
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: _filtro.temFiltrosAtivos
+                                ? Colors.green.withValues(alpha: 0.15)
+                                : Colors.grey[100],
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: _filtro.temFiltrosAtivos
+                                  ? Colors.green.shade700
+                                  : Colors.grey.shade300,
+                            ),
+                          ),
+                          child: Icon(
+                            Icons.tune_outlined,
+                            size: 22,
+                            color: _filtro.temFiltrosAtivos
+                                ? Colors.green.shade800
+                                : Colors.grey[800],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                // LINHA COM O BOTÃO NOVO VEÍCULO (Estilo original 100% preservado)
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // Indicador de filtros ativos caso existam
+                    if (_filtro.temFiltrosAtivos || query.isNotEmpty)
+                      Row(
+                        children: [
+                          Text(
+                            '${veiculosFiltrados.length} resultado(s)',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.grey[700],
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          TextButton(
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                            ),
+                            onPressed: () {
+                              _buscaController.clear();
+                              setState(() {
+                                _filtro.limpar();
+                              });
+                            },
+                            child: const Text('Limpar'),
+                          ),
+                        ],
+                      )
+                    else
+                      const SizedBox.shrink(),
+
+                    // BOTÃO NOVO VEÍCULO (Preservado exatamente com padding vertical 20)
                     ElevatedButton.icon(
                       onPressed: _abrirFormularioVeiculo,
                       icon: const Icon(Icons.add_outlined),
@@ -308,71 +428,10 @@ class _VeiculosState extends State<Veiculos> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 10),
 
-                // BARRA HORIZONTAL DE FILTROS (Chips de filtro)
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      _construirChipFiltro(
-                        id: 'todos',
-                        label: 'Todos (${_veiculos.length})',
-                        icone: Icons.apps_outlined,
-                      ),
-                      _construirChipFiltro(
-                        id: 'disponivel',
-                        label: 'Disponíveis',
-                        icone: Icons.circle,
-                        corIcone: Colors.green,
-                      ),
-                      _construirChipFiltro(
-                        id: 'emViagem',
-                        label: 'Em Viagem',
-                        icone: Icons.circle,
-                        corIcone: Colors.blue,
-                      ),
-                      _construirChipFiltro(
-                        id: 'emManutencao',
-                        label: 'Em Manutenção',
-                        icone: Icons.circle,
-                        corIcone: Colors.orange,
-                      ),
-                      _construirChipFiltro(
-                        id: 'inativo',
-                        label: 'Inativos',
-                        icone: Icons.circle,
-                        corIcone: Colors.grey,
-                      ),
-                      _construirChipFiltro(
-                        id: 'ac',
-                        label: 'Ar-condicionado',
-                        icone: Icons.ac_unit_outlined,
-                        corIcone: Colors.blue,
-                      ),
-                      _construirChipFiltro(
-                        id: 'preferencial',
-                        label: 'Acesso Preferencial',
-                        icone: Icons.accessible_outlined,
-                        corIcone: Colors.purple,
-                      ),
-                      _construirChipFiltro(
-                        id: 'van',
-                        label: 'Vans',
-                        icone: Icons.airport_shuttle_outlined,
-                      ),
-                      _construirChipFiltro(
-                        id: 'ambulancia',
-                        label: 'Ambulâncias',
-                        icone: Icons.emergency_outlined,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                // QUANDO O FILTRO É 'TODOS': MANTÉM ATIVOS NO TOPO E EXPANSIONTILE EMBAIXO
-                if (_filtroSelecionado == 'todos') ...[
+                // QUANDO NÃO HÁ FILTROS: MANTÉM ATIVOS NO TOPO E EXPANSIONTILE EMBAIXO
+                if (semFiltrosAtivos) ...[
                   for (final veiculo in veiculosAtivos)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 10),
@@ -399,7 +458,7 @@ class _VeiculosState extends State<Veiculos> {
                       ),
                     ),
                 ] else ...[
-                  // QUANDO UM FILTRO ESPECÍFICO ESTÁ ATIVO
+                  // QUANDO HÁ FILTROS ATIVOS OU BUSCA
                   if (veiculosFiltrados.isEmpty)
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 40),
@@ -413,9 +472,9 @@ class _VeiculosState extends State<Veiculos> {
                             ),
                             const SizedBox(height: 12),
                             Text(
-                              'Nenhum veículo encontrado para este filtro.',
+                              'Nenhum veículo encontrado para os filtros selecionados.',
                               style: TextStyle(
-                                fontSize: 15,
+                                fontSize: 14,
                                 color: Colors.grey[600],
                                 fontWeight: FontWeight.w500,
                               ),
@@ -423,11 +482,12 @@ class _VeiculosState extends State<Veiculos> {
                             const SizedBox(height: 8),
                             TextButton(
                               onPressed: () {
+                                _buscaController.clear();
                                 setState(() {
-                                  _filtroSelecionado = 'todos';
+                                  _filtro.limpar();
                                 });
                               },
-                              child: const Text('Limpar Filtro'),
+                              child: const Text('Limpar Filtros e Busca'),
                             ),
                           ],
                         ),

@@ -22,12 +22,17 @@ class CardVeiculo extends StatelessWidget {
     final String marca = (veiculo['marca'] ?? 'Marca').toString();
     final String modelo = (veiculo['modelo'] ?? 'Modelo').toString();
     final dynamic ano = veiculo['ano'] ?? 'YYYY';
-    final String tipoRaw = (veiculo['tipo'] ?? 'carro').toString().toLowerCase();
+    final String tipoRaw = (veiculo['tipo'] ?? 'carro')
+        .toString()
+        .toLowerCase();
     final String statusRaw = (veiculo['status'] ?? 'disponivel').toString();
     final dynamic km = veiculo['quilometragemAtual'] ?? 0;
     final dynamic assentos = veiculo['qtdAssentos'] ?? 0;
     final String ultimoMotorista =
-        (veiculo['ultimoMotoristaId'] ?? veiculo['motoristaResponsavelId'] ?? 'Nome do Último Motorista').toString();
+        (veiculo['ultimoMotoristaId'] ??
+                veiculo['motoristaResponsavelId'] ??
+                'Nome do Último Motorista')
+            .toString();
     final bool possuiAC = veiculo['possuiAC'] == true;
     final bool possuiPreferencial = veiculo['possuiPreferencial'] == true;
     final String? observacoes = veiculo['observacoes']?.toString();
@@ -88,18 +93,11 @@ class CardVeiculo extends StatelessWidget {
                     ),
                     Text(
                       '$marca $modelo · $ano',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: Colors.black,
-                      ),
+                      style: const TextStyle(fontSize: 14, color: Colors.black),
                     ),
                     Row(
                       children: [
-                        Icon(
-                          iconeTipo,
-                          size: 20,
-                          color: Colors.grey[700],
-                        ),
+                        Icon(iconeTipo, size: 20, color: Colors.grey[700]),
                         const SizedBox(width: 5),
                         Text(
                           labelTipo,
@@ -136,11 +134,7 @@ class CardVeiculo extends StatelessWidget {
                           icon: Icon(
                             Icons.arrow_drop_down,
                             size: 20,
-                            color: Color.lerp(
-                              corBase,
-                              Colors.black,
-                              0.5,
-                            ),
+                            color: Color.lerp(corBase, Colors.black, 0.5),
                           ),
                           selectedItemBuilder: (BuildContext context) {
                             return statusOpcoes.map((op) {
@@ -183,21 +177,13 @@ class CardVeiculo extends StatelessWidget {
                                   Icon(
                                     Icons.circle,
                                     size: 10,
-                                    color: Color.lerp(
-                                      cor,
-                                      Colors.black,
-                                      0.5,
-                                    ),
+                                    color: Color.lerp(cor, Colors.black, 0.5),
                                   ),
                                   const SizedBox(width: 8),
                                   Text(
                                     op['label'] as String,
                                     style: TextStyle(
-                                      color: Color.lerp(
-                                        cor,
-                                        Colors.black,
-                                        0.5,
-                                      ),
+                                      color: Color.lerp(cor, Colors.black, 0.5),
                                       fontSize: 14,
                                       fontWeight: FontWeight.w600,
                                     ),
@@ -255,9 +241,7 @@ class CardVeiculo extends StatelessWidget {
                                 ),
                                 Text(
                                   '$km km',
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                  ),
+                                  style: const TextStyle(fontSize: 14),
                                 ),
                               ],
                             ),
@@ -289,9 +273,7 @@ class CardVeiculo extends StatelessWidget {
                                 ),
                                 Text(
                                   '$assentos',
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                  ),
+                                  style: const TextStyle(fontSize: 14),
                                 ),
                               ],
                             ),
@@ -326,9 +308,7 @@ class CardVeiculo extends StatelessWidget {
                                 ),
                                 Text(
                                   ultimoMotorista,
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                  ),
+                                  style: const TextStyle(fontSize: 14),
                                 ),
                               ],
                             ),
@@ -412,28 +392,36 @@ class CardVeiculo extends StatelessWidget {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(
-                      Icons.build_outlined,
-                      size: 24,
-                      color: Color.lerp(Colors.orange, Colors.brown, 0.5),
-                    ),
-                    const SizedBox(width: 16),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         spacing: 6,
                         children: [
-                          Text(
-                            'Observação',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: Color.lerp(
-                                Colors.orange,
-                                Colors.brown,
-                                0.5,
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.help_outline_outlined,
+                                size: 20,
+                                color: Color.lerp(
+                                  Colors.orange,
+                                  Colors.brown,
+                                  0.5,
+                                ),
                               ),
-                            ),
+                              const SizedBox(width: 5),
+                              Text(
+                                'Observação',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color.lerp(
+                                    Colors.orange,
+                                    Colors.brown,
+                                    0.5,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                           Text(
                             observacoes,
@@ -481,11 +469,7 @@ class CardVeiculo extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
-                            color: Color.lerp(
-                              Colors.grey,
-                              Colors.black,
-                              0.5,
-                            ),
+                            color: Color.lerp(Colors.grey, Colors.black, 0.5),
                           ),
                         ),
                       ],
@@ -514,11 +498,7 @@ class CardVeiculo extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
-                            color: Color.lerp(
-                              Colors.grey,
-                              Colors.black,
-                              0.5,
-                            ),
+                            color: Color.lerp(Colors.grey, Colors.black, 0.5),
                           ),
                         ),
                         const SizedBox(width: 10),
