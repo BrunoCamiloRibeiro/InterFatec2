@@ -2,39 +2,39 @@
 // CABEÇALHO DE DOCUMENTAÇÃO DE ARQUIVO
 // ============================================================================
 // Arquivo: lib/screens/login_screen.dart
-// Camada: Apresentação e Telas (Screens)
+// Camada: Apresentação / Telas de Interface (Screens / UI)
 //
 // O QUE ESTE ARQUIVO FAZ:
-// Renderiza o formulário oficial de login e autenticação para motoristas e
-// administradores do sistema TransSaúde. Fornece máscara e validação de CPF
-// (formato 000.000.000-00), campo de senha com alternância de visibilidade,
-// tratamento de acessibilidade semântica (Semantics, labels e botões de toque >= 48dp),
-// validação de preenchimento, submissão assíncrona contra o AuthService e
-// exibição de mensagens amigáveis em banner/SnackBar com redirecionamento para
-// as rotas operacionais (/motorista ou /administrativo).
+// Implementa a tela oficial de autenticação ('LoginScreen') para motoristas e
+// administradores do sistema TransSaúde, fornecendo um formatador de máscara
+// de CPF em tempo real ('CpfInputFormatter' no formato 000.000.000-00), campos
+// acessíveis com Semantics, alternância de visibilidade de senha, validação
+// síncrona de 11 dígitos numéricos, indicadores de carregamento assíncrono
+// e tratamento de erros via banners visuais e SnackBars do Material Design.
 //
 // PARA QUE SERVE NO PROJETO:
-// É a interface primária de entrada dos servidores públicos e condutores do
-// município, garantindo acesso seguro por credenciais funcionais (CPF e senha).
+// É a porta de entrada para usuários operacionais do sistema municipal da
+// issue #29: permite acesso seguro por CPF e senha, aciona a autenticação no
+// Firebase através do 'AuthService' e redireciona automaticamente para as
+// rotas protegidas correspondentes ('/motorista' ou '/administrativo').
 //
 // ONDE É USADO NO PROJETO:
-// - lib/main.dart (registrado na tabela de rotas estáticas '/login')
+// - lib/routes/route_guard.dart (renderizado em redirecionamentos deslogados)
 // - lib/screens/auth_gate.dart (renderizado quando o estado é AuthGateDeslogado)
-// - lib/routes/route_guard.dart (redirecionamento quando o usuário não possui sessão)
-// - test/screens/login_screen_test.dart (testes de widget e validação de login)
-// - test/screens/auth_gate_test.dart (testes de transição de tela do AuthGate)
+// - test/screens/login_screen_test.dart (testes de renderização e validação)
+// - test/screens/auth_gate_test.dart (testes de integração da tela de entrada)
 //
 // DE ONDE RECEBE DADOS:
-// - AuthService (via FirebaseAuthService padrão ou mock injetado em testes)
-// - Textos digitados pelo usuário nos campos de CPF e Senha
+// Entradas de texto digitadas pelo usuário nos campos de CPF e Senha, e
+// injeção opcional do serviço 'AuthService' no construtor.
 //
 // O QUE EXPORTA / EXPÕE:
-// - class CpfInputFormatter extends TextInputFormatter
-// - class LoginScreen extends StatefulWidget
+// - class CpfInputFormatter extends TextInputFormatter: máscara de CPF
+// - class LoginScreen extends StatefulWidget: tela de autenticação
 //
 // ORIGEM HISTÓRICA:
-// Criado no commit f4fb4bb pela equipe na issue #28 (tela de login para motoristas
-// e administradores). Não provém de template automático.
+// Criado no commit 3645a3d pela equipe na issue #29 (tela de login para
+// motoristas e administrativo). Não provém de template automático.
 //
 // DEPENDÊNCIAS EXTERNAS E EFEITOS COLATERAIS:
 // Depende de 'package:flutter/material.dart' e 'package:flutter/services.dart'.
@@ -42,21 +42,28 @@
 // substitui a rota atual através de Navigator.pushReplacementNamed.
 // ============================================================================
 
-// Importa o framework Material Design do Flutter
+// ----------------------------------------------------------------------------
+// IMPORTAÇÃO DE BIBLIOTECAS E DEPENDÊNCIAS:
+// - material.dart: Framework visual, widgets, layout e estilos do Flutter.
+// - services.dart: Utilizado para TextInputFormatter, filtragem e controle de digitação.
+// - user_role.dart: Enum com os papéis do sistema para roteamento após login.
+// - auth_service.dart: Interface e serviços de autenticação.
+// ----------------------------------------------------------------------------
 import 'package:flutter/material.dart';
-// Importa o pacote de serviços do Flutter para TextInputFormatter e controle de digitação
 import 'package:flutter/services.dart';
 
-// Linha em branco separadora entre imports do framework e imports internos
-// Importa a enumeração UserRole para direcionamento após login bem-sucedido
 import '../models/user_role.dart';
-// Importa o contrato e serviços de autenticação
 import '../services/auth_service.dart';
 
-// Linha em branco separadora entre imports e CpfInputFormatter
-// Comentário original do autor mantido byte a byte:
+// Linha em branco separadora entre imports e a classe de máscara
+// ----------------------------------------------------------------------------
+// COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
 /// Formatador de máscara para entrada de CPF no formato 000.000.000-00
-// Declaração da classe formatadora de texto para aplicar a máscara do CPF
+// ----------------------------------------------------------------------------
+// DECLARAÇÃO DO FORMATADOR DE TEXTO: CpfInputFormatter
+// - O que a instrução faz: Intercepta a digitação e aplica automaticamente a pontuação de CPF.
+// - O que é o elemento: Formatador customizado que estende 'TextInputFormatter' do Flutter Services.
+// ----------------------------------------------------------------------------
 class CpfInputFormatter extends TextInputFormatter {
   // Sobrescreve o método formatEditUpdate para interceptar e formatar o texto digitado
   @override
@@ -103,9 +110,14 @@ class CpfInputFormatter extends TextInputFormatter {
 }
 
 // Linha em branco separadora entre CpfInputFormatter e LoginScreen
-// Comentário original do autor mantido byte a byte:
+// ----------------------------------------------------------------------------
+// COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
 /// Tela oficial de login para motoristas e administradores do TransSaúde
-// Declaração do widget StatefulWidget da tela de login
+// ----------------------------------------------------------------------------
+// DECLARAÇÃO DO WIDGET PRINCIPAL: LoginScreen
+// - O que a instrução faz: Declara o widget da tela de login do aplicativo.
+// - O que é o elemento: StatefulWidget para controle de formulário, animações e requisição assíncrona.
+// ----------------------------------------------------------------------------
 class LoginScreen extends StatefulWidget {
   // Instância do serviço de autenticação utilizada para login
   final AuthService authService;

@@ -2,35 +2,35 @@
 // CABEÇALHO DE DOCUMENTAÇÃO DE ARQUIVO
 // ============================================================================
 // Arquivo: lib/screens/admin_placeholder_screen.dart
-// Camada: Apresentação / Telas (Screens)
+// Camada: Apresentação / Telas de Interface (Screens / UI)
 //
 // O QUE ESTE ARQUIVO FAZ:
-// Renderiza a tela provisória (placeholder) do painel de controle administrativo
-// da Secretaria de Saúde de Poloni. Exibe layout responsivo e acessível
-// informando que o módulo administrativo completo está em desenvolvimento,
-// disponibilizando botões seguros de encerramento de sessão (logout) na barra
-// superior (AppBar) e no corpo do formulário, com redirecionamento para o login.
+// Renderiza a interface temporária do painel administrativo do sistema
+// TransSaúde, exibindo um aviso amigável de funcionalidade em desenvolvimento
+// com design profissional (paleta escura #0F172A) e fornecendo mecanismos de
+// logout seguro tanto na AppBar superior quanto no corpo do card central.
 //
 // PARA QUE SERVE NO PROJETO:
-// Garante que administradores autenticados sejam direcionados a uma interface
-// oficial e segura com identidade visual padronizada do TransSaúde, sem telas
-// em branco, permitindo o logout e validação de autenticação pelo RouteGuard.
+// Permite que usuários com perfil de Administrador autentiquem-se no sistema
+// e sejam direcionados para um destino legítimo sem encontrar telas em branco
+// ou erros de rota 404, enquanto os módulos avançados de gestão administrativa
+// (relatórios consolidados, frotas e escalas) estão em desenvolvimento.
 //
 // ONDE É USADO NO PROJETO:
-// - lib/routes/route_guard.dart (renderizado ao navegar para '/administrativo')
-// - lib/screens/auth_gate.dart (destino quando o perfil resolvido é UserRole.admin)
-// - test/screens/auth_gate_test.dart (testes de navegação do perfil administrativo)
+// - lib/routes/route_guard.dart (renderizado na rota '/administrativo')
+// - lib/screens/auth_gate.dart (direcionado quando o usuário autenticado é admin)
+// - test/screens/auth_gate_test.dart (testes de máquina de estados e logout)
 //
 // DE ONDE RECEBE DADOS:
-// - AuthService (via FirebaseAuthService padrão ou instância mockada em testes)
+// Recebe a dependência 'AuthService' via injeção opcional no construtor.
 //
 // O QUE EXPORTA / EXPÕE:
 // - class AdminPlaceholderScreen extends StatelessWidget
-//   * Construtor com parâmetro authService opcional
+//   * Construtor AdminPlaceholderScreen({super.key, AuthService? authService})
 //
 // ORIGEM HISTÓRICA:
-// Criado no commit 3645a3d pela equipe na issue #28 (roteamento por perfil).
-// Não provém de template automático.
+// Criado especificamente para a arquitetura de autenticação da PR #59/#60.
+// Não provém de template ou scaffold gerado automaticamente.
 //
 // DEPENDÊNCIAS EXTERNAS E EFEITOS COLATERAIS:
 // Depende de 'package:flutter/material.dart'.
@@ -38,45 +38,69 @@
 // ao deslogar o administrador através de Navigator.pushNamedAndRemoveUntil.
 // ============================================================================
 
-// Importa o pacote de widgets e design visual Material do Flutter
+// ----------------------------------------------------------------------------
+// IMPORTAÇÃO DE BIBLIOTECAS E DEPENDÊNCIAS:
+// - material.dart: Framework visual, widgets, layout e estilos do Flutter.
+// - auth_service.dart: Interface de autenticação para chamada de encerramento de sessão.
+// ----------------------------------------------------------------------------
 import 'package:flutter/material.dart';
 
-// Linha em branco separadora entre imports do framework e serviços do projeto
-// Importa o contrato e serviços de autenticação do sistema
 import '../services/auth_service.dart';
 
 // Linha em branco separadora entre imports e a classe da tela
-// Comentários originais do autor mantidos byte a byte:
+// ----------------------------------------------------------------------------
+// COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
 /// Tela provisória (placeholder) do painel administrativo
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
 /// Exibe aviso claro de funcionalidade em desenvolvimento e permite logout seguro
-// Declaração do widget StatelessWidget AdminPlaceholderScreen
+// ----------------------------------------------------------------------------
+// DECLARAÇÃO DO WIDGET PRINCIPAL: AdminPlaceholderScreen
+// - O que a instrução faz: Declara o widget imutável representativo da tela administrativa.
+// - O que é o elemento: Widget sem estado ('StatelessWidget') do framework Flutter.
+// - Papel no sistema: Fornece a visão de acolhimento e logout para contas administrativas.
+// ----------------------------------------------------------------------------
 class AdminPlaceholderScreen extends StatelessWidget {
-  // Instância do serviço de autenticação utilizada para deslogar
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: authService
+  // - O que é: Instância do serviço de autenticação utilizada para expirar a sessão.
+  // --------------------------------------------------------------------------
   final AuthService authService;
 
   // Linha em branco separadora entre atributo e construtor
 
-  // Construtor com parâmetro opcional authService para injeção de dependência em testes
+  // --------------------------------------------------------------------------
+  // CONSTRUTOR: AdminPlaceholderScreen
+  // - O que faz: Inicializa o widget permitindo injeção de dependência do serviço de autenticação.
+  // --------------------------------------------------------------------------
   AdminPlaceholderScreen({super.key, AuthService? authService})
-    // Inicializa authService com a instância repassada ou cria FirebaseAuthService padrão
+    // Inicializa authService com a instância fornecida ou utiliza FirebaseAuthService por padrão
     : authService = authService ?? FirebaseAuthService();
 
   // Linha em branco separadora entre construtor e método privado de logout
 
-  // Método assíncrono para efetuar logout e retornar à raiz de autenticação
+  // --------------------------------------------------------------------------
+  // MÉTODO ASSÍNCRONO PRIVADO: _logout
+  // - O que faz: Encerra a sessão ativa no Firebase e reseta a navegação para a tela inicial.
+  // - Parâmetro: 'context' (BuildContext) para verificação de montagem e acesso ao Navigator.
+  // --------------------------------------------------------------------------
   Future<void> _logout(BuildContext context) async {
-    // Executa a limpeza de sessão e cache no serviço de autenticação
+    // Executa o logout no serviço de autenticação
     await authService.logout();
-    // Verifica se o contexto ainda está montado na árvore antes de navegar
+    // Verifica se o contexto ainda está montado na árvore para evitar chamadas inválidas
     if (!context.mounted) return;
-    // Remove todas as rotas da pilha e redireciona para a rota raiz ('/')
+    // Remove todas as telas empilhadas e navega para a rota raiz ('/')
     Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
   // Fecha o método _logout
   }
 
   // Linha em branco separadora entre métodos e build
 
-  // Sobrescrita do método build para montagem da árvore de widgets da tela
+  // --------------------------------------------------------------------------
+  // SOBRESCRITA DO MÉTODO: build
+  // - O que faz: Constrói a árvore de widgets da tela com Scaffold, AppBar e Card centralizado.
+  // --------------------------------------------------------------------------
   @override
   // Constrói a estrutura visual da tela administrativa
   Widget build(BuildContext context) {
@@ -245,5 +269,6 @@ class AdminPlaceholderScreen extends StatelessWidget {
     );
   // Fecha o método build
   }
-// Fecha a classe AdminPlaceholderScreen
+
+// Fecha a declaração da classe AdminPlaceholderScreen
 }

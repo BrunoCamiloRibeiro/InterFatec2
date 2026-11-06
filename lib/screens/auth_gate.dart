@@ -2,36 +2,37 @@
 // CABEÇALHO DE DOCUMENTAÇÃO DE ARQUIVO
 // ============================================================================
 // Arquivo: lib/screens/auth_gate.dart
-// Camada: Apresentação e Telas (Screens)
+// Camada: Apresentação / Ponto de Entrada Reativo e Máquina de Estados
 //
 // O QUE ESTE ARQUIVO FAZ:
-// Implementa a porta de entrada reativa (AuthGate) e a máquina de estados finita
-// do fluxo de autenticação e autorização por perfil do TransSaúde.
-// Monitora a stream de estado da sessão do Firebase (authStateChanges), resolve o
-// papel (UserRole) do usuário no Firestore e direciona a visualização para:
-// 1. Splash de carregamento ('AuthGateCarregando');
-// 2. Tela de login ('AuthGateDeslogado');
-// 3. Destino operacional por perfil validado ('AuthGateAutenticado' -> Motorista, Admin ou Paciente);
-// 4. Cards de feedback acessíveis com retry ou retorno ao login para falhas de
-//    rede ('AuthGateErroTemporario'), perfil não cadastrado ('AuthGatePerfilInvalido')
-//    e acesso não autorizado ('AuthGatePermissaoNegada').
+// Implementa o portal de entrada do aplicativo ('AuthGate'), gerenciando uma
+// máquina de estados explícita ('AuthGateState') com classes seladas ('sealed class')
+// do Dart 3. Escuta a stream de autenticação do Firebase ('authStateChanges'),
+// resolve de forma resiliente o papel do usuário (UserRole), trata erros
+// transitórios de rede sem forçar logout, desconecta contas inválidas por
+// segurança e direciona reativamente para a tela correspondente:
+// - Motorista -> tela 'Motorista';
+// - Admin -> tela 'AdminPlaceholderScreen';
+// - Paciente -> tela 'Paciente';
+// - Deslogado -> tela 'LoginScreen'.
 //
 // PARA QUE SERVE NO PROJETO:
-// É o roteador reativo raiz do aplicativo, assegurando que nenhum usuário
-// visualize rotas protegidas sem autenticação válida e perfil verificado,
-// eliminando travamentos, flickering e estados intermediários inconsistentes.
+// Elimina condições de corrida no arranque da aplicação da issue #28: evita
+// 'flashes' de tela indevidos, garante que o usuário só veja o conteúdo do
+// seu perfil após confirmação dos claims de acesso e fornece feedback visual
+// claro com cartões de erro específicos e botão de reconexão/retry.
 //
 // ONDE É USADO NO PROJETO:
-// - lib/main.dart (widget associado à rota raiz '/' e tela inicial)
-// - lib/routes/route_guard.dart (fallback seguro de rota no MaterialApp)
-// - test/screens/auth_gate_test.dart (testes de máquina de estados da sessão)
+// - lib/main.dart (definido como destino inicial '/' do MaterialApp)
+// - lib/routes/route_guard.dart (utilizado como rota fallback segura)
+// - test/screens/auth_gate_test.dart (testes de máquina de estados e transições)
 //
 // DE ONDE RECEBE DADOS:
-// - AuthService (via FirebaseAuthService padrão ou mock injetado em testes)
-// - Parâmetros opcionais roleResolver e authStateStream para injeção de dependência
+// Stream de autenticação 'authStateChanges' e método 'resolveUserRole' providos
+// pelo 'AuthService' (ou injetados via parâmetros em cenários de teste).
 //
 // O QUE EXPORTA / EXPÕE:
-// - sealed class AuthGateState e subtipos:
+// - sealed class AuthGateState:
 //   * AuthGateCarregando
 //   * AuthGateDeslogado
 //   * AuthGateAutenticado
@@ -50,31 +51,38 @@
 // no dispose(), e chamada forçada de logout em caso de violação de segurança ou perfil inválido.
 // ============================================================================
 
-// Importa a biblioteca de fluxos assíncronos dart:async para manipulação de StreamSubscription
+// ----------------------------------------------------------------------------
+// IMPORTAÇÃO DE BIBLIOTECAS E DEPENDÊNCIAS:
+// - dart:async: Utilizada para manipular StreamSubscription e eventos assíncronos.
+// - material.dart: Framework visual, widgets, layout e estilos do Flutter.
+// - user_role.dart: Enum com os perfis de acesso do sistema.
+// - motorista.dart: Tela principal da operação do motorista.
+// - paciente.dart: Tela principal de acompanhamento do paciente.
+// - auth_service.dart: Interface e serviços de autenticação.
+// - admin_placeholder_screen.dart: Painel temporário do administrador.
+// - login_screen.dart: Tela de autenticação por CPF e senha.
+// ----------------------------------------------------------------------------
 import 'dart:async';
 
-// Linha em branco separadora entre imports do core e framework visual
-// Importa o framework visual e de componentes Material Design do Flutter
 import 'package:flutter/material.dart';
 
-// Linha em branco separadora entre framework e modelos/telas do projeto
-// Importa a enumeração UserRole para tratamento dos privilégios de acesso
 import '../models/user_role.dart';
-// Importa a tela do motorista para renderização quando autenticado como motorista
 import '../motorista.dart';
-// Importa a tela do paciente para renderização quando autenticado como paciente
 import '../paciente.dart';
-// Importa o contrato e serviço de autenticação
 import '../services/auth_service.dart';
-// Importa o placeholder do módulo administrativo para admins autenticados
 import 'admin_placeholder_screen.dart';
-// Importa a tela de login para usuários deslogados
 import 'login_screen.dart';
 
-// Linha em branco separadora entre imports e máquina de estados
-// Comentário original do autor mantido byte a byte:
+// Linha em branco separadora entre imports e a máquina de estados
+// ----------------------------------------------------------------------------
+// COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
 /// Máquina de estados explícita do fluxo de entrada do aplicativo
-// Declaração da classe selada AuthGateState representando o estado raiz
+// ----------------------------------------------------------------------------
+// DECLARAÇÃO DA CLASSE BASE SELADA: AuthGateState
+// - O que a instrução faz: Declara a raiz fechada da hierarquia de estados de autorização.
+// - O que é o elemento: Classe selada ('sealed class') do Dart 3.
+// - Papel no sistema: Habilita checagem de exaustividade em tempo de compilação em expressões switch.
+// ----------------------------------------------------------------------------
 sealed class AuthGateState {
   // Construtor constante da classe selada
   const AuthGateState();
@@ -82,9 +90,13 @@ sealed class AuthGateState {
 }
 
 // Linha em branco separadora entre classes de estados
-// Comentário original do autor mantido byte a byte:
+// ----------------------------------------------------------------------------
+// COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
 /// Estado inicial ou transitório de carregamento e resolução do perfil
-// Estado que representa verificação assíncrona ou carregamento em andamento
+// ----------------------------------------------------------------------------
+// ESTADO: AuthGateCarregando
+// - O que é: Subtipo imutável representando momento em que a sessão ou os dados do perfil estão sendo buscados.
+// ----------------------------------------------------------------------------
 class AuthGateCarregando extends AuthGateState {
   // Construtor constante de AuthGateCarregando
   const AuthGateCarregando();
@@ -92,9 +104,13 @@ class AuthGateCarregando extends AuthGateState {
 }
 
 // Linha em branco separadora entre classes de estados
-// Comentário original do autor mantido byte a byte:
+// ----------------------------------------------------------------------------
+// COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
 /// Estado em que não há usuário autenticado
-// Estado representativo de ausência de credenciais válidas
+// ----------------------------------------------------------------------------
+// ESTADO: AuthGateDeslogado
+// - O que é: Subtipo imutável indicando ausência de credenciais válidas.
+// ----------------------------------------------------------------------------
 class AuthGateDeslogado extends AuthGateState {
   // Mensagem opcional de feedback ao usuário deslogado
   final String? mensagem;
@@ -104,9 +120,13 @@ class AuthGateDeslogado extends AuthGateState {
 }
 
 // Linha em branco separadora entre classes de estados
-// Comentário original do autor mantido byte a byte:
+// ----------------------------------------------------------------------------
+// COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
 /// Estado em que o usuário está autenticado e seu perfil foi validado
-// Estado indicando sucesso na autenticação e confirmação de privilégio
+// ----------------------------------------------------------------------------
+// ESTADO: AuthGateAutenticado
+// - O que é: Subtipo imutável confirmando autenticação e autorização por perfil.
+// ----------------------------------------------------------------------------
 class AuthGateAutenticado extends AuthGateState {
   // Papel do usuário validado no banco de dados
   final UserRole role;
@@ -116,9 +136,13 @@ class AuthGateAutenticado extends AuthGateState {
 }
 
 // Linha em branco separadora entre classes de estados
-// Comentário original do autor mantido byte a byte:
+// ----------------------------------------------------------------------------
+// COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
 /// Estado de erro em que o usuário não possui documento ou possui role inválido
-// Estado indicando cadastro inexistente ou privilégio desconhecido
+// ----------------------------------------------------------------------------
+// ESTADO: AuthGatePerfilInvalido
+// - O que é: Subtipo imutável indicando conta sem permissão ou documento ausente no Firestore.
+// ----------------------------------------------------------------------------
 class AuthGatePerfilInvalido extends AuthGateState {
   // Mensagem explicativa do erro de perfil
   final String mensagem;
@@ -130,9 +154,13 @@ class AuthGatePerfilInvalido extends AuthGateState {
 }
 
 // Linha em branco separadora entre classes de estados
-// Comentário original do autor mantido byte a byte:
+// ----------------------------------------------------------------------------
+// COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
 /// Estado de falha transitória de comunicação com a rede
-// Estado indicando problema transitório de internet ou servidor
+// ----------------------------------------------------------------------------
+// ESTADO: AuthGateErroTemporario
+// - O que é: Subtipo imutável indicando falha de rede/timeout sem forçar logout.
+// ----------------------------------------------------------------------------
 class AuthGateErroTemporario extends AuthGateState {
   // Mensagem explicativa da falha de conexão
   final String mensagem;
@@ -144,9 +172,13 @@ class AuthGateErroTemporario extends AuthGateState {
 }
 
 // Linha em branco separadora entre classes de estados
-// Comentário original do autor mantido byte a byte:
+// ----------------------------------------------------------------------------
+// COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
 /// Estado de violação de regras de segurança (permission-denied)
-// Estado indicando falta de autorização de leitura no Firestore
+// ----------------------------------------------------------------------------
+// ESTADO: AuthGatePermissaoNegada
+// - O que é: Subtipo imutável indicando bloqueio por regras de segurança do Firestore.
+// ----------------------------------------------------------------------------
 class AuthGatePermissaoNegada extends AuthGateState {
   // Mensagem explicativa da violação de acesso
   final String mensagem;
@@ -158,9 +190,14 @@ class AuthGatePermissaoNegada extends AuthGateState {
 }
 
 // Linha em branco separadora entre estados e o widget AuthGate
-// Comentário original do autor mantido byte a byte:
+// ----------------------------------------------------------------------------
+// COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
 /// Gate reativo de autenticação e autorização por perfil de usuário
-// Declaração do widget StatefulWidget AuthGate
+// ----------------------------------------------------------------------------
+// DECLARAÇÃO DO WIDGET PRINCIPAL: AuthGate
+// - O que a instrução faz: Declara o widget reativo que decide a tela inicial com base no estado de login.
+// - O que é o elemento: StatefulWidget com injeção opcional de streams e resolvedores para testes.
+// ----------------------------------------------------------------------------
 class AuthGate extends StatefulWidget {
   // Serviço de autenticação opcional para injeção de dependência em testes
   final AuthService? authService;
@@ -262,9 +299,14 @@ class _AuthGateState extends State<AuthGate> {
       _cachedRole = null;
       // Purga o cache do serviço de autenticação
       _authService.clearRoleCache();
-      // Comentários originais do autor mantidos byte a byte:
+      // ----------------------------------------------------------------------
+      // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
       // Se o usuário foi desconectado forçadamente por perfil inválido ou permissão negada,
+      // ----------------------------------------------------------------------
+      // ----------------------------------------------------------------------
+      // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
       // preserva o estado de feedback para que a mensagem de erro não seja sobrescrita de relance.
+      // ----------------------------------------------------------------------
       // Preserva o card de feedback em caso de desconexão forçada por erro de segurança
       if (_state is AuthGatePerfilInvalido ||
           _state is AuthGatePermissaoNegada) {
@@ -281,8 +323,10 @@ class _AuthGateState extends State<AuthGate> {
     }
 
     // Linha em branco separadora entre deslogado e reaproveitamento de cache
-    // Comentário original do autor mantido byte a byte:
+    // ------------------------------------------------------------------------
+    // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
     // Se o mesmo UID já tem role resolvido em cache, mantém autenticado sem refetch
+    // ------------------------------------------------------------------------
     // Evita requisição repetida ao banco se o perfil do mesmo UID já estiver em memória
     if (_currentUid == uid && _cachedRole != null) {
       // Atualiza o estado imediatamente com o perfil em cache
@@ -361,16 +405,20 @@ class _AuthGateState extends State<AuthGate> {
     // Linha em branco separadora entre limpeza e classificação do erro
     // Avalia se o código da exceção corresponde a falha transitória de rede
     if (e.code == 'unavailable') {
-      // Comentário original do autor mantido byte a byte:
+      // ----------------------------------------------------------------------
+      // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
       // Erro transitório de rede: NÃO deslogar, permitir retry
+      // ----------------------------------------------------------------------
       // Atualiza para o estado de erro temporário mantendo a sessão para retry
       setState(() {
         _state = AuthGateErroTemporario(mensagem: e.message);
       });
     // Avalia se o código corresponde a permissão negada no Firestore
     } else if (e.code == 'permission-denied') {
-      // Comentário original do autor mantido byte a byte:
+      // ----------------------------------------------------------------------
+      // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
       // Falha explícita de segurança: deslogar imediatamente
+      // ----------------------------------------------------------------------
       // Desloga o usuário forçadamente no Firebase
       await _authService.logout();
       // Checa se o widget continua montado
@@ -381,8 +429,10 @@ class _AuthGateState extends State<AuthGate> {
       });
     // Demais casos de erro de perfil inexistente ou inconsistente
     } else {
-      // Comentário original do autor mantido byte a byte:
+      // ----------------------------------------------------------------------
+      // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
       // Perfil inexistente ou com dados inconsistentes: deslogar imediatamente
+      // ----------------------------------------------------------------------
       // Desloga o usuário forçadamente no Firebase
       await _authService.logout();
       // Checa se o widget continua montado
@@ -652,5 +702,6 @@ class _AuthGateState extends State<AuthGate> {
     };
   // Fecha o método build
   }
+
 // Fecha a classe _AuthGateState
 }
