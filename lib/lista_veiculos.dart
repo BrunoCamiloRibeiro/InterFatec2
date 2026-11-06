@@ -1,4 +1,11 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import 'components/card_veiculo.dart';
+import 'components/footer_veiculos.dart';
+import 'components/formulario_novo_veiculo.dart';
+import 'detalhes_veiculo.dart';
 
 class Veiculos extends StatefulWidget {
   const Veiculos({super.key});
@@ -8,6 +15,65 @@ class Veiculos extends StatefulWidget {
 }
 
 class _VeiculosState extends State<Veiculos> {
+  late Future<List<dynamic>> _veiculosFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _veiculosFuture = carregarVeiculos();
+  }
+
+  Future<List<dynamic>> carregarVeiculos() async {
+    try {
+      final String jsonString = await rootBundle.loadString(
+        'assets/data/dados_veiculos.json',
+      );
+      return jsonDecode(jsonString) as List<dynamic>;
+    } catch (_) {
+      // Fallback para visualização caso o json não esteja disponível no bundle
+      return [
+        {
+          "id": "veiculo001",
+          "placa": "ABC1D23",
+          "tipo": "van",
+          "marca": "Renault",
+          "modelo": "Master",
+          "ano": 2023,
+          "qtdAssentos": 15,
+          "status": "disponivel",
+          "quilometragemAtual": 45280,
+          "motoristaResponsavelId": null,
+          "ultimoMotoristaId": null,
+          "possuiAC": true,
+          "possuiPreferencial": false,
+          "observacoes": "Veículo utilizado para viagens intermunicipais.",
+          "criadoEm": "2026-10-01T08:00:00",
+          "atualizadoEm": "2026-10-01T08:00:00",
+          "atualizadoPor": null,
+        },
+        {
+          "id": "veiculo002",
+          "placa": "DEF4G56",
+          "tipo": "ambulancia",
+          "marca": "Fiat",
+          "modelo": "Ducato",
+          "ano": 2022,
+          "qtdAssentos": 4,
+          "status": "emManutencao",
+          "quilometragemAtual": 62150,
+          "motoristaResponsavelId": null,
+          "ultimoMotoristaId": "motorista001",
+          "possuiAC": true,
+          "possuiPreferencial": true,
+          "observacoes": "Revisão preventiva pendente.",
+          "criadoEm": "2026-09-15T10:30:00",
+          "atualizadoEm": "2026-10-20T14:00:00",
+          "atualizadoPor": "usuario001",
+        },
+      ];
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -18,768 +84,144 @@ class _VeiculosState extends State<Veiculos> {
         ),
         title: const Text('Lista de Veículos'),
       ),
-      body: Container(
-        padding: EdgeInsets.all(16),
-        decoration: BoxDecoration(color: Colors.red),
-        child: ListView(
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        child: FutureBuilder<List<dynamic>>(
+          future: _veiculosFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            if (snapshot.hasError) {
+              return const Center(
+                child: Text('Erro ao carregar os veículos.'),
+              );
+            }
+
+            final veiculos = snapshot.data ?? [];
+
+            // Separação de veículos ativos vs pendentes / manutenção usando ExpansionTile
+            final veiculosAtivos = veiculos.where((v) {
+              final status = (v['status'] ?? '').toString();
+              return status == 'disponivel' || status == 'emViagem' || status == 'emUso';
+            }).toList();
+
+            final veiculosPendentes = veiculos.where((v) {
+              final status = (v['status'] ?? '').toString();
+              return status == 'emManutencao' || status == 'inativo';
+            }).toList();
+
+            return ListView(
+              padding: const EdgeInsets.all(16),
               children: [
-                ElevatedButton.icon(
-                  onPressed: () {},
-                  icon: const Icon(Icons.add_outlined),
-                  label: const Text(
-                    'Novo Veículo',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green[700], // Fundo preto
-                    foregroundColor: Colors.white, // Texto e ícone brancos
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 20,
-                    ), // Espaçamento interno
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ), // Bordas pouco arredondadas
-                  ),
+                // BOTÃO DE NOVO VEÍCULO NO TOPO
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    ElevatedButton.icon(
+                      onPressed: _abrirFormularioVeiculo,
+                      icon: const Icon(Icons.add_outlined),
+                      label: const Text(
+                        'Novo Veículo',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green[700], // Fundo verde
+                        foregroundColor: Colors.white, // Texto e ícone brancos
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 16,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
+                const SizedBox(height: 10),
+
+                // VEÍCULOS ATIVOS / DISPONÍVEIS
+                for (final veiculo in veiculosAtivos)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _construirCardVeiculo(veiculo),
+                  ),
+
+                // VEÍCULOS EM MANUTENÇÃO / INATIVOS COM EXPANSIONTILE
+                if (veiculosPendentes.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: ExpansionTile(
+                      title: const Text(
+                        'Em Manutenção / Inativos',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      initiallyExpanded: false,
+                      backgroundColor: Colors.grey[300],
+                      minTileHeight: 70,
+                      children: [
+                        for (final veiculo in veiculosPendentes)
+                          Padding(
+                            padding: const EdgeInsets.all(8.0),
+                            child: _construirCardVeiculo(veiculo),
+                          ),
+                      ],
+                    ),
+                  ),
               ],
-            ),
-            SizedBox(height: 10),
-            Card(
-              elevation: 12,
-              child: Padding(
-                padding: EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  spacing: 14,
-                  children: [
-                    // IDENTIFICAÇÃO E STATUS
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // IDENTIFICAÇÃO
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'XXX-1234',
-                              style: TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            Text(
-                              'Marca Modelo · YYYY',
-                              style: TextStyle(
-                                fontSize: 14,
-                                // fontWeight: FontWeight.bold,
-                                color: Colors.black,
-                              ),
-                            ),
-                            Row(
-                              children: [
-                                Icon(
-                                  // IMPLEMENTAR MUDANÇA DE ÍCONE DE ACORDO COM TIPO
-                                  size: 20,
-                                  Icons.directions_car_outlined,
-                                  color: Colors.grey[700],
-                                ),
-                                SizedBox(width: 5),
-                                Text(
-                                  'Tipo de Veículo',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    // fontWeight: FontWeight.bold,
-                                    color: Colors.grey[700],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                        // STATUS
-                        Column(
-                          children: [
-                            Container(
-                              padding: EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 10,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.green.withValues(alpha: 0.2),
-                                borderRadius: BorderRadius.circular(30),
-                              ),
-                              child: Row(
-                                // IMPLEMENTAR MUDANÇA DE STATUS?
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.circle,
-                                    size: 10,
-                                    color: Color.lerp(
-                                      Colors.green,
-                                      Colors.black,
-                                      0.5,
-                                    ),
-                                  ),
-                                  SizedBox(width: 10),
-                                  Text(
-                                    'Disponível',
-                                    style: TextStyle(
-                                      color: Color.lerp(
-                                        Colors.green,
-                                        Colors.black,
-                                        0.5,
-                                      ),
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    // INFORMAÇÕES OPERACIONAIS
-                    Row(
-                      spacing: 12,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          spacing: 12,
-                          children: [
-                            // QUILOMETRAGEM E QTD DE ASSENTOS
-                            Row(
-                              children: [
-                                // QUILOMETRAGEM
-                                Row(
-                                  children: [
-                                    Icon(
-                                      Icons.speed_outlined,
-                                      size: 20,
-                                      color: Colors.grey[700],
-                                    ),
-                                    SizedBox(width: 10),
-                                    Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          'Quilometragem Atual',
-                                          style: TextStyle(
-                                            color: Color.lerp(
-                                              Colors.grey,
-                                              Colors.black,
-                                              0.5,
-                                            ),
-                                            fontSize: 12,
-                                            // fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                        Text(
-                                          '67.670 km',
-                                          style: TextStyle(
-                                            fontSize: 14,
-                                            // fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                                SizedBox(width: 16),
-                                // QTD DE ASSENTOS
-                                Row(
-                                  children: [
-                                    Icon(
-                                      Icons.chair_outlined,
-                                      size: 20,
-                                      color: Colors.grey[700],
-                                    ),
-                                    SizedBox(width: 10),
-                                    Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          'Qtd. de Assentos',
-                                          style: TextStyle(
-                                            color: Color.lerp(
-                                              Colors.grey,
-                                              Colors.black,
-                                              0.5,
-                                            ),
-                                            fontSize: 12,
-                                            // fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                        Text(
-                                          '67',
-                                          style: TextStyle(
-                                            fontSize: 14,
-                                            // fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                            // ÚLTIMO MOTORISTA
-                            Row(
-                              children: [
-                                Row(
-                                  children: [
-                                    Icon(
-                                      Icons.person_outline_outlined,
-                                      size: 20,
-                                      color: Colors.grey[700],
-                                    ),
-                                    SizedBox(width: 10),
-                                    Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          'Último Motorista',
-                                          style: TextStyle(
-                                            color: Color.lerp(
-                                              Colors.grey,
-                                              Colors.black,
-                                              0.5,
-                                            ),
-                                            fontSize: 12,
-                                            // fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                        Text(
-                                          'Nome do Último Motorista',
-                                          style: TextStyle(
-                                            fontSize: 14,
-                                            // fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    // TAGS / EXTRAS DO VEÍCULO
-                    Wrap(
-                      alignment: WrapAlignment.start,
-                      spacing: 8,
-                      runSpacing: 4,
-                      children: [
-                        TextButton.icon(
-                          onPressed: () {}, // FUTURAMENTE fazer aplicar filtro pela tag
-                          icon: Icon(Icons.ac_unit_outlined, size: 16),
-                          label: Text(
-                            'Ar-condicionado',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          style: TextButton.styleFrom(
-                            backgroundColor: Colors.blue.withValues(alpha: 0.1),
-                            foregroundColor: Color.lerp(
-                              Colors.blue,
-                              Colors.black,
-                              0.4,
-                            ),
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 6,
-                            ),
-                            // shape: RoundedRectangleBorder(
-                            //   borderRadius: BorderRadius.circular(8),
-                            // ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    // BOTÕES DE EDITAR E VER DETALHES
-                    Divider(height: 2),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: TextButton(
-                            style: ButtonStyle(
-                              padding: WidgetStateProperty.all(
-                                EdgeInsets.all(20),
-                              ),
-                              shape: WidgetStateProperty.all(
-                                RoundedRectangleBorder(
-                                  borderRadius: BorderRadiusGeometry.circular(
-                                    8,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            onPressed: () {},
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.start,
-                              children: [
-                                Icon(
-                                  Icons.edit_outlined,
-                                  size: 25,
-                                  color: Colors.grey[700],
-                                ),
-                                SizedBox(width: 10),
-                                Text(
-                                  'Editar',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color.lerp(
-                                      Colors.grey,
-                                      Colors.black,
-                                      0.5,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        SizedBox(width: 100),
-                        Expanded(
-                          child: TextButton(
-                            style: ButtonStyle(
-                              padding: WidgetStateProperty.all(
-                                EdgeInsets.all(20),
-                              ),
-                              shape: WidgetStateProperty.all(
-                                RoundedRectangleBorder(
-                                  borderRadius: BorderRadiusGeometry.circular(
-                                    8,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            onPressed: () {},
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.end,
-                              children: [
-                                Text(
-                                  'Ver Detalhes',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color.lerp(
-                                      Colors.grey,
-                                      Colors.black,
-                                      0.5,
-                                    ),
-                                  ),
-                                ),
-                                SizedBox(width: 10),
-                                Icon(
-                                  Icons.arrow_forward_outlined,
-                                  size: 25,
-                                  color: Colors.grey[700],
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            SizedBox(height: 20),
-
-            Card(
-              elevation: 12,
-              child: Padding(
-                padding: EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  spacing: 14,
-                  children: [
-                    // IDENTIFICAÇÃO E STATUS
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'XXX-1234',
-                              style: TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            Text(
-                              'Marca Modelo · YYYY',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.black,
-                              ),
-                            ),
-                            Row(
-                              children: [
-                                Icon(
-                                  Icons.directions_car_outlined,
-                                  size: 20,
-                                  color: Colors.grey[700],
-                                ),
-                                SizedBox(width: 5),
-                                Text(
-                                  'Tipo de Veículo',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: Colors.grey[700],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-
-                        // STATUS
-                        Container(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 10,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.green.withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(30),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.circle,
-                                size: 10,
-                                color: Color.lerp(
-                                  Colors.green,
-                                  Colors.black,
-                                  0.5,
-                                ),
-                              ),
-                              SizedBox(width: 10),
-                              Text(
-                                'Disponível',
-                                style: TextStyle(
-                                  color: Color.lerp(
-                                    Colors.green,
-                                    Colors.black,
-                                    0.5,
-                                  ),
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    // INFORMAÇÕES OPERACIONAIS
-                    Row(
-                      spacing: 12,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          spacing: 12,
-                          children: [
-                            // QUILOMETRAGEM E ASSENTOS
-                            Row(
-                              children: [
-                                // QUILOMETRAGEM
-                                Row(
-                                  children: [
-                                    Icon(
-                                      Icons.speed_outlined,
-                                      size: 20,
-                                      color: Colors.grey[700],
-                                    ),
-                                    SizedBox(width: 10),
-                                    Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          'Quilometragem Atual',
-                                          style: TextStyle(
-                                            color: Color.lerp(
-                                              Colors.grey,
-                                              Colors.black,
-                                              0.5,
-                                            ),
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                        Text(
-                                          '67.670 km',
-                                          style: TextStyle(fontSize: 14),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                                SizedBox(width: 16),
-
-                                // QTD. DE ASSENTOS
-                                Row(
-                                  children: [
-                                    Icon(
-                                      Icons.chair_outlined,
-                                      size: 20,
-                                      color: Colors.grey[700],
-                                    ),
-                                    SizedBox(width: 10),
-                                    Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          'Qtd. de Assentos',
-                                          style: TextStyle(
-                                            color: Color.lerp(
-                                              Colors.grey,
-                                              Colors.black,
-                                              0.5,
-                                            ),
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                        Text(
-                                          '67',
-                                          style: TextStyle(fontSize: 14),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-
-                            // ÚLTIMO MOTORISTA
-                            Row(
-                              children: [
-                                Icon(
-                                  Icons.person_outline,
-                                  size: 20,
-                                  color: Colors.grey[700],
-                                ),
-                                SizedBox(width: 10),
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Último Motorista',
-                                      style: TextStyle(
-                                        color: Color.lerp(
-                                          Colors.grey,
-                                          Colors.black,
-                                          0.5,
-                                        ),
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                    Text(
-                                      'Nome do Último Motorista',
-                                      style: TextStyle(fontSize: 14),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-
-                    // TAGS / EXTRAS DO VEÍCULO
-                    Wrap(
-                      alignment: WrapAlignment.start,
-                      spacing: 8,
-                      runSpacing: 4,
-                      children: [
-                        TextButton.icon(
-                          onPressed: () {},
-                          icon: Icon(Icons.ac_unit_outlined, size: 16),
-                          label: Text(
-                            'Ar-condicionado',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          style: TextButton.styleFrom(
-                            backgroundColor: Colors.blue.withValues(alpha: 0.1),
-                            foregroundColor: Color.lerp(
-                              Colors.blue,
-                              Colors.black,
-                              0.4,
-                            ),
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 6,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    // OBSERVAÇÃO
-                    Container(
-                      width: double.infinity,
-                      padding: EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(
-                            Icons.build_outlined,
-                            size: 24,
-                            color: Color.lerp(Colors.orange, Colors.brown, 0.5),
-                          ),
-                          SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              spacing: 6,
-                              children: [
-                                Text(
-                                  'Observação',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color.lerp(
-                                      Colors.orange,
-                                      Colors.brown,
-                                      0.5,
-                                    ),
-                                  ),
-                                ),
-                                Text(
-                                  'Revisão preventiva',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.black87,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    // BOTÕES DE EDITAR E VER DETALHES
-                    Divider(height: 2),
-
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: TextButton(
-                            style: ButtonStyle(
-                              padding: WidgetStateProperty.all(
-                                EdgeInsets.all(20),
-                              ),
-                              shape: WidgetStateProperty.all(
-                                RoundedRectangleBorder(
-                                  borderRadius: BorderRadiusGeometry.circular(
-                                    8,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            onPressed: () {},
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.start,
-                              children: [
-                                Icon(
-                                  Icons.edit_outlined,
-                                  size: 25,
-                                  color: Colors.grey[700],
-                                ),
-                                SizedBox(width: 10),
-                                Text(
-                                  'Editar',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color.lerp(
-                                      Colors.grey,
-                                      Colors.black,
-                                      0.5,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        SizedBox(width: 100),
-                        Expanded(
-                          child: TextButton(
-                            style: ButtonStyle(
-                              padding: WidgetStateProperty.all(
-                                EdgeInsets.all(20),
-                              ),
-                              shape: WidgetStateProperty.all(
-                                RoundedRectangleBorder(
-                                  borderRadius: BorderRadiusGeometry.circular(
-                                    8,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            onPressed: () {},
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.end,
-                              children: [
-                                Text(
-                                  'Ver Detalhes',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color.lerp(
-                                      Colors.grey,
-                                      Colors.black,
-                                      0.5,
-                                    ),
-                                  ),
-                                ),
-                                SizedBox(width: 10),
-                                Icon(
-                                  Icons.arrow_forward_outlined,
-                                  size: 25,
-                                  color: Colors.grey[700],
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
+            );
+          },
         ),
+      ),
+
+      // RODAPÉ COM RESUMO DA FROTA
+      bottomNavigationBar: FutureBuilder<List<dynamic>>(
+        future: _veiculosFuture,
+        builder: (context, snapshot) {
+          final veiculos = snapshot.data ?? [];
+          final disponiveis = veiculos.where((v) => v['status'] == 'disponivel').length;
+          return FooterVeiculos(
+            veiculosDisponiveis: disponiveis,
+            veiculosTotais: veiculos.length,
+          );
+        },
+      ),
+    );
+  }
+
+  // CONSTRUTOR DOS CARDS DE VEÍCULOS
+  Widget _construirCardVeiculo(dynamic veiculo) {
+    final mapaVeiculo = Map<String, dynamic>.from(veiculo as Map);
+    return CardVeiculo(
+      veiculo: mapaVeiculo,
+      onEditar: () => _abrirFormularioEdicao(mapaVeiculo),
+      onDetalhes: () => _abrirDetalhes(mapaVeiculo),
+    );
+  }
+
+  void _abrirFormularioVeiculo() {
+    showDialog(
+      context: context,
+      builder: (context) => const FormularioNovoVeiculo(),
+    );
+  }
+
+  void _abrirFormularioEdicao(Map<String, dynamic> veiculo) {
+    showDialog(
+      context: context,
+      builder: (context) => FormularioNovoVeiculo(
+        veiculoParaEditar: veiculo,
+      ),
+    );
+  }
+
+  void _abrirDetalhes(Map<String, dynamic> veiculo) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => DetalhesVeiculo(veiculo: veiculo),
       ),
     );
   }

@@ -1,0 +1,450 @@
+import 'package:flutter/material.dart';
+
+class CardVeiculo extends StatelessWidget {
+  final Map<String, dynamic> veiculo;
+  final VoidCallback? onEditar;
+  final VoidCallback? onDetalhes;
+
+  const CardVeiculo({
+    super.key,
+    required this.veiculo,
+    this.onEditar,
+    this.onDetalhes,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final String placa = (veiculo['placa'] ?? 'XXX-1234').toString();
+    final String marca = (veiculo['marca'] ?? 'Marca').toString();
+    final String modelo = (veiculo['modelo'] ?? 'Modelo').toString();
+    final dynamic ano = veiculo['ano'] ?? 'YYYY';
+    final String tipoRaw = (veiculo['tipo'] ?? 'carro').toString().toLowerCase();
+    final String statusRaw = (veiculo['status'] ?? 'disponivel').toString();
+    final dynamic km = veiculo['quilometragemAtual'] ?? 0;
+    final dynamic assentos = veiculo['qtdAssentos'] ?? 0;
+    final String ultimoMotorista =
+        (veiculo['ultimoMotoristaId'] ?? veiculo['motoristaResponsavelId'] ?? 'Não informado').toString();
+    final bool possuiAC = veiculo['possuiAC'] == true;
+    final bool possuiPreferencial = veiculo['possuiPreferencial'] == true;
+    final String? observacoes = veiculo['observacoes']?.toString();
+
+    // Ícone e label do tipo mantendo o estilo original
+    final (IconData iconeTipo, String labelTipo) = switch (tipoRaw) {
+      'van' => (Icons.airport_shuttle_outlined, 'Van'),
+      'ambulancia' => (Icons.emergency_outlined, 'Ambulância'),
+      'onibus' || 'microonibus' => (Icons.directions_bus_outlined, 'Ônibus'),
+      _ => (Icons.directions_car_outlined, 'Carro'),
+    };
+
+    // Cores e texto do status com Color.lerp igual ao original
+    final (Color corBase, String textoStatus) = switch (statusRaw) {
+      'disponivel' => (Colors.green, 'Disponível'),
+      'emManutencao' => (Colors.orange, 'Em Manutenção'),
+      'emViagem' || 'emUso' => (Colors.blue, 'Em Viagem'),
+      'inativo' => (Colors.grey, 'Inativo'),
+      _ => (Colors.grey, statusRaw),
+    };
+
+    return Card(
+      elevation: 12,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          spacing: 14,
+          children: [
+            // IDENTIFICAÇÃO E STATUS
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // IDENTIFICAÇÃO
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      placa,
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      '$marca $modelo · $ano',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Colors.black,
+                      ),
+                    ),
+                    Row(
+                      children: [
+                        Icon(
+                          iconeTipo,
+                          size: 20,
+                          color: Colors.grey[700],
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          labelTipo,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey[700],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                // STATUS
+                Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: corBase.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(30),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.circle,
+                            size: 10,
+                            color: Color.lerp(
+                              corBase,
+                              Colors.black,
+                              0.5,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Text(
+                            textoStatus,
+                            style: TextStyle(
+                              color: Color.lerp(
+                                corBase,
+                                Colors.black,
+                                0.5,
+                              ),
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            // INFORMAÇÕES OPERACIONAIS
+            Row(
+              spacing: 12,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  spacing: 12,
+                  children: [
+                    // QUILOMETRAGEM E QTD DE ASSENTOS
+                    Row(
+                      children: [
+                        // QUILOMETRAGEM
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.speed_outlined,
+                              size: 20,
+                              color: Colors.grey[700],
+                            ),
+                            const SizedBox(width: 10),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Quilometragem Atual',
+                                  style: TextStyle(
+                                    color: Color.lerp(
+                                      Colors.grey,
+                                      Colors.black,
+                                      0.5,
+                                    ),
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                Text(
+                                  '$km km',
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        const SizedBox(width: 16),
+                        // QTD DE ASSENTOS
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.chair_outlined,
+                              size: 20,
+                              color: Colors.grey[700],
+                            ),
+                            const SizedBox(width: 10),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Qtd. de Assentos',
+                                  style: TextStyle(
+                                    color: Color.lerp(
+                                      Colors.grey,
+                                      Colors.black,
+                                      0.5,
+                                    ),
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                Text(
+                                  '$assentos',
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    // ÚLTIMO MOTORISTA
+                    Row(
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.person_outline_outlined,
+                              size: 20,
+                              color: Colors.grey[700],
+                            ),
+                            const SizedBox(width: 10),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Último Motorista',
+                                  style: TextStyle(
+                                    color: Color.lerp(
+                                      Colors.grey,
+                                      Colors.black,
+                                      0.5,
+                                    ),
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                Text(
+                                  ultimoMotorista,
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            // TAGS / EXTRAS DO VEÍCULO
+            Wrap(
+              alignment: WrapAlignment.start,
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                if (possuiAC)
+                  TextButton.icon(
+                    onPressed: () {},
+                    icon: const Icon(Icons.ac_unit_outlined, size: 16),
+                    label: const Text(
+                      'Ar-condicionado',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    style: TextButton.styleFrom(
+                      backgroundColor: Colors.blue.withValues(alpha: 0.1),
+                      foregroundColor: Color.lerp(
+                        Colors.blue,
+                        Colors.black,
+                        0.4,
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                    ),
+                  ),
+                if (possuiPreferencial)
+                  TextButton.icon(
+                    onPressed: () {},
+                    icon: const Icon(Icons.accessible_outlined, size: 16),
+                    label: const Text(
+                      'Acesso Preferencial',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    style: TextButton.styleFrom(
+                      backgroundColor: Colors.purple.withValues(alpha: 0.1),
+                      foregroundColor: Color.lerp(
+                        Colors.purple,
+                        Colors.black,
+                        0.4,
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            // OBSERVAÇÃO
+            if (observacoes != null && observacoes.isNotEmpty)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.build_outlined,
+                      size: 24,
+                      color: Color.lerp(Colors.orange, Colors.brown, 0.5),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        spacing: 6,
+                        children: [
+                          Text(
+                            'Observação',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: Color.lerp(
+                                Colors.orange,
+                                Colors.brown,
+                                0.5,
+                              ),
+                            ),
+                          ),
+                          Text(
+                            observacoes,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              color: Colors.black87,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            // BOTÕES DE EDITAR E VER DETALHES
+            const Divider(height: 2),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: TextButton(
+                    style: ButtonStyle(
+                      padding: WidgetStateProperty.all(
+                        const EdgeInsets.all(20),
+                      ),
+                      shape: WidgetStateProperty.all(
+                        RoundedRectangleBorder(
+                          borderRadius: BorderRadiusGeometry.circular(8),
+                        ),
+                      ),
+                    ),
+                    onPressed: onEditar,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.edit_outlined,
+                          size: 25,
+                          color: Colors.grey[700],
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          'Editar',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Color.lerp(
+                              Colors.grey,
+                              Colors.black,
+                              0.5,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 100),
+                Expanded(
+                  child: TextButton(
+                    style: ButtonStyle(
+                      padding: WidgetStateProperty.all(
+                        const EdgeInsets.all(20),
+                      ),
+                      shape: WidgetStateProperty.all(
+                        RoundedRectangleBorder(
+                          borderRadius: BorderRadiusGeometry.circular(8),
+                        ),
+                      ),
+                    ),
+                    onPressed: onDetalhes,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        Text(
+                          'Ver Detalhes',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Color.lerp(
+                              Colors.grey,
+                              Colors.black,
+                              0.5,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Icon(
+                          Icons.arrow_forward_outlined,
+                          size: 25,
+                          color: Colors.grey[700],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
