@@ -38,23 +38,28 @@ void main() {
     ),
   ];
 
-  Widget criarTelaTeste() {
+  Widget criarTelaTeste({List<AdminModel>? mockAdmins}) {
     return MaterialApp(
       home: ListaPessoas(
         mockPacientes: mockPacientes,
         mockMotoristas: mockMotoristas,
+        mockAdmins: mockAdmins,
       ),
     );
   }
 
-  group('ListaPessoas - Testes de Widget e Filtros (Issue #34)', () {
+  void configurarViewportLongo(WidgetTester tester) {
+    tester.view.physicalSize = const Size(800, 1200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+  }
+
+  group('1. Carga Inicial e Renderização da Lista', () {
     testWidgets(
       'Carrega com dados padrão sem colisão de chaves (sem exceptions)',
-      (tester) async {
-        tester.view.physicalSize = const Size(800, 1200);
-        tester.view.devicePixelRatio = 1.0;
-        addTearDown(tester.view.resetPhysicalSize);
-        addTearDown(tester.view.resetDevicePixelRatio);
+      (WidgetTester tester) async {
+        configurarViewportLongo(tester);
 
         await tester.pumpWidget(const MaterialApp(home: ListaPessoas()));
         expect(tester.takeException(), isNull);
@@ -65,7 +70,7 @@ void main() {
     );
 
     testWidgets('Carrega título, barra de busca e abas de filtro', (
-      tester,
+      WidgetTester tester,
     ) async {
       await tester.pumpWidget(criarTelaTeste());
 
@@ -76,11 +81,10 @@ void main() {
       expect(find.text('Motoristas (1)'), findsOneWidget);
     });
 
-    testWidgets('Exibe todos os registros na aba Todos', (tester) async {
-      tester.view.physicalSize = const Size(800, 1200);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
+    testWidgets('Exibe todos os registros na aba Todos', (
+      WidgetTester tester,
+    ) async {
+      configurarViewportLongo(tester);
 
       await tester.pumpWidget(criarTelaTeste());
 
@@ -88,9 +92,11 @@ void main() {
       expect(find.text('Clarice Lispector'), findsOneWidget);
       expect(find.text('Machado de Assis'), findsOneWidget);
     });
+  });
 
+  group('2. Filtros por Papel (Abas)', () {
     testWidgets('Filtra apenas pacientes ao selecionar a aba Pacientes', (
-      tester,
+      WidgetTester tester,
     ) async {
       await tester.pumpWidget(criarTelaTeste());
 
@@ -104,7 +110,7 @@ void main() {
     });
 
     testWidgets('Filtra apenas motoristas ao selecionar a aba Motoristas', (
-      tester,
+      WidgetTester tester,
     ) async {
       await tester.pumpWidget(criarTelaTeste());
 
@@ -119,7 +125,7 @@ void main() {
 
     testWidgets(
       'Filtra apenas administradores ao selecionar a aba Administradores',
-      (tester) async {
+      (WidgetTester tester) async {
         final mockAdmins = [
           AdminModel(
             id: 'adm_teste',
@@ -130,15 +136,7 @@ void main() {
           ),
         ];
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: ListaPessoas(
-              mockPacientes: mockPacientes,
-              mockMotoristas: mockMotoristas,
-              mockAdmins: mockAdmins,
-            ),
-          ),
-        );
+        await tester.pumpWidget(criarTelaTeste(mockAdmins: mockAdmins));
 
         expect(find.text('Administradores (1)'), findsOneWidget);
         await tester.tap(find.text('Administradores (1)'));
@@ -149,9 +147,11 @@ void main() {
         expect(find.text('Machado de Assis'), findsNothing);
       },
     );
+  });
 
+  group('3. Busca Textual por Nome e CPF', () {
     testWidgets('Busca textual por nome filtra a lista corretamente', (
-      tester,
+      WidgetTester tester,
     ) async {
       await tester.pumpWidget(criarTelaTeste());
 
@@ -163,7 +163,9 @@ void main() {
       expect(find.text('Machado de Assis'), findsNothing);
     });
 
-    testWidgets('Busca por CPF filtra a lista corretamente', (tester) async {
+    testWidgets('Busca por CPF filtra a lista corretamente', (
+      WidgetTester tester,
+    ) async {
       await tester.pumpWidget(criarTelaTeste());
 
       await tester.enterText(find.byType(TextField), '999.888');
@@ -174,7 +176,7 @@ void main() {
     });
 
     testWidgets('Exibe estado vazio quando busca não encontra resultados', (
-      tester,
+      WidgetTester tester,
     ) async {
       await tester.pumpWidget(criarTelaTeste());
 
@@ -187,9 +189,11 @@ void main() {
         findsOneWidget,
       );
     });
+  });
 
+  group('4. Ações de Gestão (Cadastro, Edição e Exclusão Lógica)', () {
     testWidgets('Diálogo de exclusão lógica abre e confirma', (
-      tester,
+      WidgetTester tester,
     ) async {
       await tester.pumpWidget(criarTelaTeste());
 
@@ -214,35 +218,40 @@ void main() {
       expect(find.text('Clarice Lispector'), findsOneWidget);
     });
 
-    testWidgets('Botão flutuante Novo abre diálogo de cadastro FormularioPessoa', (
-      WidgetTester tester,
-    ) async {
-      await tester.pumpWidget(criarTelaTeste());
+    testWidgets(
+      'Botão flutuante Novo abre diálogo de cadastro FormularioPessoa',
+      (WidgetTester tester) async {
+        await tester.pumpWidget(criarTelaTeste());
 
-      final botaoNovo = find.widgetWithText(FloatingActionButton, 'Novo');
-      expect(botaoNovo, findsOneWidget);
+        final botaoNovo = find.widgetWithText(FloatingActionButton, 'Novo');
+        expect(botaoNovo, findsOneWidget);
 
-      await tester.tap(botaoNovo);
-      await tester.pumpAndSettle();
+        await tester.tap(botaoNovo);
+        await tester.pumpAndSettle();
 
-      expect(find.text('Nova Pessoa'), findsOneWidget);
-      expect(find.text('Cadastrar'), findsOneWidget);
-    });
+        expect(find.text('Nova Pessoa'), findsOneWidget);
+        expect(find.text('Cadastrar'), findsOneWidget);
+      },
+    );
 
-    testWidgets('Botão Editar no card abre formulário de edição com dados pré-carregados', (
-      WidgetTester tester,
-    ) async {
-      await tester.pumpWidget(criarTelaTeste());
+    testWidgets(
+      'Botão Editar no card abre formulário de edição com dados pré-carregados',
+      (WidgetTester tester) async {
+        await tester.pumpWidget(criarTelaTeste());
 
-      final botaoEditar = find.text('Editar').first;
-      expect(botaoEditar, findsOneWidget);
+        final botaoEditar = find.text('Editar').first;
+        expect(botaoEditar, findsOneWidget);
 
-      await tester.tap(botaoEditar);
-      await tester.pumpAndSettle();
+        await tester.tap(botaoEditar);
+        await tester.pumpAndSettle();
 
-      expect(find.text('Editar Pessoa'), findsOneWidget);
-      expect(find.text('Salvar Alterações'), findsOneWidget);
-      expect(find.widgetWithText(TextFormField, 'Carlos Drummond'), findsOneWidget);
-    });
+        expect(find.text('Editar Pessoa'), findsOneWidget);
+        expect(find.text('Salvar Alterações'), findsOneWidget);
+        expect(
+          find.widgetWithText(TextFormField, 'Carlos Drummond'),
+          findsOneWidget,
+        );
+      },
+    );
   });
 }

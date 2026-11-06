@@ -2,7 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:trans_saude/services/pessoa_service.dart';
 
 void main() {
-  group('ValidacaoPessoa - Validador de Negócio e LGPD', () {
+  group('1. Validação de Negócio e LGPD', () {
     test('Rejeita CPFs nulos ou com formato inválido', () {
       expect(ValidacaoPessoa.isCpfValido(null), isFalse);
       expect(ValidacaoPessoa.isCpfValido(''), isFalse);
@@ -16,10 +16,13 @@ void main() {
       expect(ValidacaoPessoa.isCpfValido('999.999.999-99'), isFalse);
     });
 
-    test('Rejeita CPFs com primeiro ou segundo dígito verificador incorreto', () {
-      // 123.456.789-00 tem dígitos verificadores inválidos
-      expect(ValidacaoPessoa.isCpfValido('123.456.789-00'), isFalse);
-    });
+    test(
+      'Rejeita CPFs com primeiro ou segundo dígito verificador incorreto',
+      () {
+        // 123.456.789-00 tem dígitos verificadores inválidos
+        expect(ValidacaoPessoa.isCpfValido('123.456.789-00'), isFalse);
+      },
+    );
 
     test('Aceita CPFs matematicamente válidos', () {
       // Exemplos de CPFs com dígitos verificadores matematicamente válidos (algoritmo Módulo 11)
@@ -68,7 +71,7 @@ void main() {
     });
   });
 
-  group('ResultadoOperacaoPessoa - Contrato de Resposta', () {
+  group('2. ResultadoOperacaoPessoa - Contrato de Resposta', () {
     test('Sucesso encapsula id sem erros', () {
       final res = ResultadoOperacaoPessoa.sucesso('doc_123');
       expect(res.sucesso, isTrue);
