@@ -2,211 +2,332 @@
 // CABEÇALHO DE DOCUMENTAÇÃO DE ARQUIVO
 // ============================================================================
 // Arquivo: lib/services/auth_service.dart
-// Camada: Domínio / Serviços de Autenticação e Segurança (Services)
+// Camada: Serviços / Autenticação e Controle de Acesso (RBAC)
 //
 // O QUE ESTE ARQUIVO FAZ:
-// Provê a camada de autenticação, resolução de perfil e autorização de papéis
-// (Role-Based Access Control - RBAC) do aplicativo TransSaúde. Declara a exceção
-// de domínio padronizada AuthException, o contrato abstrato AuthService e a
-// implementação concreta FirebaseAuthService baseada em Firebase Authentication
-// e Cloud Firestore. Inclui resolução transparente de CPF para e-mail corporativo,
-// cache estático em memória dos perfis resolvidos, stream reativa do estado da
-// sessão e tradução amigável dos códigos de erro do Firebase para português.
+// Implementa a camada completa de autenticação do sistema TransSaúde,
+// fornecendo o contrato abstrato AuthService, a exceção de domínio padronizada
+// AuthException e a implementação concreta FirebaseAuthService baseada no
+// Firebase Authentication e Cloud Firestore. Inclui resolução de CPF para
+// e-mail institucional, cache compartilhado de perfis (UserRole) em memória,
+// tradução amigável de erros e controle de acesso restrito (RBAC).
 //
 // PARA QUE SERVE NO PROJETO:
-// Garante o acesso seguro e restrito ao sistema, impedindo que usuários sem
-// cadastro ou com papéis não autorizados acessem as telas do motorista ou
-// administrador, mantendo a integridade das operações municipais de saúde.
+// É o núcleo de segurança da aplicação (PR #59/#60): gerencia a sessão ativa,
+// traduz o CPF digitado no login para as credenciais oficiais, valida se o
+// usuário possui perfil permitido (Administrador ou Motorista) e expõe streams
+// e caches consumidos pela guarda de rotas e pela máquina de estados visual.
 //
 // ONDE É USADO NO PROJETO:
-// - lib/routes/route_guard.dart (guarda de rotas para autorização por papel)
-// - lib/screens/auth_gate.dart (escuta reativa da autenticação para roteamento)
-// - lib/screens/login_screen.dart (submissão de credenciais de login)
-// - lib/screens/admin_placeholder_screen.dart (operação de logout pelo admin)
-// - test/screens/auth_gate_test.dart (testes de máquina de estados da sessão)
-// - test/screens/login_screen_test.dart (testes visuais de autenticação)
-// - test/services/auth_service_test.dart (testes unitários de regras e erros)
+// - lib/routes/route_guard.dart (validação e bloqueio de rotas não autorizadas)
+// - lib/screens/auth_gate.dart (escuta da stream authStateChanges e despacho de telas)
+// - lib/screens/login_screen.dart (submissão de formulário de login)
+// - lib/motorista.dart e lib/screens/admin_placeholder_screen.dart (logout da sessão)
+// - test/services/auth_service_test.dart e test/screens/auth_gate_test.dart
 //
 // DE ONDE RECEBE DADOS:
-// - Firebase Authentication (credenciais de usuário e authStateChanges)
-// - Firebase Firestore (coleção 'usuarios', campo 'role' e 'email')
-// - Injeções opcionais de mock via construtor (customAuth, customFirestore, etc.)
+// SDKs 'firebase_auth' (sessão e tokens) e 'cloud_firestore' (coleção 'usuarios').
 //
 // O QUE EXPORTA / EXPÕE:
 // - class AuthException implements Exception
 // - abstract class AuthService
+//   * Future<UserRole> login(String cpf, String senha)
+//   * Future<void> logout()
+//   * Stream<String?> get authStateChanges
+//   * Future<UserRole> resolveUserRole(String uid, {bool forceRefresh})
+//   * UserRole? getCachedRole(String uid)
+//   * void clearRoleCache()
+//   * String? get currentUserId
 // - class FirebaseAuthService implements AuthService
+//   * static String mapFirebaseAuthException(FirebaseAuthException e)
 //
 // ORIGEM HISTÓRICA:
-// Criado no commit 00dea37 como parte da issue #28 (Autenticação e Diferenciação
-// de Usuários), com melhorias nos PRs #59 e #60. Não provém de scaffold.
+// Implementado especificamente para a arquitetura de autenticação da PR #59
+// e corrigido na PR #60 (cache compartilhado no RouteGuard).
 //
 // DEPENDÊNCIAS EXTERNAS E EFEITOS COLATERAIS:
-// Depende de 'package:firebase_auth/firebase_auth.dart' e
-// 'package:cloud_firestore/cloud_firestore.dart'.
-// Efeitos colaterais: Chamadas de rede para a nuvem Firebase, mutação da
-// sessão de autenticação ativa e manutenção do cache estático _roleCache em memória.
+// Depende de 'firebase_auth' e 'cloud_firestore'. Realiza chamadas de rede
+// assíncronas aos servidores do Google Firebase e mantém estado de cache estático.
 // ============================================================================
 
-// Importa a biblioteca dart:async para manipulação de Streams e TimeoutException
+// ----------------------------------------------------------------------------
+// IMPORTAÇÃO DE BIBLIOTECAS E PACOTES:
+// - dart:async: Utilizada para Streams, StreamController e TimeoutException.
+// - cloud_firestore: Leitura assíncrona de documentos de usuários no banco NoSQL.
+// - firebase_auth: Autenticação de credenciais, gestão de sessão e listeners de estado.
+// - user_role.dart: Enumeração com os perfis de acesso do sistema (admin, motorista, paciente).
+// ----------------------------------------------------------------------------
 import 'dart:async';
 
-// Linha em branco separadora entre imports do core e pacotes externos
-// Importa o pacote do Cloud Firestore para leitura de documentos de usuários
 import 'package:cloud_firestore/cloud_firestore.dart';
-// Importa o pacote do Firebase Authentication para gestão de credenciais e sessão
 import 'package:firebase_auth/firebase_auth.dart';
 
-// Linha em branco separadora entre pacotes externos e modelos internos
-// Importa a enumeração UserRole para definição de privilégios de acesso
 import '../models/user_role.dart';
 
-// Linha em branco separadora entre imports e a classe AuthException
-// Comentário original do autor mantido byte a byte:
+// Linha em branco separadora entre imports e a classe de exceção
+// ----------------------------------------------------------------------------
+// COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
 /// Exceção de domínio padronizada para autenticação e autorização
-// Declaração da classe AuthException que implementa a interface nativa Exception
+// ----------------------------------------------------------------------------
+// DECLARAÇÃO DA CLASSE DE EXCEÇÃO: AuthException
+// - O que a instrução faz: Declara a exceção especializada de domínio para falhas de login e permissão.
+// - O que é o elemento: Classe de exceção que implementa a interface nativa 'Exception' do Dart SDK.
+// - Papel no sistema: Padroniza as mensagens de erro em português para exibição direta ao usuário final,
+//   isolando a interface de mensagens técnicas crípticas vindas de APIs externas.
+// ----------------------------------------------------------------------------
 class AuthException implements Exception {
-  // Mensagem amigável descritiva do erro em português do Brasil
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: message
+  // - O que é: Campo imutável ('final') do tipo primitivo 'String'.
+  // - Papel: Mensagem de erro em linguagem natural e amigável para exibição em SnackBars ou alertas.
+  // --------------------------------------------------------------------------
   final String message;
-  // Código padronizado de erro (ex: 'access-denied', 'permission-denied')
+
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: code
+  // - O que é: Campo imutável opcional/anulável ('String?').
+  // - Papel: Código identificador canônico da falha (ex.: 'permission-denied', 'access-denied').
+  // --------------------------------------------------------------------------
   final String? code;
 
   // Linha em branco separadora entre atributos e construtor
 
-  // Construtor constante da classe AuthException recebendo a mensagem e código opcional
+  // --------------------------------------------------------------------------
+  // CONSTRUTOR CONSTANTE: AuthException
+  // - O que faz: Inicializa uma instância imutável de AuthException.
+  // - Parâmetros: 'this.message' posicional obrigatório e 'this.code' nomeado opcional.
+  // --------------------------------------------------------------------------
   const AuthException(this.message, {this.code});
 
   // Linha em branco separadora entre construtor e toString
 
-  // Sobrescreve toString para exibir diretamente a mensagem da exceção
+  // --------------------------------------------------------------------------
+  // SOBRESCRITA DO MÉTODO: toString
+  // - O que faz: Retorna diretamente o texto amigável da mensagem em vez do nome da classe.
+  // --------------------------------------------------------------------------
   @override
-  // Retorna a mensagem amigável cadastrada na exceção
+  // Retorna o conteúdo textual da propriedade message
   String toString() => message;
-// Fecha a classe AuthException
+
+// Fecha a declaração da classe AuthException
 }
 
-// Linha em branco separadora entre AuthException e a interface AuthService
-// Comentário original do autor mantido byte a byte:
+// Linha em branco separadora entre AuthException e a interface abstrata
+// ----------------------------------------------------------------------------
+// COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
 /// Interface abstrata para injeção de dependência e testes
-// Declaração do contrato abstrato AuthService para inversão de controle
+// ----------------------------------------------------------------------------
+// DECLARAÇÃO DO CONTRATO ABSTRATO: AuthService
+// - O que a instrução faz: Declara a interface formal para serviços de autenticação do sistema.
+// - O que é o elemento: Classe abstrata pura ('abstract class') para inversão de dependência (DIP).
+// - Papel no sistema: Permite substituir a implementação real por mocks ou fakes em testes unitários.
+// ----------------------------------------------------------------------------
 abstract class AuthService {
-  // Declaração do método de login recebendo CPF e senha em formato textual
+  // --------------------------------------------------------------------------
+  // ASSINATURA DE MÉTODO: login
+  // - O que faz: Autentica o usuário a partir de CPF e senha e retorna seu perfil (UserRole).
+  // --------------------------------------------------------------------------
   Future<UserRole> login(String cpf, String senha);
-  // Declaração do método de encerramento da sessão ativa
+
+  // --------------------------------------------------------------------------
+  // ASSINATURA DE MÉTODO: logout
+  // - O que faz: Encerra a sessão ativa e limpa dados de autenticação em memória.
+  // --------------------------------------------------------------------------
   Future<void> logout();
 
-  // Linha em branco separadora entre métodos fundamentais e getters/streams reativos
-  // Comentário original do autor mantido byte a byte:
+  // Linha em branco separadora entre métodos e stream de estado
+  // ----------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   /// Stream reativa de mudanças no estado de autenticação (emite UID do usuário ou null se deslogado)
-  // Getter de Stream que notifica mudanças no status de login
+  // ----------------------------------------------------------------------------
+  // GETTER DE STREAM: authStateChanges
+  // - O que faz: Emite eventos reativos de UID sempre que o usuário efetuar login ou logout.
+  // ----------------------------------------------------------------------------
   Stream<String?> get authStateChanges => const Stream.empty();
 
-  // Linha em branco separadora entre getters de stream e resolução de perfil
-  // Comentário original do autor mantido byte a byte:
+  // Linha em branco separadora entre streams e métodos de resolução de papel
+  // ----------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   /// Resolve o UserRole de um usuário autenticado a partir de seu UID
-  // Método para consultar e determinar o papel do usuário no Firestore
+  // ----------------------------------------------------------------------------
+  // MÉTODO: resolveUserRole
+  // - O que faz: Consulta o perfil do usuário pelo UID, consultando cache ou banco de dados.
+  // ----------------------------------------------------------------------------
   Future<UserRole> resolveUserRole(String uid, {bool forceRefresh = false}) =>
-      // Dispara erro de implementação não realizada caso não seja sobrescrito
+      // Lança erro caso a implementação concreta não forneça este método
       throw UnimplementedError('resolveUserRole não implementado');
 
   // Linha em branco separadora entre resolveUserRole e getCachedRole
-  // Comentário original do autor mantido byte a byte:
+  // ----------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   /// Retorna o role em cache para o UID informado, se existir
-  // Método de consulta em memória de role previamente validado
+  // ----------------------------------------------------------------------------
+  // MÉTODO: getCachedRole
+  // - O que faz: Consulta síncrona em memória para evitar chamadas redundantes de rede.
+  // ----------------------------------------------------------------------------
   UserRole? getCachedRole(String uid) => null;
 
   // Linha em branco separadora entre getCachedRole e clearRoleCache
-  // Comentário original do autor mantido byte a byte:
+  // ----------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   /// Limpa o cache de roles resolvidos
-  // Método para purgar entradas de perfil mantidas em cache de memória
+  // ----------------------------------------------------------------------------
+  // MÉTODO: clearRoleCache
+  // - O que faz: Purga as entradas mantidas no cache de papéis.
+  // ----------------------------------------------------------------------------
   void clearRoleCache() {}
 
   // Linha em branco separadora entre clearRoleCache e currentUserId
-  // Comentário original do autor mantido byte a byte:
+  // ----------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   /// Retorna o UID do usuário atualmente autenticado, se houver
-  // Getter conveniente para recuperar o UID da sessão atual
+  // ----------------------------------------------------------------------------
+  // GETTER: currentUserId
+  // - O que faz: Retorna o UID do usuário atualmente conectado na sessão ou 'null'.
+  // ----------------------------------------------------------------------------
   String? get currentUserId => null;
+
 // Fecha o contrato da interface abstrata AuthService
 }
 
-// Linha em branco separadora entre a interface e a implementação concreta
-// Comentário original do autor mantido byte a byte:
+// Linha em branco separadora entre o contrato e a implementação oficial
+// ----------------------------------------------------------------------------
+// COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
 /// Implementação oficial do AuthService baseada em Firebase Authentication e Cloud Firestore
-// Declaração da classe concreta FirebaseAuthService implementando AuthService
+// ----------------------------------------------------------------------------
+// DECLARAÇÃO DA CLASSE CONCRETA: FirebaseAuthService
+// - O que a instrução faz: Implementa as operações de autenticação reais consumindo os SDKs do Firebase.
+// - O que é o elemento: Classe de serviço concreta que implementa o contrato 'AuthService'.
+// ----------------------------------------------------------------------------
 class FirebaseAuthService implements AuthService {
-  // Instância customizada ou mock de FirebaseAuth para testes
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: customAuth
+  // - O que é: Instância opcional de 'FirebaseAuth' para permitir injeção de dependência em testes.
+  // --------------------------------------------------------------------------
   final FirebaseAuth? customAuth;
-  // Instância customizada ou mock de FirebaseFirestore para testes
+
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: customFirestore
+  // - O que é: Instância opcional de 'FirebaseFirestore' para injeção de dependência.
+  // --------------------------------------------------------------------------
   final FirebaseFirestore? customFirestore;
-  // Função opcional injetável para interceptar a busca de dados do usuário
+
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: userDocFetcher
+  // - O que é: Função callback opcional que intercepta a busca de dados de usuário por UID.
+  // --------------------------------------------------------------------------
   final Future<Map<String, dynamic>?> Function(String uid)? userDocFetcher;
-  // Função opcional injetável para interceptar resolução de CPF em e-mail
+
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: cpfEmailResolver
+  // - O que é: Função callback opcional que intercepta a resolução de CPF para e-mail em testes.
+  // --------------------------------------------------------------------------
   final Future<String?> Function(String cleanCpf)? cpfEmailResolver;
 
-  // Linha em branco separadora entre atributos e cache estático
-  // Comentários originais do autor mantidos byte a byte:
+  // Linha em branco separadora entre atributos de instância e cache estático
+  // ----------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   /// Cache compartilhado em memória dos perfis resolvidos por UID.
+  // ----------------------------------------------------------------------------
+  // ----------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   /// Sendo estático, instâncias criadas dinamicamente pelo RouteGuard ou widgets
+  // ----------------------------------------------------------------------------
+  // ----------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   /// compartilham o perfil autenticado na sessão sem redundância de requisições.
-  // Mapa estático compartilhado armazenando pares UID -> UserRole em memória
+  // ----------------------------------------------------------------------------
+  // ATRIBUTO ESTÁTICO: _roleCache
+  // - O que é: Dicionário Map em memória persistido no ciclo de vida do aplicativo.
+  // - Papel: Evita refazer leituras no Firestore a cada transição de rota pelo RouteGuard.
+  // ----------------------------------------------------------------------------
   static final Map<String, UserRole> _roleCache = {};
 
-  // Linha em branco separadora entre o mapa estático e o construtor
+  // Linha em branco separadora entre atributos e construtor
 
-  // Construtor principal permitindo injeção de dependências para testes
+  // --------------------------------------------------------------------------
+  // CONSTRUTOR PADRÃO: FirebaseAuthService
+  // - O que faz: Inicializa o serviço permitindo injeção de dependências para testes ou produção.
+  // --------------------------------------------------------------------------
   FirebaseAuthService({
-    // Dependência opcional de FirebaseAuth
+    // Parâmetro opcional para injeção de FirebaseAuth
     FirebaseAuth? auth,
-    // Dependência opcional de FirebaseFirestore
+    // Parâmetro opcional para injeção de FirebaseFirestore
     FirebaseFirestore? firestore,
-    // Callback injetável de busca de documento de usuário
+    // Parâmetro opcional para callback customizado de fetch de dados de usuário
     this.userDocFetcher,
-    // Callback injetável de resolução de CPF para e-mail
+    // Parâmetro opcional para callback customizado de resolução de CPF em e-mail
     this.cpfEmailResolver,
-  // Inicializa os atributos customAuth e customFirestore
+  // Inicializadores de campo para propriedades imutáveis
   }) : customAuth = auth,
        customFirestore = firestore;
 
   // Linha em branco separadora entre construtor e getters de instâncias
 
-  // Getter do FirebaseAuth: retorna instância mockada se existir ou FirebaseAuth.instance
+  // --------------------------------------------------------------------------
+  // GETTER: auth
+  // - Retorna a instância injetada de FirebaseAuth ou o singleton oficial 'FirebaseAuth.instance'.
+  // --------------------------------------------------------------------------
   FirebaseAuth get auth => customAuth ?? FirebaseAuth.instance;
-  // Getter do FirebaseFirestore: retorna instância mockada se existir ou FirebaseFirestore.instance
+
+  // --------------------------------------------------------------------------
+  // GETTER: firestore
+  // - Retorna a instância injetada de FirebaseFirestore ou o singleton 'FirebaseFirestore.instance'.
+  // --------------------------------------------------------------------------
   FirebaseFirestore get firestore =>
       customFirestore ?? FirebaseFirestore.instance;
 
-  // Linha em branco separadora entre instâncias e implementação de membros da interface
+  // Linha em branco separadora entre getters e membros sobrescritos
 
-  // Sobrescrita do getter authStateChanges
+  // --------------------------------------------------------------------------
+  // SOBRESCRITA DO GETTER: authStateChanges
+  // - O que faz: Transforma a stream de usuários do Firebase em uma stream reativa de UIDs.
+  // --------------------------------------------------------------------------
   @override
-  // Converte a stream de User em uma stream reativa que emite apenas a string UID ou nulo
+  // Converte cada evento de User emitindo apenas sua String de identificador único (uid)
   Stream<String?> get authStateChanges =>
       auth.authStateChanges().map((user) => user?.uid);
 
   // Linha em branco separadora entre membros da interface
 
-  // Sobrescrita do getter currentUserId
+  // --------------------------------------------------------------------------
+  // SOBRESCRITA DO GETTER: currentUserId
+  // - Retorna o UID do usuário atualmente autenticado no FirebaseAuth.
+  // --------------------------------------------------------------------------
   @override
-  // Retorna o UID do usuário atualmente logado no FirebaseAuth
+  // Acessa currentUser.uid na instância de FirebaseAuth
   String? get currentUserId => auth.currentUser?.uid;
 
   // Linha em branco separadora entre membros da interface
 
-  // Sobrescrita do método getCachedRole
+  // --------------------------------------------------------------------------
+  // SOBRESCRITA DO MÉTODO: getCachedRole
+  // - O que faz: Recupera de forma síncrona o UserRole associado ao UID informado no cache em memória.
+  // --------------------------------------------------------------------------
   @override
-  // Busca no mapa estático de cache o perfil já resolvido para o UID fornecido
+  // Consulta a chave UID no mapa estático de cache
   UserRole? getCachedRole(String uid) => _roleCache[uid];
 
   // Linha em branco separadora entre membros da interface
 
-  // Sobrescrita do método clearRoleCache
+  // --------------------------------------------------------------------------
+  // SOBRESCRITA DO MÉTODO: clearRoleCache
+  // - O que faz: Remove todos os registros de perfis mantidos no cache estático.
+  // --------------------------------------------------------------------------
   @override
-  // Limpa todos os registros do mapa estático de cache
+  // Esvazia o mapa estático de cache
   void clearRoleCache() => _roleCache.clear();
 
-  // Linha em branco separadora entre membros da interface e métodos privados auxiliares
+  // Linha em branco separadora entre métodos de cache e resolução de e-mail
 
-  // Método privado assíncrono para resolver o endereço de e-mail a partir do CPF informado
+  // --------------------------------------------------------------------------
+  // MÉTODO PRIVADO: _resolveEmail
+  // - O que faz: Descobre o endereço de e-mail associado ao CPF informado para autenticação.
+  // - Estratégia de resolução:
+  //   1) Invoca 'cpfEmailResolver' customizado se fornecido;
+  //   2) Consulta na coleção 'usuarios' do Firestore onde cpf == cleanCpf ou rawCpf;
+  //   3) Aplica fallback sintético com o domínio oficial '@transsaude.sp.gov.br'.
+  // --------------------------------------------------------------------------
   Future<String> _resolveEmail(String cleanCpf, String rawCpf) async {
     // Guarda referência local para o resolvedor customizado se tiver sido injetado
     final resolver = cpfEmailResolver;
@@ -254,7 +375,10 @@ class FirebaseAuthService implements AuthService {
 
   // Linha em branco separadora entre _resolveEmail e _fetchUserData
 
-  // Método privado assíncrono para buscar os dados cadastrais do usuário pelo seu UID
+  // --------------------------------------------------------------------------
+  // MÉTODO PRIVADO: _fetchUserData
+  // - O que faz: Recupera os dados do documento do usuário na coleção 'usuarios' pelo seu UID.
+  // --------------------------------------------------------------------------
   Future<Map<String, dynamic>?> _fetchUserData(String uid) async {
     // Guarda referência para o fetcher injetado se houver
     final fetcher = userDocFetcher;
@@ -277,7 +401,11 @@ class FirebaseAuthService implements AuthService {
 
   // Linha em branco separadora entre _fetchUserData e resolveUserRole
 
-  // Sobrescrita do método de resolução do papel do usuário
+  // --------------------------------------------------------------------------
+  // SOBRESCRITA DO MÉTODO: resolveUserRole
+  // - O que faz: Determina com segurança o UserRole associado ao UID autenticado.
+  // - Tratamento de falhas: Traduz exceções de permissão e falhas de rede para AuthException.
+  // --------------------------------------------------------------------------
   @override
   // Método assíncrono para identificar o UserRole associado ao UID informado
   Future<UserRole> resolveUserRole(
@@ -410,7 +538,11 @@ class FirebaseAuthService implements AuthService {
 
   // Linha em branco separadora entre resolveUserRole e login
 
-  // Sobrescrita do método de login
+  // --------------------------------------------------------------------------
+  // SOBRESCRITA DO MÉTODO: login
+  // - O que faz: Autentica o usuário por CPF e senha e verifica se ele possui papel permitido.
+  // - Regra de negócio (RBAC): Apenas 'motorista' e 'admin' têm permissão de acesso a este módulo.
+  // --------------------------------------------------------------------------
   @override
   // Método assíncrono para autenticação de usuários via CPF e senha
   Future<UserRole> login(String cpf, String senha) async {
@@ -509,7 +641,10 @@ class FirebaseAuthService implements AuthService {
 
   // Linha em branco separadora entre login e logout
 
-  // Sobrescrita do método logout
+  // --------------------------------------------------------------------------
+  // SOBRESCRITA DO MÉTODO: logout
+  // - O que faz: Encerra a sessão no FirebaseAuth e limpa o cache estático em memória.
+  // --------------------------------------------------------------------------
   @override
   // Método assíncrono para desconectar o usuário e purgar credenciais
   Future<void> logout() async {
@@ -521,9 +656,13 @@ class FirebaseAuthService implements AuthService {
   }
 
   // Linha em branco separadora entre logout e mapeamento de exceções
-  // Comentário original do autor mantido byte a byte:
+  // ----------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   /// Mapeamento de erros de infraestrutura do Firebase para mensagens amigáveis em português
-  // Método estático que converte códigos de erro em strings humanizadas
+  // ----------------------------------------------------------------------------
+  // MÉTODO ESTÁTICO: mapFirebaseAuthException
+  // - O que faz: Converte códigos técnicos de erro do Firebase Auth em frases legíveis em português.
+  // ----------------------------------------------------------------------------
   static String mapFirebaseAuthException(FirebaseAuthException e) {
     // Avalia o código do erro através de uma instrução switch
     switch (e.code) {
@@ -555,5 +694,6 @@ class FirebaseAuthService implements AuthService {
     }
   // Fecha o método mapFirebaseAuthException
   }
-// Fecha a classe FirebaseAuthService
+
+// Fecha a declaração da classe FirebaseAuthService
 }

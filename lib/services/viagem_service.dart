@@ -2,35 +2,41 @@
 // CABEÇALHO DE DOCUMENTAÇÃO DE ARQUIVO
 // ============================================================================
 // Arquivo: lib/services/viagem_service.dart
-// Camada: Domínio / Serviços de Dados e Infraestrutura (Services)
+// Camada: Serviços / Gestão de Viagens e Frota (Lógica de Negócios)
 //
 // O QUE ESTE ARQUIVO FAZ:
-// Centraliza a gestão de dados operacionais e concorrência das viagens do
-// transporte municipal (TFD). Controla o ciclo de vida da viagem (início,
-// acompanhamento e encerramento), provê streams reativas broadcast para lista de
-// veículos disponíveis e viagem ativa, realiza sincronização híbrida com o
-// Cloud Firestore (coleções 'veiculos', 'viagens' e 'usuarios') com fallback para
-// memória local, previne reserva simultânea do mesmo veículo por motoristas
-// distintos e disponibiliza utilitários de injeção de estado para testes.
+// Centraliza a gestão operacional das viagens do transporte municipal de
+// saúde (TFD), implementando um serviço Singleton ('ViagemService') com controle
+// de concorrência em tempo real, reserva atômica de veículos no Firestore,
+// streams reativas em broadcast para atualização de frota e viagem ativa,
+// persistência do ciclo de vida (início e encerramento) e fallback em memória.
 //
 // PARA QUE SERVE NO PROJETO:
-// É o serviço de backend da tela do motorista, responsável por garantir que as
-// transações de início e finalização de percurso ocorram de forma consistente,
-// sincronizando odômetro, placas em uso e status operacional em tempo real.
+// É o coração da automação da escala de motoristas da issue #17:
+// 1) Oferece uma stream contínua de veículos livres para seleção na UI;
+// 2) Impede corrida e dupla reserva do mesmo veículo por motoristas distintos;
+// 3) Gerencia a transição de estado da viagem (semViagem -> emViagem -> encerrada);
+// 4) Atualiza o hodômetro dos veículos após o término das viagens;
+// 5) Permite testes unitários determinísticos através do método resetParaTestes.
 //
 // ONDE É USADO NO PROJETO:
-// - lib/motorista.dart (escuta da viagem ativa e encerramento de percurso)
-// - lib/components/formulario_inicio_viagem.dart (carregamento de frota e envio da viagem)
-// - test/formulario_inicio_viagem_test.dart (testes unitários e de integração de viagens)
+// - lib/motorista.dart (escuta de viagem ativa e carregamento de veículos)
+// - lib/components/formulario_inicio_viagem.dart (reserva e início da viagem)
+// - lib/components/formulario_encerramento.dart (conclusão da viagem e KM final)
+// - lib/components/timeline_viagem.dart (rastreamento de status da viagem)
+// - test/formulario_inicio_viagem_test.dart (testes de concorrência e inicialização)
+// - test/widget_test.dart (testes de integração visual do fluxo do motorista)
 //
 // DE ONDE RECEBE DADOS:
-// - Cloud Firestore (documentos das coleções 'veiculos', 'viagens' e 'usuarios')
-// - Dados pré-populados na memória interna (_veiculosMemoria)
-// - Entradas do usuário repassadas via formulários de início e encerramento
+// Coleções 'veiculos', 'viagens' e 'usuarios' do Cloud Firestore, ou de listas
+// e instâncias mantidas em cache de memória quando executando sem conexão.
 //
 // O QUE EXPORTA / EXPÕE:
-// - class ResultadoInicioViagem: resultado de tentativa de início com sucesso, viagem ou mensagem de erro
-// - class ViagemService: singleton de gerenciamento com:
+// - class ResultadoInicioViagem:
+//   * ResultadoInicioViagem.sucesso(ViagemModel viagem)
+//   * ResultadoInicioViagem.erro(String mensagem)
+// - class ViagemService:
+//   * factory ViagemService() (Singleton)
 //   * ViagemModel? get viagemAtiva
 //   * Stream<ViagemModel?> get viagemAtivaStream
 //   * Stream<List<VeiculoModel>> get veiculosStream
@@ -40,8 +46,8 @@
 //   * void resetParaTestes(...)
 //
 // ORIGEM HISTÓRICA:
-// Criado no commit aa02e80 pela equipe do projeto na issue #17.
-// Não provém de scaffold ou código gerado por ferramentas.
+// Criado no commit aa02e80 pela equipe do projeto para atender à issue #17
+// (início e controle de concorrência de viagens). Não veio de template.
 //
 // DEPENDÊNCIAS EXTERNAS E EFEITOS COLATERAIS:
 // Depende de 'dart:async', 'package:cloud_firestore/cloud_firestore.dart' e
@@ -50,154 +56,241 @@
 // eventos em StreamControllers broadcast e mutação do estado singleton em memória.
 // ============================================================================
 
-// Importa a biblioteca assíncrona do Dart para manipulação de Streams e StreamControllers
+// ----------------------------------------------------------------------------
+// IMPORTAÇÃO DE BIBLIOTECAS E PACOTES:
+// - dart:async: Manipulação de eventos assíncronos, Streams e StreamControllers.
+// - cloud_firestore: Persistência remota de documentos nas coleções 'veiculos' e 'viagens'.
+// - firebase_core: Verificação defensiva de inicialização do Firebase ('Firebase.apps').
+// - veiculo_model.dart: Entidade de veículos da frota municipal.
+// - viagem_model.dart: Entidade de viagens e enum EstadoViagem.
+// - validacao_viagem.dart: Regras puras de validação de KM, cidade e filtros de frota.
+// ----------------------------------------------------------------------------
 import 'dart:async';
 
-// Linha em branco separadora entre imports do core e pacotes externos
-// Importa o cliente Cloud Firestore para gravação e leitura de documentos remotos
 import 'package:cloud_firestore/cloud_firestore.dart';
-// Importa o cliente Firebase Core para checagem de inicialização da plataforma Firebase
 import 'package:firebase_core/firebase_core.dart';
 
-// Linha em branco separadora entre pacotes externos e modelos internos
-// Importa o modelo de dados de veículos
 import '../models/veiculo_model.dart';
-// Importa o modelo de dados de viagens
 import '../models/viagem_model.dart';
-// Importa a classe de validações de regras de negócio de viagem
 import 'validacao_viagem.dart';
 
-// Linha em branco separadora entre imports e ResultadoInicioViagem
-// Comentário original do autor mantido byte a byte:
+// Linha em branco separadora entre imports e a classe de resultado
+// ----------------------------------------------------------------------------
+// COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
 // Armazena o resultado da tentativa de iniciar uma viagem
-// Classe que encapsula o desfecho da tentativa de abertura de viagem
+// ----------------------------------------------------------------------------
+// DECLARAÇÃO DA CLASSE DE RESULTADO: ResultadoInicioViagem
+// - O que a instrução faz: Modela e encapsula o desfecho da tentativa de abertura de viagem.
+// - O que é o elemento: Tipo de retorno semântico (Result Pattern) imutável com construtor privado.
+// - Papel no sistema: Retorna a instância de ViagemModel em caso de sucesso ou mensagem explicativa de erro.
+// ----------------------------------------------------------------------------
 class ResultadoInicioViagem {
-  // Comentário original do autor mantido byte a byte:
+  // --------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Indica se a inicialização da viagem ocorreu com sucesso
-  // Atributo imutável do tipo bool indicando êxito da operação
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: sucesso
+  // - O que é: Campo imutável ('final') do tipo primitivo booleano ('bool').
+  // - Papel: 'true' se a viagem foi validada e criada com sucesso; 'false' caso haja impedimento.
+  // --------------------------------------------------------------------------
   final bool sucesso;
-  // Comentário original do autor mantido byte a byte:
+
+  // --------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Instância da viagem criada em caso de sucesso
-  // Atributo opcional do tipo ViagemModel com a entidade criada
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: viagem
+  // - O que é: Campo imutável opcional/anulável ('ViagemModel?').
+  // - Papel: Dados completos da viagem aberta e vinculada ao veículo.
+  // --------------------------------------------------------------------------
   final ViagemModel? viagem;
-  // Comentário original do autor mantido byte a byte:
+
+  // --------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Mensagem descritiva do erro em caso de falha
-  // Atributo opcional do tipo String contendo o texto amigável do erro
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: mensagemErro
+  // - O que é: Campo imutável opcional/anulável ('String?').
+  // - Papel: Mensagem de erro para ser exibida na interface gráfica ao motorista.
+  // --------------------------------------------------------------------------
   final String? mensagemErro;
 
   // Linha em branco separadora entre atributos e construtor privado
 
-  // Construtor constante privado para garantir instanciação controlada por factories
+  // --------------------------------------------------------------------------
+  // CONSTRUTOR PRIVADO CONSTANTE: ResultadoInicioViagem._
+  // - O que faz: Inicializa os campos garantindo uso exclusivo de factories semânticas.
+  // --------------------------------------------------------------------------
   const ResultadoInicioViagem._({
-    // Parâmetro obrigatório para o indicador booleano de sucesso
+    // Parâmetro obrigatório: Indicador booleano de sucesso
     required this.sucesso,
-    // Parâmetro opcional para a instância da viagem
+    // Parâmetro opcional: Entidade da viagem criada
     this.viagem,
-    // Parâmetro opcional para a mensagem descritiva de erro
+    // Parâmetro opcional: Mensagem descritiva de erro
     this.mensagemErro,
   // Fecha a lista de parâmetros do construtor privado
   });
 
   // Linha em branco separadora entre construtor privado e factories
-  // Comentário original do autor mantido byte a byte:
+  // ----------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Retorna uma instância de ResultadoInicioViagem com sucesso e os dados da viagem
-  // Factory que cria um resultado de inicialização bem-sucedida associando a viagem
+  // ----------------------------------------------------------------------------
+  // FACTORY CONSTRUTOR: ResultadoInicioViagem.sucesso
+  // - O que faz: Instancia um resultado de sucesso associando o objeto de ViagemModel.
+  // ----------------------------------------------------------------------------
   factory ResultadoInicioViagem.sucesso(ViagemModel viagem) =>
-      // Instanciação privada com sucesso=true e os dados da viagem criada
+      // Cria instância privada com sucesso=true e os dados da viagem
       ResultadoInicioViagem._(sucesso: true, viagem: viagem);
 
   // Linha em branco separadora entre factories
-  // Comentário original do autor mantido byte a byte:
+  // ----------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Retorna uma instância de ResultadoInicioViagem com erro e a mensagem correspondente
-  // Factory que cria um resultado de inicialização com erro e mensagem explicativa
+  // ----------------------------------------------------------------------------
+  // FACTORY CONSTRUTOR: ResultadoInicioViagem.erro
+  // - O que faz: Instancia um resultado indicando falha de inicialização com mensagem explicativa.
+  // ----------------------------------------------------------------------------
   factory ResultadoInicioViagem.erro(String mensagem) =>
-      // Instanciação privada com sucesso=false e a mensagem de erro
+      // Cria instância privada com sucesso=false e a mensagem de erro
       ResultadoInicioViagem._(sucesso: false, mensagemErro: mensagem);
-// Fecha a classe ResultadoInicioViagem
+
+// Fecha a declaração da classe ResultadoInicioViagem
 }
 
 // Linha em branco separadora entre ResultadoInicioViagem e ViagemService
-// Comentário original do autor mantido byte a byte:
+// ----------------------------------------------------------------------------
+// COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
 // Gerencia a lista de veículos, streams de atualização e o ciclo de vida das viagens
-// Declaração da classe ViagemService estruturada como Singleton
+// ----------------------------------------------------------------------------
+// DECLARAÇÃO DA CLASSE DE SERVIÇO: ViagemService
+// - O que a instrução faz: Declara o serviço Singleton responsável pela gestão de viagens e frota.
+// - O que é o elemento: Classe de serviço com padrão Singleton e streams reativas em broadcast.
+// ----------------------------------------------------------------------------
 class ViagemService {
-  // Comentário original do autor mantido byte a byte:
+  // --------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Instância única da classe ViagemService
-  // Campo estático privado contendo a referência singleton da classe
+  // --------------------------------------------------------------------------
+  // CAMPO ESTÁTICO PRIVADO: _instance
+  // - O que é: Instância singleton da classe ViagemService alocada em memória.
+  // --------------------------------------------------------------------------
   static final ViagemService _instance = ViagemService._interno();
 
   // Linha em branco separadora entre o campo estático e a factory
-
-  // Comentário original do autor mantido byte a byte:
+  // ----------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Construtor fábrica que retorna a instância única
-  // Factory singleton que devolve sempre a mesma instância compartilhada
+  // ----------------------------------------------------------------------------
+  // FACTORY SINGLETON: ViagemService
+  // - Retorna sempre a referência estática compartilhada '_instance'.
+  // ----------------------------------------------------------------------------
   factory ViagemService() => _instance;
 
   // Linha em branco separadora entre a factory e o construtor privado
-
-  // Comentário original do autor mantido byte a byte:
+  // ----------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Construtor privado que executa a inicialização dos dados base
-  // Construtor nomeado privado que dispara a carga dos veículos padrão
+  // ----------------------------------------------------------------------------
+  // CONSTRUTOR PRIVADO: ViagemService._interno
+  // - O que faz: Dispara a carga de dados padrão na memória.
+  // ----------------------------------------------------------------------------
   ViagemService._interno() {
-    // Executa a função interna de população de dados base
+    // Popula a lista inicial de veículos na memória
     _inicializarDadosBase();
   // Fecha o bloco do construtor interno
   }
 
   // Linha em branco separadora entre construtor e atributos de estado
-  // Comentário original do autor mantido byte a byte:
+  // ----------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Armazena a viagem ativa no momento
-  // Propriedade privada que guarda em memória a viagem em andamento
+  // ----------------------------------------------------------------------------
+  // ATRIBUTO PRIVADO: _viagemAtiva
+  // - Armazena em memória a viagem em andamento para o motorista conectado.
+  // --------------------------------------------------------------------------
   ViagemModel? _viagemAtiva;
 
   // Linha em branco separadora entre atributos de estado
-  // Comentário original do autor mantido byte a byte:
+  // ----------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Controlador de fluxo de dados para a lista de veículos
-  // StreamController em broadcast para notificar múltiplos ouvintes da frota
+  // ----------------------------------------------------------------------------
+  // CONTROLADOR REATIVO: _veiculosController
+  // - StreamController broadcast para emitir atualizações na lista de veículos da frota.
+  // --------------------------------------------------------------------------
   final StreamController<List<VeiculoModel>> _veiculosController =
       StreamController<List<VeiculoModel>>.broadcast();
 
   // Linha em branco separadora entre controladores
-  // Comentário original do autor mantido byte a byte:
+  // ----------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Controlador de fluxo de dados para a viagem ativa
-  // StreamController em broadcast para notificar mudanças na viagem ativa
+  // ----------------------------------------------------------------------------
+  // CONTROLADOR REATIVO: _viagemAtivaController
+  // - StreamController broadcast para emitir mudanças de status da viagem ativa.
+  // --------------------------------------------------------------------------
   final StreamController<ViagemModel?> _viagemAtivaController =
       StreamController<ViagemModel?>.broadcast();
 
   // Linha em branco separadora entre controladores e memória
-  // Comentário original do autor mantido byte a byte:
+  // ----------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Lista de veículos armazenada em memória
-  // Lista mutável interna utilizada como fallback caso o Firestore não esteja ativo
+  // ----------------------------------------------------------------------------
+  // LISTA LOCAL DE MEMÓRIA: _veiculosMemoria
+  // - Cache local mutável utilizado como fallback caso o Firestore não esteja acessível.
+  // --------------------------------------------------------------------------
   final List<VeiculoModel> _veiculosMemoria = [];
 
   // Linha em branco separadora entre lista e flag
-  // Comentário original do autor mantido byte a byte:
+  // ----------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Indicador de inicialização dos dados da lista em memória
-  // Flag de controle para evitar repopulação duplicada da memória
+  // ----------------------------------------------------------------------------
+  // BANDEIRA DE CONTROLE: _inicializado
+  // - Evita que os dados padrão sejam inseridos repetidamente na memória.
+  // --------------------------------------------------------------------------
   bool _inicializado = false;
 
   // Linha em branco separadora entre flags e getters públicos
-  // Comentário original do autor mantido byte a byte:
+  // ----------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Retorna a viagem ativa atual
-  // Getter síncrono para leitura do estado atual da viagem
+  // ----------------------------------------------------------------------------
+  // GETTER PÚBLICO: viagemAtiva
+  // - Retorna síncronamente a viagem ativa atual em memória.
+  // --------------------------------------------------------------------------
   ViagemModel? get viagemAtiva => _viagemAtiva;
 
   // Linha em branco separadora entre getters públicos
-  // Comentário original do autor mantido byte a byte:
+  // ----------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Retorna o fluxo de dados da viagem ativa
-  // Getter da Stream para observação reativa de mudanças na viagem ativa
+  // ----------------------------------------------------------------------------
+  // GETTER DE STREAM: viagemAtivaStream
+  // - Retorna a stream de observação reativa de mudanças na viagem ativa.
+  // --------------------------------------------------------------------------
   Stream<ViagemModel?> get viagemAtivaStream => _viagemAtivaController.stream;
 
   // Linha em branco separadora entre getters públicos
-  // Comentário original do autor mantido byte a byte:
+  // ----------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Retorna o fluxo de dados da lista de veículos
-  // Getter da Stream para observação reativa de mudanças na lista de veículos
+  // ----------------------------------------------------------------------------
+  // GETTER DE STREAM: veiculosStream
+  // - Retorna a stream de observação reativa de mudanças na frota de veículos.
+  // --------------------------------------------------------------------------
   Stream<List<VeiculoModel>> get veiculosStream => _veiculosController.stream;
 
   // Linha em branco separadora entre getters e métodos privados
-  // Comentário original do autor mantido byte a byte:
+  // ----------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Insere registros padrão de veículos na lista em memória
-  // Método de inicialização da lista local de veículos municipais
+  // ----------------------------------------------------------------------------
+  // MÉTODO PRIVADO: _inicializarDadosBase
+  // - Popula a lista em memória com a frota padrão do município de Poloni.
+  // --------------------------------------------------------------------------
   void _inicializarDadosBase() {
     // Interrompe se a lista já tiver sido inicializada anteriormente
     if (_inicializado) return;
@@ -248,9 +341,13 @@ class ViagemService {
   }
 
   // Linha em branco separadora entre métodos privados
-  // Comentário original do autor mantido byte a byte:
+  // ----------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Verifica se existem instâncias ativas do Firebase inicializadas
-  // Método defensivo para checagem da disponibilidade do Firebase
+  // ----------------------------------------------------------------------------
+  // MÉTODO PRIVADO: _isFirebaseDisponivel
+  // - Retorna true se houver instâncias configuradas de Firebase no runtime atual.
+  // --------------------------------------------------------------------------
   bool _isFirebaseDisponivel() {
     // Bloco try para leitura de instâncias do Firebase
     try {
@@ -265,9 +362,13 @@ class ViagemService {
   }
 
   // Linha em branco separadora entre checagem do Firebase e carregarVeiculosDisponiveis
-  // Comentário original do autor mantido byte a byte:
+  // ----------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Retorna um fluxo com a lista de veículos disponíveis filtrados
-  // Retorna uma Stream com os veículos liberados para condução
+  // ----------------------------------------------------------------------------
+  // MÉTODO PÚBLICO: carregarVeiculosDisponiveis
+  // - Retorna uma Stream com os veículos liberados para condução, aplicando filtros de concorrência.
+  // --------------------------------------------------------------------------
   Stream<List<VeiculoModel>> carregarVeiculosDisponiveis({
     // ID do motorista atual para não filtrar o veículo já associado a ele
     String? motoristaId,
@@ -284,8 +385,10 @@ class ViagemService {
             .map((snapshot) {
               // Verifica se a coleção está vazia
               if (snapshot.docs.isEmpty) {
-                // Comentário original do autor mantido byte a byte:
+                // ------------------------------------------------------------
+                // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
                 // Escreve os veículos padrão no Firestore quando a coleção está sem documentos
+                // ------------------------------------------------------------
                 // Sincroniza a base de dados padrão no Firestore de forma assíncrona
                 _sincronizarVeiculosBaseNoFirestore();
                 // Retorna os veículos da memória aplicando o filtro de disponibilidade
@@ -295,8 +398,10 @@ class ViagemService {
                 );
               // Fecha verificação de snapshot vazio
               }
-              // Comentário original do autor mantido byte a byte:
+              // --------------------------------------------------------------
+              // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
               // Mapeia os documentos retornados para instâncias de VeiculoModel
+              // --------------------------------------------------------------
               // Mapeia os documentos remotos para objetos VeiculoModel
               final lista = snapshot.docs.map((doc) {
                 return VeiculoModel.fromMap(doc.data(), docId: doc.id);
@@ -310,16 +415,20 @@ class ViagemService {
             });
       // Captura erros de rede ou permissão e prossegue para a memória
       } catch (_) {
-        // Comentário original do autor mantido byte a byte:
+        // --------------------------------------------------------------------
+        // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
         // Prossegue para o fluxo em memória caso ocorra exceção
+        // --------------------------------------------------------------------
       // Fecha o bloco catch
       }
     // Fecha a checagem de Firebase disponível
     }
 
     // Linha em branco separadora entre tentativa remota e emissão local
-    // Comentário original do autor mantido byte a byte:
+    // ----------------------------------------------------------------------------
+    // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
     // Emite a lista de veículos armazenada em memória através do StreamController
+    // ----------------------------------------------------------------------------
     // Agenda microtask para emitir os veículos da memória de forma assíncrona
     Future.microtask(() {
       // Checa se o controlador ainda se encontra aberto antes de emitir evento
@@ -343,9 +452,13 @@ class ViagemService {
   }
 
   // Linha em branco separadora entre métodos de carregamento e sincronização
-  // Comentário original do autor mantido byte a byte:
+  // ----------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Envia os veículos da lista em memória para a coleção 'veiculos' do Firestore
-  // Método assíncrono para preencher a coleção 'veiculos' no Firestore quando vazia
+  // ----------------------------------------------------------------------------
+  // MÉTODO ASSÍNCRONO: _sincronizarVeiculosBaseNoFirestore
+  // - Grava os veículos padrão da prefeitura na coleção 'veiculos' do Firestore.
+  // --------------------------------------------------------------------------
   Future<void> _sincronizarVeiculosBaseNoFirestore() async {
     // Interrompe se o Firebase não estiver configurado
     if (!_isFirebaseDisponivel()) return;
@@ -361,17 +474,27 @@ class ViagemService {
       }
     // Captura falhas de escrita sem quebrar o fluxo
     } catch (_) {
-      // Comentário original do autor mantido byte a byte:
+      // ----------------------------------------------------------------------
+      // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
       // Ignora falhas de escrita durante a sincronização
+      // ----------------------------------------------------------------------
     // Fecha o bloco catch
     }
   // Fecha o método _sincronizarVeiculosBaseNoFirestore
   }
 
   // Linha em branco separadora entre sincronização e iniciarViagem
-  // Comentário original do autor mantido byte a byte:
+  // ----------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Valida os dados, atualiza a disponibilidade do veículo e cria o registro de viagem
-  // Método assíncrono central para validação e abertura de uma nova viagem
+  // ----------------------------------------------------------------------------
+  // MÉTODO CENTRAL DE NEGÓCIO: iniciarViagem
+  // - Valida KM inicial e destino;
+  // - Verifica concorrência de uso do veículo no Firestore e na memória;
+  // - Atualiza o veículo como 'emUso: true' associado ao motorista;
+  // - Cria o documento de ViagemModel com status 'ativa';
+  // - Emite os novos estados nas streams reativas.
+  // --------------------------------------------------------------------------
   Future<ResultadoInicioViagem> iniciarViagem({
     // Veículo selecionado pelo motorista
     required VeiculoModel veiculo,
@@ -385,8 +508,10 @@ class ViagemService {
     required String motoristaNome,
   // Abre o corpo do método iniciarViagem
   }) async {
-    // Comentário original do autor mantido byte a byte:
+    // ------------------------------------------------------------------------
+    // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
     // Valida a quilometragem informada contra a última registrada
+    // ------------------------------------------------------------------------
     // Executa a validação de formato e plausibilidade do odômetro
     final validacaoKm = ValidacaoViagem.validarQuilometragem(
       valorDigitado: kmInicial.toString(),
@@ -399,8 +524,10 @@ class ViagemService {
     }
 
     // Linha em branco separadora entre validação de KM e validação de cidade
-    // Comentário original do autor mantido byte a byte:
+    // ------------------------------------------------------------------------
+    // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
     // Valida a cidade informada
+    // ------------------------------------------------------------------------
     // Executa a validação de preenchimento da cidade de destino
     final validacaoCidade = ValidacaoViagem.validarCidade(cidadeDestino);
     // Se a cidade for inválida, retorna erro imediato com a mensagem
@@ -410,8 +537,10 @@ class ViagemService {
     }
 
     // Linha em branco separadora entre validação de cidade e checagem remota no Firestore
-    // Comentário original do autor mantido byte a byte:
+    // ------------------------------------------------------------------------
+    // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
     // Consulta o documento do veículo no Firestore para verificar uso concorrente
+    // ------------------------------------------------------------------------
     // Checa concorrência de reserva no Firestore para impedir conflito entre motoristas
     if (_isFirebaseDisponivel()) {
       // Bloco try para leitura do estado atualizado do veículo no banco
@@ -432,8 +561,10 @@ class ViagemService {
           final emUsoRemoto = dados['emUso'] == true;
           // Extrai o motorista vinculado no servidor
           final motoristaOcupando = dados['motoristaAtualId'];
-          // Comentário original do autor mantido byte a byte:
+          // ------------------------------------------------------------------
+          // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
           // Verifica se o veículo está marcado em uso por motorista distinto
+          // ------------------------------------------------------------------
           // Detecta conflito de concorrência com outro motorista
           if (emUsoRemoto &&
               motoristaOcupando != null &&
@@ -448,24 +579,30 @@ class ViagemService {
         }
       // Captura erros de rede sem travar a aplicação
       } catch (_) {
-        // Comentário original do autor mantido byte a byte:
+        // --------------------------------------------------------------------
+        // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
         // Prossegue com a verificação em memória caso ocorra falha de consulta remota
+        // --------------------------------------------------------------------
       // Fecha bloco catch
       }
     // Fecha checagem de Firebase disponível
     }
 
     // Linha em branco separadora entre consulta remota e verificação na memória
-    // Comentário original do autor mantido byte a byte:
+    // ------------------------------------------------------------------------
+    // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
     // Verifica a situação do veículo na lista em memória
+    // ------------------------------------------------------------------------
     // Localiza o índice do veículo na lista interna da memória
     final index = _veiculosMemoria.indexWhere((v) => v.id == veiculo.id);
     // Se o veículo constar na lista da memória, valida conflito local
     if (index != -1) {
       // Obtém a instância do veículo na memória
       final veicMem = _veiculosMemoria[index];
-      // Comentário original do autor mantido byte a byte:
+      // ----------------------------------------------------------------------
+      // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
       // Verifica se o veículo da memória está em uso por outro motorista
+      // ----------------------------------------------------------------------
       // Checa se outro motorista já está ocupando o veículo na memória
       if (veicMem.emUso &&
           veicMem.motoristaAtualId != null &&
@@ -476,8 +613,10 @@ class ViagemService {
         );
       // Fecha checagem de concorrência local
       }
-      // Comentário original do autor mantido byte a byte:
+      // ----------------------------------------------------------------------
+      // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
       // Atualiza o veículo na memória com status emUso, novo condutor e quilometragem
+      // ----------------------------------------------------------------------
       // Atualiza o veículo na memória com a reserva e o KM informado
       _veiculosMemoria[index] = _veiculosMemoria[index].copyWith(
         emUso: true,
@@ -488,8 +627,10 @@ class ViagemService {
     }
 
     // Linha em branco separadora entre atualização de memória e criação da viagem
-    // Comentário original do autor mantido byte a byte:
+    // ------------------------------------------------------------------------
+    // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
     // Instancia o objeto ViagemModel com os dados da viagem
+    // ------------------------------------------------------------------------
     // Cria a nova instância de ViagemModel com status 'ativa'
     final novaViagem = ViagemModel(
       // Gera ID baseado em timestamp
@@ -515,8 +656,10 @@ class ViagemService {
     );
 
     // Linha em branco separadora entre criação da viagem e notificação dos fluxos
-    // Comentário original do autor mantido byte a byte:
+    // ------------------------------------------------------------------------
+    // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
     // Atualiza a variável e notifica os fluxos de dados
+    // ------------------------------------------------------------------------
     // Atualiza a propriedade interna de viagem ativa
     _viagemAtiva = novaViagem;
     // Emite o novo objeto na stream de viagem ativa
@@ -527,14 +670,18 @@ class ViagemService {
     );
 
     // Linha em branco separadora entre notificação local e persistência remota
-    // Comentário original do autor mantido byte a byte:
+    // ------------------------------------------------------------------------
+    // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
     // Persiste as alterações no Firestore
+    // ------------------------------------------------------------------------
     // Persiste as mudanças no Cloud Firestore se disponível
     if (_isFirebaseDisponivel()) {
       // Bloco try para capturar exceções de gravação remota
       try {
-        // Comentário original do autor mantido byte a byte:
+        // --------------------------------------------------------------------
+        // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
         // Atualiza os dados de uso e quilometragem do veículo
+        // --------------------------------------------------------------------
         // Grava no documento do veículo o status emUso, condutor e novo KM
         await FirebaseFirestore.instance
             .collection('veiculos')
@@ -546,8 +693,10 @@ class ViagemService {
             }, SetOptions(merge: true));
 
         // Linha em branco separadora entre atualização de veículo e criação de viagem
-        // Comentário original do autor mantido byte a byte:
+        // --------------------------------------------------------------------
+        // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
         // Cria o documento da viagem na coleção 'viagens'
+        // --------------------------------------------------------------------
         // Cria o novo documento de viagem na coleção 'viagens'
         await FirebaseFirestore.instance
             .collection('viagens')
@@ -555,8 +704,10 @@ class ViagemService {
             .set(novaViagem.toMap());
 
         // Linha em branco separadora entre criação da viagem e atualização de usuário
-        // Comentário original do autor mantido byte a byte:
+        // --------------------------------------------------------------------
+        // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
         // Atualiza a propriedade emViagem do usuário motorista
+        // --------------------------------------------------------------------
         // Atualiza a flag emViagem do documento do motorista na coleção 'usuarios'
         if (motoristaId.isNotEmpty) {
           await FirebaseFirestore.instance
@@ -567,8 +718,10 @@ class ViagemService {
         }
       // Captura erros de escrita remota sem quebrar a operação local
       } catch (_) {
-        // Comentário original do autor mantido byte a byte:
+        // --------------------------------------------------------------------
+        // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
         // Ignora erros de escrita remota
+        // --------------------------------------------------------------------
       // Fecha o bloco catch
       }
     // Fecha a checagem de Firebase disponível
@@ -581,9 +734,16 @@ class ViagemService {
   }
 
   // Linha em branco separadora entre iniciarViagem e encerrarViagem
-  // Comentário original do autor mantido byte a byte:
+  // ----------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Altera o status da viagem para encerrada e libera o veículo associado
-  // Método assíncrono para finalização da rota e devolução do automóvel à frota
+  // ----------------------------------------------------------------------------
+  // MÉTODO ASSÍNCRONO: encerrarViagem
+  // - Registra KM final e dataHoraFim no documento da viagem;
+  // - Libera o veículo associado ('emUso: false' e 'motoristaAtualId: null');
+  // - Libera o motorista na coleção 'usuarios' ('emViagem: false');
+  // - Zera '_viagemAtiva' e notifica as streams.
+  // --------------------------------------------------------------------------
   Future<void> encerrarViagem({int? kmFinal, int? kmRodado}) async {
     // Interrompe se não houver viagem ativa em curso
     if (_viagemAtiva == null) return;
@@ -595,8 +755,10 @@ class ViagemService {
     final veiculoId = viagem.veiculoId;
 
     // Linha em branco separadora entre extração e atualização de memória
-    // Comentário original do autor mantido byte a byte:
+    // ------------------------------------------------------------------------
+    // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
     // Atualiza os dados do veículo na lista em memória
+    // ------------------------------------------------------------------------
     // Localiza o veículo utilizado na lista da memória
     final index = _veiculosMemoria.indexWhere((v) => v.id == veiculoId);
     // Se o veículo for encontrado na memória, atualiza sua disponibilidade
@@ -612,8 +774,10 @@ class ViagemService {
     }
 
     // Linha em branco separadora entre memória e notificação de fluxos
-    // Comentário original do autor mantido byte a byte:
+    // ------------------------------------------------------------------------
+    // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
     // Limpa a viagem ativa e atualiza os fluxos de dados
+    // ------------------------------------------------------------------------
     // Zera a propriedade de viagem ativa
     _viagemAtiva = null;
     // Emite nulo na stream de viagem ativa
@@ -624,8 +788,10 @@ class ViagemService {
     );
 
     // Linha em branco separadora entre notificação local e atualização no Firestore
-    // Comentário original do autor mantido byte a byte:
+    // ------------------------------------------------------------------------
+    // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
     // Atualiza os documentos no Firestore
+    // ------------------------------------------------------------------------
     // Atualiza os registros correspondentes no Cloud Firestore se disponível
     if (_isFirebaseDisponivel()) {
       // Bloco try para capturar exceções de escrita no Firestore
@@ -679,8 +845,10 @@ class ViagemService {
         }
       // Captura erros de escrita remota sem propagar falha
       } catch (_) {
-        // Comentário original do autor mantido byte a byte:
+        // --------------------------------------------------------------------
+        // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
         // Ignora erros de escrita remota
+        // --------------------------------------------------------------------
       // Fecha o bloco catch
       }
     // Fecha a checagem de Firebase disponível
@@ -689,9 +857,13 @@ class ViagemService {
   }
 
   // Linha em branco separadora entre encerrarViagem e resetParaTestes
-  // Comentário original do autor mantido byte a byte:
+  // ----------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Restaura o estado interno de memória e notifica os fluxos com os valores fornecidos
-  // Método utilitário para restabelecimento de estado determinístico em testes
+  // ----------------------------------------------------------------------------
+  // MÉTODO UTILITÁRIO DE TESTES: resetParaTestes
+  // - O que faz: Restabelece o estado da memória e notifica streams para execução isolada de testes.
+  // --------------------------------------------------------------------------
   void resetParaTestes({
     // Lista inicial opcional de veículos para simulação
     List<VeiculoModel>? veiculosIniciais,
@@ -720,5 +892,6 @@ class ViagemService {
     );
   // Fecha o método resetParaTestes
   }
-// Fecha a classe ViagemService
+
+// Fecha a declaração da classe ViagemService
 }
