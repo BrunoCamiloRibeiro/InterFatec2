@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
@@ -18,6 +20,22 @@ class AuthException implements Exception {
 abstract class AuthService {
   Future<UserRole> login(String cpf, String senha);
   Future<void> logout();
+
+  /// Stream reativa de mudanças no estado de autenticação (emite UID do usuário ou null se deslogado)
+  Stream<String?> get authStateChanges => const Stream.empty();
+
+  /// Resolve o UserRole de um usuário autenticado a partir de seu UID
+  Future<UserRole> resolveUserRole(String uid, {bool forceRefresh = false}) =>
+      throw UnimplementedError('resolveUserRole não implementado');
+
+  /// Retorna o role em cache para o UID informado, se existir
+  UserRole? getCachedRole(String uid) => null;
+
+  /// Limpa o cache de roles resolvidos
+  void clearRoleCache() {}
+
+  /// Retorna o UID do usuário atualmente autenticado, se houver
+  String? get currentUserId => null;
 }
 
 /// Implementação oficial do AuthService baseada em Firebase Authentication e Cloud Firestore
@@ -26,6 +44,7 @@ class FirebaseAuthService implements AuthService {
   final FirebaseFirestore? customFirestore;
   final Future<Map<String, dynamic>?> Function(String uid)? userDocFetcher;
   final Future<String?> Function(String cleanCpf)? cpfEmailResolver;
+  final Map<String, UserRole> _roleCache = {};
 
   FirebaseAuthService({
     FirebaseAuth? auth,
@@ -38,6 +57,19 @@ class FirebaseAuthService implements AuthService {
   FirebaseAuth get auth => customAuth ?? FirebaseAuth.instance;
   FirebaseFirestore get firestore =>
       customFirestore ?? FirebaseFirestore.instance;
+
+  @override
+  Stream<String?> get authStateChanges =>
+      auth.authStateChanges().map((user) => user?.uid);
+
+  @override
+  String? get currentUserId => auth.currentUser?.uid;
+
+  @override
+  UserRole? getCachedRole(String uid) => _roleCache[uid];
+
+  @override
+  void clearRoleCache() => _roleCache.clear();
 
   Future<String> _resolveEmail(String cleanCpf, String rawCpf) async {
     final resolver = cpfEmailResolver;
@@ -79,6 +111,91 @@ class FirebaseAuthService implements AuthService {
   }
 
   @override
+  Future<UserRole> resolveUserRole(
+    String uid, {
+    bool forceRefresh = false,
+  }) async {
+    if (!forceRefresh && _roleCache.containsKey(uid)) {
+      return _roleCache[uid]!;
+    }
+
+    Map<String, dynamic>? data;
+    try {
+      data = await _fetchUserData(uid);
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') {
+        throw const AuthException(
+          'Permissão negada ao consultar perfil de usuário.',
+          code: 'permission-denied',
+        );
+      }
+      if (e.code == 'unavailable' || e.code == 'network-request-failed') {
+        throw const AuthException(
+          'Falha temporária de conexão com o servidor.',
+          code: 'unavailable',
+        );
+      }
+      throw AuthException(
+        'Erro ao consultar perfil de acesso: ${e.message}',
+        code: e.code,
+      );
+    } on TimeoutException {
+      throw const AuthException(
+        'Tempo limite excedido ao consultar perfil.',
+        code: 'unavailable',
+      );
+    } catch (e) {
+      if (e is AuthException) rethrow;
+      final msg = e.toString().toLowerCase();
+      if (msg.contains('network') ||
+          msg.contains('socket') ||
+          msg.contains('timeout') ||
+          msg.contains('unavailable')) {
+        throw const AuthException(
+          'Falha temporária de conexão com o servidor.',
+          code: 'unavailable',
+        );
+      }
+      throw AuthException(
+        'Erro ao consultar perfil de acesso. Tente novamente.',
+      );
+    }
+
+    if (data == null) {
+      throw const AuthException(
+        'Usuário não cadastrado ou sem permissão de acesso.',
+        code: 'user-not-registered',
+      );
+    }
+
+    final roleRaw = data['role'];
+    if (roleRaw == null || roleRaw.toString().trim().isEmpty) {
+      throw const AuthException(
+        'Perfil do usuário ausente no cadastro.',
+        code: 'invalid-profile',
+      );
+    }
+
+    final roleStr = roleRaw.toString().trim();
+    final UserRole role;
+    if (roleStr == 'motorista') {
+      role = UserRole.motorista;
+    } else if (roleStr == 'admin') {
+      role = UserRole.admin;
+    } else if (roleStr == 'paciente') {
+      role = UserRole.paciente;
+    } else {
+      throw AuthException(
+        'Perfil de usuário desconhecido ou inválido: $roleStr',
+        code: 'unknown-role',
+      );
+    }
+
+    _roleCache[uid] = role;
+    return role;
+  }
+
+  @override
   Future<UserRole> login(String cpf, String senha) async {
     final cleanCpf = cpf.replaceAll(RegExp(r'\D'), '');
     final email = await _resolveEmail(cleanCpf, cpf.trim());
@@ -106,21 +223,11 @@ class FirebaseAuthService implements AuthService {
     }
 
     try {
-      final data = await _fetchUserData(user.uid);
+      final role = await resolveUserRole(user.uid);
 
-      if (data == null) {
-        await auth.signOut();
-        throw const AuthException(
-          'Usuário não cadastrado ou sem permissão de acesso.',
-          code: 'user-not-registered',
-        );
-      }
-
-      final roleStr = data['role']?.toString();
-
-      if (roleStr == 'motorista') {
+      if (role == UserRole.motorista) {
         return UserRole.motorista;
-      } else if (roleStr == 'admin') {
+      } else if (role == UserRole.admin) {
         return UserRole.admin;
       } else {
         await auth.signOut();
@@ -129,7 +236,14 @@ class FirebaseAuthService implements AuthService {
           code: 'access-denied',
         );
       }
-    } on AuthException {
+    } on AuthException catch (e) {
+      await auth.signOut();
+      if (e.code == 'unknown-role') {
+        throw const AuthException(
+          'Acesso restrito a motoristas e administradores.',
+          code: 'access-denied',
+        );
+      }
       rethrow;
     } catch (_) {
       await auth.signOut();
@@ -141,6 +255,7 @@ class FirebaseAuthService implements AuthService {
 
   @override
   Future<void> logout() async {
+    clearRoleCache();
     await auth.signOut();
   }
 
