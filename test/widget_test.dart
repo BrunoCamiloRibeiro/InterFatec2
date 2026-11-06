@@ -45,6 +45,7 @@ import 'package:trans_saude/Outdated/login.dart';
 import 'package:trans_saude/Outdated/paciente.dart';
 // Importa a tela de registro legada
 import 'package:trans_saude/Outdated/register.dart';
+import 'package:trans_saude/components/formulario_novo_veiculo.dart';
 // Importa o componente e tela de início de viagem
 import 'package:trans_saude/components/formulario_inicio_viagem.dart';
 // Importa o modelo de dados representativo de veículos
@@ -142,19 +143,16 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Abre o menu dropdown e seleciona o veículo informado
       // Abre o menu suspenso de veículos
       await tester.tap(find.byType(DropdownButtonFormField<VeiculoModel>));
       await tester.pumpAndSettle();
       await tester.tap(find.textContaining('BRA-2E19').last);
       await tester.pumpAndSettle();
 
-      // Clica no botão para iniciar a viagem
       // Inicia a viagem
       await tester.tap(find.byKey(const Key('botaoIniciarViagem')));
       await tester.pumpAndSettle();
 
-      // Verifica a renderização da tela de passageiros e da identificação do veículo
       // Valida que navegou para a tela de motorista exibindo a placa
       expect(find.text('Lista de Passageiros'), findsOneWidget);
       expect(find.textContaining('BRA-2E19'), findsOneWidget);
@@ -193,4 +191,65 @@ void main() {
       expect(find.text('Km Rodado'), findsOneWidget);
     },
   );
+
+  // Teste do formulário de veículo com validação de placa duplicada e sugestões
+  testWidgets('Formulário de veículo valida placa duplicada e exibe sugestões', (
+    WidgetTester tester,
+  ) async {
+    Map<String, dynamic>? veiculoSalvo;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: FormularioNovoVeiculo(
+            placasExistentes: const ['ABC1D23', 'DEF4G56'],
+            onSalvar: (v) => veiculoSalvo = v,
+          ),
+        ),
+      ),
+    );
+
+    // Verifica renderização do modal
+    expect(find.text('Novo Veículo'), findsOneWidget);
+    expect(find.text('Placa *'), findsOneWidget);
+
+    // 1. Tenta salvar com campos vazios (bloqueia)
+    await tester.tap(find.text('Salvar Veículo'));
+    await tester.pumpAndSettle();
+    expect(find.text('Informe a placa'), findsOneWidget);
+    expect(veiculoSalvo, isNull);
+
+    // 2. Digita placa duplicada 'ABC1D23' (deve avisar e bloquear)
+    await tester.enterText(find.widgetWithText(TextFormField, 'Placa *'), 'ABC1D23');
+    await tester.pumpAndSettle();
+    expect(find.text('Já existe outro veículo cadastrado com esta placa.'), findsOneWidget);
+
+    await tester.tap(find.text('Salvar Veículo'));
+    await tester.pumpAndSettle();
+    expect(find.text('Esta placa já pertence a outro veículo'), findsOneWidget);
+    expect(veiculoSalvo, isNull);
+
+    // 3. Digita placa fora do padrão Mercosul/antigo (ex: 'XYZ99AA')
+    // Deve avisar visualmente, mas NÃO bloquear o salvamento
+    await tester.enterText(find.widgetWithText(TextFormField, 'Placa *'), 'XYZ99AA');
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Aviso: Formato fora do padrão Mercosul (ABC1D23) ou antigo (ABC1234).'),
+      findsOneWidget,
+    );
+
+    // 4. Preenche marca e modelo
+    await tester.enterText(find.widgetWithText(TextFormField, 'Marca *'), 'Renault');
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextFormField, 'Modelo *'), 'Master');
+    await tester.pumpAndSettle();
+
+    // Salva veículo com placa fora do padrão (não deve ser bloqueado)
+    await tester.tap(find.text('Salvar Veículo'));
+    await tester.pumpAndSettle();
+    expect(veiculoSalvo, isNotNull);
+    expect(veiculoSalvo?['placa'], 'XYZ99AA');
+    expect(veiculoSalvo?['marca'], 'Renault');
+    expect(veiculoSalvo?['modelo'], 'Master');
+  });
 }

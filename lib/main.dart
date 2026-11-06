@@ -48,6 +48,7 @@ import 'package:flutter/material.dart';
 import 'Outdated/administrativo.dart';
 // Importa a tela de registro legada arquivada
 import 'Outdated/register.dart';
+import 'lista_veiculos.dart';
 // Importa o formulário de início de viagem e tela hospedeira
 import 'components/formulario_inicio_viagem.dart';
 // Importa as opções de configuração do Firebase por plataforma
@@ -95,13 +96,9 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       // Título do aplicativo para a barra de tarefas do sistema
       title: 'Transporte Saúde',
-      // Comentário original do autor mantido byte a byte:
       // Rota inicial controlada pelo AuthGate reativo
-      // Rota inicial raiz apontando para o AuthGate
       initialRoute: '/',
-      // Comentário original do autor mantido byte a byte:
       // Guarda de rotas com validação de perfil (RBAC) para rotas protegidas
-      // Manipulador dinâmico de rotas para autorização por papel
       onGenerateRoute: RouteGuard.onGenerateRoute,
       // Tabela de rotas estáticas nomeadas da aplicação
       routes: {
@@ -152,13 +149,13 @@ class MyApp extends StatelessWidget {
         '/login': (context) => LoginScreen(),
         // Rota para a tela de registro legada
         '/register': (context) => Register(),
-        // Comentário original do autor mantido byte a byte:
-        // Gestão de Pessoas (Issue #34)
         // Rota para o painel de listagem de pessoas
         '/lista-pessoas': (context) => const ListaPessoas(),
-        // Comentário original do autor mantido byte a byte:
-        // Telas antigas arquivadas em Outdated (mantidas com prefixo para consulta dos devs)
+        // Rota para a tela de gestão de veículos (Issue #33)
+        '/veiculos': (context) => const Veiculos(),
+        '/lista-veiculos': (context) => const Veiculos(),
         // Rota para a tela administrativa antiga arquivada
+        '/administrativo': (context) => Administrativo(),
         '/outdated-administrativo': (context) => Administrativo(),
       },
     );
