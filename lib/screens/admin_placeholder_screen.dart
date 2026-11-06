@@ -213,6 +213,32 @@ class AdminPlaceholderScreen extends StatelessWidget {
                       ),
                       // Espaçamento vertical de 28 pontos
                       const SizedBox(height: 28),
+                      // Atalho para Gestão de Veículos (Issue #33)
+                      SizedBox(
+                        width: double.infinity,
+                        height: 48,
+                        child: OutlinedButton.icon(
+                          key: const Key('botaoGestaoVeiculosAdmin'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFF0F172A),
+                            side: const BorderSide(color: Color(0xFFCBD5E1)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          icon: const Icon(Icons.directions_car_outlined),
+                          label: const Text(
+                            'Gestão de Veículos (Frota)',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          onPressed: () =>
+                              Navigator.of(context).pushNamed('/veiculos'),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
                       // Container dimensionado para o botão de largura total
                       SizedBox(
                         // Ocupa 100% da largura do card

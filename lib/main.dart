@@ -48,7 +48,6 @@ import 'package:flutter/material.dart';
 import 'Outdated/administrativo.dart';
 // Importa a tela de registro legada arquivada
 import 'Outdated/register.dart';
-import 'motorista.dart';
 import 'lista_veiculos.dart';
 // Importa o formulário de início de viagem e tela hospedeira
 import 'components/formulario_inicio_viagem.dart';

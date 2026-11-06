@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'components/card_veiculo.dart';
 import 'components/dialog_excluir_veiculo.dart';
 import 'components/formulario_novo_veiculo.dart';
+import 'controllers/veiculo_controller.dart';
+import 'models/veiculo_model.dart';
 
 class DetalhesVeiculo extends StatefulWidget {
   final Map<String, dynamic> veiculo;
@@ -29,6 +31,7 @@ class _DetalhesVeiculoState extends State<DetalhesVeiculo> {
           setState(() {
             widget.veiculo.addAll(veiculoAtualizado);
           });
+          VeiculoController().atualizarVeiculo(VeiculoModel.fromMap(widget.veiculo));
         },
       ),
     );
@@ -92,6 +95,10 @@ class _DetalhesVeiculoState extends State<DetalhesVeiculo> {
                 setState(() {
                   veiculo['status'] = novoStatus;
                 });
+                VeiculoController().alterarStatus(
+                  veiculo['id'].toString(),
+                  StatusVeiculo.fromString(novoStatus),
+                );
                 if (widget.onStatusChanged != null) {
                   widget.onStatusChanged!(novoStatus);
                 }

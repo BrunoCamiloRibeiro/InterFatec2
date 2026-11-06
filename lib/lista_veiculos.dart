@@ -1,12 +1,12 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import 'components/card_veiculo.dart';
 import 'components/footer_veiculos.dart';
 import 'components/formulario_novo_veiculo.dart';
 import 'components/modal_filtros_veiculo.dart';
+import 'controllers/veiculo_controller.dart';
 import 'detalhes_veiculo.dart';
+import 'models/veiculo_model.dart';
 
 class Veiculos extends StatefulWidget {
   const Veiculos({super.key});
@@ -20,86 +20,49 @@ class _VeiculosState extends State<Veiculos> {
   List<Map<String, dynamic>> _veiculos = [];
   final TextEditingController _buscaController = TextEditingController();
   FiltroVeiculos _filtro = FiltroVeiculos();
+  final VeiculoController _controller = VeiculoController();
 
   @override
   void initState() {
     super.initState();
-    _veiculosFuture = carregarVeiculos();
+    _controller.addListener(_aoAtualizarController);
+    _veiculosFuture = _inicializar();
+  }
+
+  void _aoAtualizarController() {
+    if (mounted) {
+      setState(() {
+        _veiculos = _controller.todosVeiculos.map((v) => v.toMap()).toList();
+      });
+    }
+  }
+
+  Future<List<dynamic>> _inicializar() async {
+    await _controller.carregarVeiculos();
+    _veiculos = _controller.todosVeiculos.map((v) => v.toMap()).toList();
+    return _veiculos;
   }
 
   @override
   void dispose() {
+    _controller.removeListener(_aoAtualizarController);
     _buscaController.dispose();
     super.dispose();
   }
 
   Future<List<dynamic>> carregarVeiculos() async {
-    try {
-      final String jsonString = await rootBundle.loadString(
-        'assets/data/dados_veiculos.json',
-      );
-      final List<dynamic> jsonDecodificado = jsonDecode(jsonString) as List<dynamic>;
-      _veiculos = jsonDecodificado
-          .map((item) => Map<String, dynamic>.from(item as Map))
-          .toList();
-      return _veiculos;
-    } catch (_) {
-      _veiculos = [
-        {
-          "id": "veiculo001",
-          "placa": "ABC1D23",
-          "tipo": "van",
-          "marca": "Renault",
-          "modelo": "Master",
-          "ano": 2023,
-          "qtdAssentos": 15,
-          "status": "disponivel",
-          "quilometragemAtual": 45280,
-          // "motoristaResponsavelId": null, // Removido a pedido do PO (não há motorista responsável fixo)
-          "ultimoMotoristaId": null,
-          "possuiAC": true,
-          "possuiPreferencial": false,
-          "observacoes": "Veículo utilizado para viagens intermunicipais.",
-          "criadoEm": "2026-10-01T08:00:00",
-          "atualizadoEm": "2026-10-01T08:00:00",
-          "atualizadoPor": null,
-        },
-        {
-          "id": "veiculo002",
-          "placa": "DEF4G56",
-          "tipo": "ambulancia",
-          "marca": "Fiat",
-          "modelo": "Ducato",
-          "ano": 2022,
-          "qtdAssentos": 4,
-          "status": "emManutencao",
-          "quilometragemAtual": 62150,
-          // "motoristaResponsavelId": null, // Removido a pedido do PO (não há motorista responsável fixo)
-          "ultimoMotoristaId": "motorista001",
-          "possuiAC": true,
-          "possuiPreferencial": true,
-          "observacoes": "Revisão preventiva pendente.",
-          "criadoEm": "2026-09-15T10:30:00",
-          "atualizadoEm": "2026-10-20T14:00:00",
-          "atualizadoPor": "usuario001",
-        },
-      ];
-      return _veiculos;
-    }
+    return _inicializar();
   }
 
   void _alterarStatusVeiculo(Map<String, dynamic> veiculo, String novoStatus) {
+    final statusEnum = StatusVeiculo.fromString(novoStatus);
+    _controller.alterarStatus(veiculo['id'].toString(), statusEnum);
+
     setState(() {
       veiculo['status'] = novoStatus;
     });
 
-    final String label = switch (novoStatus) {
-      'disponivel' => 'Disponível',
-      'emManutencao' => 'Em Manutenção',
-      'emViagem' => 'Em Viagem',
-      'inativo' => 'Inativo',
-      _ => novoStatus,
-    };
+    final String label = statusEnum.label;
 
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(
@@ -119,6 +82,8 @@ class _VeiculosState extends State<Veiculos> {
       builder: (context) => FormularioNovoVeiculo(
         placasExistentes: _veiculos.map((v) => (v['placa'] ?? '').toString()).toList(),
         onSalvar: (novoVeiculo) {
+          final model = VeiculoModel.fromMap(novoVeiculo);
+          _controller.adicionarVeiculo(model);
           setState(() {
             _veiculos.insert(0, novoVeiculo);
           });
@@ -132,8 +97,13 @@ class _VeiculosState extends State<Veiculos> {
       context: context,
       builder: (context) => FormularioNovoVeiculo(
         veiculoParaEditar: veiculo,
-        placasExistentes: _veiculos.map((v) => (v['placa'] ?? '').toString()).toList(),
+        placasExistentes: _veiculos
+            .where((v) => v['id'] != veiculo['id'])
+            .map((v) => (v['placa'] ?? '').toString())
+            .toList(),
         onSalvar: (veiculoAtualizado) {
+          final model = VeiculoModel.fromMap(veiculoAtualizado);
+          _controller.atualizarVeiculo(model);
           setState(() {
             final idx = _veiculos.indexWhere((v) => v['id'] == veiculoAtualizado['id']);
             if (idx != -1) {
@@ -155,6 +125,7 @@ class _VeiculosState extends State<Veiculos> {
             _alterarStatusVeiculo(veiculo, novoStatus);
           },
           onExcluir: () {
+            _controller.removerVeiculo(veiculo['id'].toString());
             setState(() {
               _veiculos.removeWhere((v) => v['id'] == veiculo['id']);
             });
