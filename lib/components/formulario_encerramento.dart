@@ -1,19 +1,49 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:printing/printing.dart';
 
-// Componente visual em formato de POPUP (AlertDialog) para o Formulário de Encerramento (Issue #15).
-// Contém exatamente os 3 campos solicitados: Retorno, Km Retorno e Km Rodado.
-class FormularioEncerramento extends StatelessWidget {
-  const FormularioEncerramento({super.key});
+import '../models/paciente_model.dart';
+import '../models/viagem_model.dart';
+import '../services/relatorio_pdf_service.dart';
+
+// Componente visual em formato de POPUP (AlertDialog) para o Formulário de Encerramento (Issue #15 / US03).
+// Contém os 3 campos solicitados: Retorno, Km Retorno e Km Rodado, além da emissão do PDF oficial TFD.
+class FormularioEncerramento extends StatefulWidget {
+  final ViagemModel? viagem;
+  final List<PacienteModel>? pacientes;
+  final void Function(String retorno, String kmRetorno, String kmRodado)?
+  onConfirmar;
+
+  const FormularioEncerramento({
+    super.key,
+    this.viagem,
+    this.pacientes,
+    this.onConfirmar,
+  });
+
+  @override
+  State<FormularioEncerramento> createState() => _FormularioEncerramentoState();
+}
+
+class _FormularioEncerramentoState extends State<FormularioEncerramento> {
+  final TextEditingController _retornoController = TextEditingController();
+  final TextEditingController _kmRetornoController = TextEditingController();
+  final TextEditingController _kmRodadoController = TextEditingController();
+
+  @override
+  void dispose() {
+    _retornoController.dispose();
+    _kmRetornoController.dispose();
+    _kmRodadoController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     // Popup modal (AlertDialog) exibido sobre a tela da Lista de Passageiros
     return AlertDialog(
       backgroundColor: Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       // Título do Popup com ícone e texto de encerramento
       title: Row(
         children: [
@@ -46,13 +76,11 @@ class FormularioEncerramento extends StatelessWidget {
               // CAMPO 1: Retorno (com máscara de horário HH:mm)
               const Text(
                 'Retorno',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 6),
               TextField(
+                controller: _retornoController,
                 keyboardType: TextInputType.number,
                 // Aplica filtro de apenas números e a máscara automática no formato HH:mm
                 inputFormatters: [
@@ -89,17 +117,13 @@ class FormularioEncerramento extends StatelessWidget {
               // CAMPO 2: Km Retorno
               const Text(
                 'Km Retorno',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 6),
               TextField(
+                controller: _kmRetornoController,
                 keyboardType: TextInputType.number,
-                inputFormatters: [
-                  FilteringTextInputFormatter.digitsOnly,
-                ],
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 decoration: InputDecoration(
                   prefixIcon: Icon(
                     Icons.speed_outlined,
@@ -131,17 +155,13 @@ class FormularioEncerramento extends StatelessWidget {
               // CAMPO 3: Km Rodado
               const Text(
                 'Km Rodado',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 6),
               TextField(
+                controller: _kmRodadoController,
                 keyboardType: TextInputType.number,
-                inputFormatters: [
-                  FilteringTextInputFormatter.digitsOnly,
-                ],
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 decoration: InputDecoration(
                   prefixIcon: Icon(
                     Icons.add_road_outlined,
@@ -191,9 +211,36 @@ class FormularioEncerramento extends StatelessWidget {
               borderRadius: BorderRadius.circular(8),
             ),
           ),
-          onPressed: () {
-            // Fecha o popup após confirmação (apenas visual)
-            Navigator.of(context).pop();
+          onPressed: () async {
+            final retorno = _retornoController.text.trim();
+            final kmRetorno = _kmRetornoController.text.trim();
+            final kmRodado = _kmRodadoController.text.trim();
+
+            widget.onConfirmar?.call(retorno, kmRetorno, kmRodado);
+
+            // Se houver dados de viagem e pacientes disponíveis, aciona a visualização/impressão do PDF
+            if (widget.viagem != null && widget.pacientes != null) {
+              final v = widget.viagem!;
+              final kmRetornoNum = int.tryParse(kmRetorno);
+              final kmRodadoNum = int.tryParse(kmRodado);
+
+              await Printing.layoutPdf(
+                name: 'Roteiro_Viagem_${v.veiculoPlaca}.pdf',
+                onLayout: (format) async {
+                  return RelatorioPdfService.gerarRoteiroViagemPdf(
+                    viagem: v,
+                    pacientes: widget.pacientes!,
+                    retornoInformado: retorno.isNotEmpty ? retorno : null,
+                    kmRetornoInformado: kmRetornoNum,
+                    kmRodadoInformado: kmRodadoNum,
+                  );
+                },
+              );
+            }
+
+            if (context.mounted) {
+              Navigator.of(context).pop();
+            }
           },
           child: const Text(
             'Confirmar',

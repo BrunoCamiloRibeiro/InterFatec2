@@ -1,15 +1,14 @@
-import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
-
-import 'firebase_options.dart';
+import 'package:flutter/material.dart';
 
 import 'Outdated/administrativo.dart';
-import 'Outdated/login.dart';
-import 'lista_pessoas.dart';
-import 'paciente.dart';
 import 'Outdated/register.dart';
 import 'components/formulario_inicio_viagem.dart';
-import 'motorista.dart';
+import 'firebase_options.dart';
+import 'lista_pessoas.dart';
+import 'routes/route_guard.dart';
+import 'screens/auth_gate.dart';
+import 'screens/login_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -29,14 +28,15 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Transporte Saúde',
-      // Define a rota inicial para a tela de início da viagem
+      // Rota inicial controlada pelo AuthGate reativo
       initialRoute: '/',
+      // Guarda de rotas com validação de perfil (RBAC) para rotas protegidas
+      onGenerateRoute: RouteGuard.onGenerateRoute,
       routes: {
-        // Rota inicial exibindo a tela com o formulário de início de viagem
-        '/': (context) => const TelaInicioViagem(),
+        // Gate principal com máquina de estados de autenticação
+        '/': (context) => const AuthGate(),
+        // Rota mantida para acesso direto ao formulário inicial
         '/inicio-viagem': (context) => const TelaInicioViagem(),
-        // Rota da tela do motorista com a lista de passageiros
-        '/motorista': (context) => const Motorista(),
         // Rota com o formulário no estado padrão
         '/formulario-normal': (context) => const Scaffold(
           backgroundColor: Color(0xFFF7F8FA),
@@ -62,12 +62,13 @@ class MyApp extends StatelessWidget {
                 'O veículo ABC-1D23 já está em uso por outro motorista.',
           ),
         ),
-        // Telas antigas arquivadas em Outdated (mantidas nas rotas para consulta dos devs)
-        '/login': (context) => Login(),
+        // Telas de autenticação e registro
+        '/login': (context) => LoginScreen(),
         '/register': (context) => Register(),
-        '/administrativo': (context) => Administrativo(),
-        '/paciente': (context) => Paciente(),
-        '/lista-pessoas': (context) => ListaPessoas(),
+        // Gestão de Pessoas (Issue #34)
+        '/lista-pessoas': (context) => const ListaPessoas(),
+        // Telas antigas arquivadas em Outdated (mantidas com prefixo para consulta dos devs)
+        '/outdated-administrativo': (context) => Administrativo(),
       },
     );
   }

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../models/paciente_model.dart';
+import '../models/viagem_model.dart';
 import 'formulario_encerramento.dart';
 
 // Componente visual do Footer (rodapé) da lista de pacientes do motorista.
@@ -11,11 +13,17 @@ class FooterPacientes extends StatelessWidget {
   // Capacidade total de lugares do veículo
   final int lugaresTotais;
 
+  // Dados da viagem ativa e pacientes para geração do PDF de encerramento
+  final ViagemModel? viagem;
+  final List<PacienteModel>? pacientes;
+
   // Construtor recebendo os números de lugares preenchidos e totais
   const FooterPacientes({
     super.key,
     required this.lugaresPreenchidos,
     required this.lugaresTotais,
+    this.viagem,
+    this.pacientes,
   });
 
   @override
@@ -68,17 +76,17 @@ class FooterPacientes extends StatelessWidget {
             icon: const Icon(Icons.assignment_outlined, size: 18),
             label: const Text(
               'Gerar Relatório',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
             ),
             onPressed: () {
-              // Abre o POPUP do Formulário de Encerramento (Retorno, Km Retorno, Km Rodado)
+              // Abre o POPUP do Formulário de Encerramento (Retorno, Km Retorno, Km Rodado e Emissão PDF)
               showDialog(
                 context: context,
                 builder: (BuildContext context) {
-                  return const FormularioEncerramento();
+                  return FormularioEncerramento(
+                    viagem: viagem,
+                    pacientes: pacientes,
+                  );
                 },
               );
             },
