@@ -15,7 +15,8 @@ class Veiculos extends StatefulWidget {
 }
 
 class _VeiculosState extends State<Veiculos> {
-  late Future<List<dynamic>> _veiculosFuture;
+  late Future<List<Map<String, dynamic>>> _veiculosFuture;
+  List<Map<String, dynamic>> _veiculos = [];
 
   @override
   void initState() {
@@ -23,15 +24,19 @@ class _VeiculosState extends State<Veiculos> {
     _veiculosFuture = carregarVeiculos();
   }
 
-  Future<List<dynamic>> carregarVeiculos() async {
+  Future<List<Map<String, dynamic>>> carregarVeiculos() async {
     try {
       final String jsonString = await rootBundle.loadString(
         'assets/data/dados_veiculos.json',
       );
-      return jsonDecode(jsonString) as List<dynamic>;
+      final List<dynamic> jsonDecodificado = jsonDecode(jsonString) as List<dynamic>;
+      _veiculos = jsonDecodificado
+          .map((item) => Map<String, dynamic>.from(item as Map))
+          .toList();
+      return _veiculos;
     } catch (_) {
       // Fallback para visualização caso o json não esteja disponível no bundle
-      return [
+      _veiculos = [
         {
           "id": "veiculo001",
           "placa": "ABC1D23",
@@ -71,7 +76,33 @@ class _VeiculosState extends State<Veiculos> {
           "atualizadoPor": "usuario001",
         },
       ];
+      return _veiculos;
     }
+  }
+
+  void _alterarStatusVeiculo(Map<String, dynamic> veiculo, String novoStatus) {
+    setState(() {
+      veiculo['status'] = novoStatus;
+    });
+
+    final String label = switch (novoStatus) {
+      'disponivel' => 'Disponível',
+      'emManutencao' => 'Em Manutenção',
+      'emViagem' => 'Em Viagem',
+      'inativo' => 'Inativo',
+      _ => novoStatus,
+    };
+
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        duration: const Duration(seconds: 2),
+        backgroundColor: Colors.blueGrey[900],
+        content: Text(
+          'Status de ${veiculo['placa']} alterado para "$label"',
+        ),
+      ),
+    );
   }
 
   @override
@@ -86,20 +117,20 @@ class _VeiculosState extends State<Veiculos> {
       ),
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: FutureBuilder<List<dynamic>>(
+        child: FutureBuilder<List<Map<String, dynamic>>>(
           future: _veiculosFuture,
           builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
+            if (snapshot.connectionState == ConnectionState.waiting && _veiculos.isEmpty) {
               return const Center(child: CircularProgressIndicator());
             }
 
-            if (snapshot.hasError) {
+            if (snapshot.hasError && _veiculos.isEmpty) {
               return const Center(
                 child: Text('Erro ao carregar os veículos.'),
               );
             }
 
-            final veiculos = snapshot.data ?? [];
+            final veiculos = _veiculos.isNotEmpty ? _veiculos : (snapshot.data ?? []);
 
             // Separação de veículos ativos vs pendentes / manutenção usando ExpansionTile
             final veiculosAtivos = veiculos.where((v) {
@@ -177,34 +208,31 @@ class _VeiculosState extends State<Veiculos> {
       ),
 
       // RODAPÉ COM RESUMO DA FROTA
-      bottomNavigationBar: FutureBuilder<List<dynamic>>(
-        future: _veiculosFuture,
-        builder: (context, snapshot) {
-          final veiculos = snapshot.data ?? [];
-          final disponiveis = veiculos.where((v) => v['status'] == 'disponivel').length;
-          return FooterVeiculos(
-            veiculosDisponiveis: disponiveis,
-            veiculosTotais: veiculos.length,
-          );
-        },
+      bottomNavigationBar: FooterVeiculos(
+        veiculosDisponiveis: _veiculos.where((v) => v['status'] == 'disponivel').length,
+        veiculosTotais: _veiculos.length,
       ),
     );
   }
 
   // CONSTRUTOR DOS CARDS DE VEÍCULOS
-  Widget _construirCardVeiculo(dynamic veiculo) {
-    final mapaVeiculo = Map<String, dynamic>.from(veiculo as Map);
+  Widget _construirCardVeiculo(Map<String, dynamic> veiculo) {
     return CardVeiculo(
-      veiculo: mapaVeiculo,
-      onEditar: () => _abrirFormularioEdicao(mapaVeiculo),
-      onDetalhes: () => _abrirDetalhes(mapaVeiculo),
+      veiculo: veiculo,
+      onEditar: () => _abrirFormularioEdicao(veiculo),
+      onDetalhes: () => _abrirDetalhes(veiculo),
+      onStatusChanged: (novoStatus) => _alterarStatusVeiculo(veiculo, novoStatus),
     );
   }
 
   void _abrirFormularioVeiculo() {
     showDialog(
       context: context,
-      builder: (context) => const FormularioNovoVeiculo(),
+      builder: (context) => FormularioNovoVeiculo(
+        onSalvo: () {
+          setState(() {});
+        },
+      ),
     );
   }
 
@@ -213,6 +241,9 @@ class _VeiculosState extends State<Veiculos> {
       context: context,
       builder: (context) => FormularioNovoVeiculo(
         veiculoParaEditar: veiculo,
+        onSalvo: () {
+          setState(() {});
+        },
       ),
     );
   }
@@ -221,8 +252,15 @@ class _VeiculosState extends State<Veiculos> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => DetalhesVeiculo(veiculo: veiculo),
+        builder: (context) => DetalhesVeiculo(
+          veiculo: veiculo,
+          onStatusChanged: (novoStatus) {
+            _alterarStatusVeiculo(veiculo, novoStatus);
+          },
+        ),
       ),
-    );
+    ).then((_) {
+      setState(() {});
+    });
   }
 }

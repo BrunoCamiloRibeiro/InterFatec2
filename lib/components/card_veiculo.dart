@@ -4,12 +4,14 @@ class CardVeiculo extends StatelessWidget {
   final Map<String, dynamic> veiculo;
   final VoidCallback? onEditar;
   final VoidCallback? onDetalhes;
+  final ValueChanged<String>? onStatusChanged;
 
   const CardVeiculo({
     super.key,
     required this.veiculo,
     this.onEditar,
     this.onDetalhes,
+    this.onStatusChanged,
   });
 
   @override
@@ -45,6 +47,20 @@ class CardVeiculo extends StatelessWidget {
       _ => (Colors.grey, statusRaw),
     };
 
+    // Lista de opções para o Dropdown funcional
+    final List<Map<String, dynamic>> statusOpcoes = [
+      {'valor': 'disponivel', 'label': 'Disponível', 'cor': Colors.green},
+      {'valor': 'emViagem', 'label': 'Em Viagem', 'cor': Colors.blue},
+      {'valor': 'emManutencao', 'label': 'Em Manutenção', 'cor': Colors.orange},
+      {'valor': 'inativo', 'label': 'Inativo', 'cor': Colors.grey},
+    ];
+
+    final String statusNormalizado = switch (statusRaw) {
+      'emUso' => 'emViagem',
+      'disponivel' || 'emViagem' || 'emManutencao' || 'inativo' => statusRaw,
+      _ => 'disponivel',
+    };
+
     return Card(
       elevation: 12,
       child: Padding(
@@ -53,7 +69,7 @@ class CardVeiculo extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           spacing: 14,
           children: [
-            // IDENTIFICAÇÃO E STATUS
+            // IDENTIFICAÇÃO E STATUS DROPDOWN
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -95,50 +111,110 @@ class CardVeiculo extends StatelessWidget {
                     ),
                   ],
                 ),
-                // STATUS
+
+                // STATUS INDICATOR COMO DROPDOWN (MANTENDO O MESMO ESTILO)
                 Column(
                   children: [
                     Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 10,
+                        horizontal: 12,
+                        vertical: 4,
                       ),
                       decoration: BoxDecoration(
                         color: corBase.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(30),
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.circle,
-                            size: 10,
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: statusNormalizado,
+                          isDense: true,
+                          borderRadius: BorderRadius.circular(16),
+                          icon: Icon(
+                            Icons.arrow_drop_down,
+                            size: 22,
                             color: Color.lerp(
                               corBase,
                               Colors.black,
                               0.5,
                             ),
                           ),
-                          const SizedBox(width: 10),
-                          Text(
-                            textoStatus,
-                            style: TextStyle(
-                              color: Color.lerp(
-                                corBase,
-                                Colors.black,
-                                0.5,
+                          selectedItemBuilder: (BuildContext context) {
+                            return statusOpcoes.map((op) {
+                              return Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.circle,
+                                    size: 10,
+                                    color: Color.lerp(
+                                      corBase,
+                                      Colors.black,
+                                      0.5,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    textoStatus,
+                                    style: TextStyle(
+                                      color: Color.lerp(
+                                        corBase,
+                                        Colors.black,
+                                        0.5,
+                                      ),
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              );
+                            }).toList();
+                          },
+                          items: statusOpcoes.map((op) {
+                            final Color cor = op['cor'] as Color;
+                            return DropdownMenuItem<String>(
+                              value: op['valor'] as String,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.circle,
+                                    size: 10,
+                                    color: Color.lerp(
+                                      cor,
+                                      Colors.black,
+                                      0.5,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    op['label'] as String,
+                                    style: TextStyle(
+                                      color: Color.lerp(
+                                        cor,
+                                        Colors.black,
+                                        0.5,
+                                      ),
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
                               ),
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
+                            );
+                          }).toList(),
+                          onChanged: (novoStatus) {
+                            if (novoStatus != null && onStatusChanged != null) {
+                              onStatusChanged!(novoStatus);
+                            }
+                          },
+                        ),
                       ),
                     ),
                   ],
                 ),
               ],
             ),
+
             // INFORMAÇÕES OPERACIONAIS
             Row(
               spacing: 12,
@@ -260,6 +336,7 @@ class CardVeiculo extends StatelessWidget {
                 ),
               ],
             ),
+
             // TAGS / EXTRAS DO VEÍCULO
             Wrap(
               alignment: WrapAlignment.start,
@@ -310,6 +387,7 @@ class CardVeiculo extends StatelessWidget {
                   ),
               ],
             ),
+
             // OBSERVAÇÃO
             if (observacoes != null && observacoes.isNotEmpty)
               Container(
@@ -358,6 +436,7 @@ class CardVeiculo extends StatelessWidget {
                   ],
                 ),
               ),
+
             // BOTÕES DE EDITAR E VER DETALHES
             const Divider(height: 2),
             Row(

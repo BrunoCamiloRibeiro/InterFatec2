@@ -3,19 +3,29 @@ import 'components/card_veiculo.dart';
 import 'components/dialog_excluir_veiculo.dart';
 import 'components/formulario_novo_veiculo.dart';
 
-class DetalhesVeiculo extends StatelessWidget {
+class DetalhesVeiculo extends StatefulWidget {
   final Map<String, dynamic> veiculo;
+  final ValueChanged<String>? onStatusChanged;
 
   const DetalhesVeiculo({
     super.key,
     required this.veiculo,
+    this.onStatusChanged,
   });
 
+  @override
+  State<DetalhesVeiculo> createState() => _DetalhesVeiculoState();
+}
+
+class _DetalhesVeiculoState extends State<DetalhesVeiculo> {
   void _abrirEdicao(BuildContext context) {
     showDialog(
       context: context,
       builder: (context) => FormularioNovoVeiculo(
-        veiculoParaEditar: veiculo,
+        veiculoParaEditar: widget.veiculo,
+        onSalvo: () {
+          setState(() {});
+        },
       ),
     );
   }
@@ -23,15 +33,15 @@ class DetalhesVeiculo extends StatelessWidget {
   void _confirmarExclusao(BuildContext context) {
     DialogExcluirVeiculo.mostrar(
       context,
-      placa: veiculo['placa']?.toString() ?? '',
-      modelo: '${veiculo['marca']} ${veiculo['modelo']}',
+      placa: widget.veiculo['placa']?.toString() ?? '',
+      modelo: '${widget.veiculo['marca']} ${widget.veiculo['modelo']}',
       onConfirmar: () {
         Navigator.of(context).pop(); // Volta para a lista
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             backgroundColor: Colors.red[700],
             content: Text(
-              'Veículo ${veiculo['placa']} excluído! (Apenas visual)',
+              'Veículo ${widget.veiculo['placa']} excluído! (Apenas visual)',
             ),
           ),
         );
@@ -39,8 +49,18 @@ class DetalhesVeiculo extends StatelessWidget {
     );
   }
 
+  void _atualizarStatus(String novoStatus) {
+    setState(() {
+      widget.veiculo['status'] = novoStatus;
+    });
+    if (widget.onStatusChanged != null) {
+      widget.onStatusChanged!(novoStatus);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final veiculo = widget.veiculo;
     final String placa = (veiculo['placa'] ?? 'XXX-1234').toString();
     final String criadoEm = (veiculo['criadoEm'] ?? '01/10/2026').toString();
     final String atualizadoEm = (veiculo['atualizadoEm'] ?? '20/10/2026').toString();
@@ -71,11 +91,12 @@ class DetalhesVeiculo extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            // CARD PRINCIPAL DO VEÍCULO (Mesmo estilo original do projeto)
+            // CARD PRINCIPAL DO VEÍCULO (Com dropdown de status funcional)
             CardVeiculo(
               veiculo: veiculo,
               onEditar: () => _abrirEdicao(context),
               onDetalhes: () {},
+              onStatusChanged: _atualizarStatus,
             ),
 
             const SizedBox(height: 16),
