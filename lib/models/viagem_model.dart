@@ -5,38 +5,36 @@
 // Camada: Domínio / Modelos de Dados (Models)
 //
 // O QUE ESTE ARQUIVO FAZ:
-// Define os modelos que representam o ciclo de vida completo de uma viagem do
-// transporte sanitário (TFD): a enumeração EstadoViagem (máquina de estados do
-// motorista) e a classe de entidade ViagemModel, contendo motorista, veículo,
-// quilometragem inicial e final, cidade de destino, timestamps, status e
-// lista de identificadores de passageiros vinculados à rota.
+// Modela e encapsula as informações operacionais de uma Viagem do transporte
+// de pacientes (TFD), incluindo a máquina de estados do ciclo de vida
+// (EstadoViagem), dados do motorista condutor, veículo reservado, leituras do
+// hodômetro (KM inicial/final), lista de passageiros e timestamps de execução.
 //
 // PARA QUE SERVE NO PROJETO:
-// É o modelo central da operação de transporte, utilizado para controlar a
-// interface do motorista (sem viagem, preenchendo formulário, viagem ativa, encerrada),
-// persistir o registro da rota no Firestore e fornecer os dados para a emissão
-// do documento oficial impresso "Roteiro da Viagem - Ficha de Atendimento TFD".
+// É a entidade central para o fluxo de viagens da issue #17 e geração do PDF
+// da issue #16: registra o início do trajeto, gerencia a reserva de veículos,
+// armazena observações de percurso e calcula o total de quilômetros rodados.
 //
 // ONDE É USADO NO PROJETO:
-// - lib/motorista.dart (coordenação de telas e estado ativo da viagem)
-// - lib/components/formulario_inicio_viagem.dart (abertura e envio da viagem)
-// - lib/components/formulario_encerramento.dart (conclusão com KM final)
-// - lib/components/footer_pacientes.dart (acionamento do diálogo de encerramento)
-// - lib/services/viagem_service.dart (persistência transacional no Firestore)
-// - lib/services/validacao_viagem.dart (regras de validação de KM e preenchimento)
-// - lib/services/relatorio_pdf_service.dart (composição do cabeçalho e rodapé do PDF)
-// - test/formulario_inicio_viagem_test.dart (testes de validação e formulário)
-// - test/relatorio_pdf_test.dart (testes de geração do PDF da viagem)
-// - test/widget_test.dart (testes de fluxo completo da tela de motorista)
+// - lib/services/viagem_service.dart (criação, escuta de viagem ativa, encerramento)
+// - lib/services/validacao_viagem.dart (validações de formulário de início)
+// - lib/motorista.dart (gerenciamento do estado da tela principal do motorista)
+// - lib/components/formulario_inicio_viagem.dart (coleta de dados iniciais)
+// - lib/components/formulario_encerramento.dart (registro de KM final e fim)
+// - lib/components/timeline_viagem.dart (rastreamento do ciclo de vida)
+// - test/formulario_inicio_viagem_test.dart e test/widget_test.dart
 //
 // DE ONDE RECEBE DADOS:
-// Documentos serializados do Firebase Firestore (coleção 'viagens'), entradas
-// dos formulários visuais preenchidos pelos motoristas ou dados de teste.
+// Documentos NoSQL da coleção 'viagens' do Firebase Firestore e formulários de UI.
 //
 // O QUE EXPORTA / EXPÕE:
 // - enum EstadoViagem: semViagem, preenchendoFormulario, viagemAtiva, encerrada
-// - class ViagemModel: modelo imutável com todas as propriedades da viagem
-// - Map<String, dynamic> toMap(): serializa para Firestore
+// - class ViagemModel: modelo imutável de viagem
+// - Atributos: id, motoristaId, motoristaNome, veiculoId, veiculoPlaca,
+//   veiculoModelo, kmInicial, cidadeDestino, dataHoraInicio, status,
+//   kmFinal, kmRodado, dataHoraFim, observacoes, passageirosIds
+// - Construtor constante ViagemModel(...)
+// - Map<String, dynamic> toMap(): serialização para Firestore
 // - factory ViagemModel.fromMap(Map, {docId}): reconstrói a partir do Firestore
 // - ViagemModel copyWith(...): clonagem imutável com campos substituídos
 //
@@ -48,142 +46,275 @@
 // Entidade imutável em memória: sem efeitos colaterais de I/O, rede ou estado global.
 // ============================================================================
 
-// Linha em branco separadora entre o cabeçalho de documentação e o enum
-// Comentário original do autor mantido byte a byte:
+// Linha em branco separadora entre o cabeçalho descritivo do arquivo e a enumeração de estados
+// ----------------------------------------------------------------------------
+// COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
 // Estados possíveis do ciclo de vida da viagem do motorista
-// Enumeração que representa os diferentes estágios da máquina de estados da viagem
+// ----------------------------------------------------------------------------
+// DECLARAÇÃO DO TIPO ENUMERADO: EstadoViagem
+// - O que a instrução faz: Declara o ciclo de vida e a máquina de estados finita da viagem do motorista.
+// - O que é o elemento: Tipo enumerado puro ('enum') do Dart.
+// - Papel no sistema: Controla a exibição reativa de componentes na tela 'lib/motorista.dart':
+//   se exibe botão de iniciar viagem, formulário de partida, lista de passageiros ou resumo final.
+// ----------------------------------------------------------------------------
 enum EstadoViagem {
-  // Comentário original do autor mantido byte a byte:
+  // --------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Motorista autenticado sem viagem ativa vinculada
-  // Estado no qual o motorista está livre e pode iniciar uma nova viagem
+  // --------------------------------------------------------------------------
+  // CONSTANTE ENUMERADA: semViagem
+  // - O que é: Estado inicial de repouso ou prontidão do motorista antes de abrir qualquer escala.
+  // --------------------------------------------------------------------------
   semViagem,
-  // Comentário original do autor mantido byte a byte:
+
+  // --------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Formulário de início de viagem em exibição para preenchimento
-  // Estado no qual o motorista está selecionando veículo e digitando KM inicial
+  // --------------------------------------------------------------------------
+  // CONSTANTE ENUMERADA: preenchendoFormulario
+  // - O que é: Estado transitório onde o formulário modal de partida está aberto para digitação de KM e veículo.
+  // --------------------------------------------------------------------------
   preenchendoFormulario,
-  // Comentário original do autor mantido byte a byte:
+
+  // --------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Viagem em andamento com veículo selecionado e lista de passageiros liberada
-  // Estado operacional onde os passageiros podem ser embarcados e desembarcados
+  // --------------------------------------------------------------------------
+  // CONSTANTE ENUMERADA: viagemAtiva
+  // - O que é: Estado operacional principal onde o trajeto está ocorrendo e baixas de passageiros são permitidas.
+  // --------------------------------------------------------------------------
   viagemAtiva,
-  // Comentário original do autor mantido byte a byte:
+
+  // --------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Viagem concluída com dados finais registrados
-  // Estado final pós-conclusão com registro do KM de retorno e baixa de todos
+  // --------------------------------------------------------------------------
+  // CONSTANTE ENUMERADA: encerrada
+  // - O que é: Estado terminal pós-conclusão da viagem com KM final registrado no banco.
+  // --------------------------------------------------------------------------
   encerrada,
-// Fecha o bloco de declaração do enum EstadoViagem
+
+// Fecha a declaração do corpo da enumeração EstadoViagem
 }
 
-// Linha em branco separadora entre o enum e a classe ViagemModel
-// Comentário original do autor mantido byte a byte:
+// Linha em branco separadora entre o enum EstadoViagem e a classe ViagemModel
+// ----------------------------------------------------------------------------
+// COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
 // Modelo de dados para armazenar informações de uma viagem realizada pelo motorista
-// Declaração da classe imutável ViagemModel
+// ----------------------------------------------------------------------------
+// DECLARAÇÃO DA CLASSE DE DOMÍNIO: ViagemModel
+// - O que a instrução faz: Declara formalmente a entidade imutável de dados da Viagem TFD.
+// - O que é o elemento: Entidade de domínio / Data Transfer Object (DTO) imutável com construtor 'const'.
+// - Papel no sistema: Concentra os dados operacionais da rota de transporte de saúde.
+// ----------------------------------------------------------------------------
 class ViagemModel {
-  // Comentário original do autor mantido byte a byte:
+  // --------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Identificador único da viagem
-  // ID do documento correspondente gerado no Cloud Firestore
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: id
+  // - O que é: Campo imutável ('final') do tipo primitivo 'String'.
+  // - Papel: Identificador primário (Document ID) no Cloud Firestore para a viagem.
+  // --------------------------------------------------------------------------
   final String id;
-  // Comentário original do autor mantido byte a byte:
+
+  // --------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Identificador do motorista responsável
-  // ID do documento do motorista autenticado que iniciou a viagem
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: motoristaId
+  // - O que é: Campo imutável ('final') do tipo primitivo 'String'.
+  // - Papel: Chave estrangeira que referencia o condutor responsável na coleção de motoristas.
+  // --------------------------------------------------------------------------
   final String motoristaId;
-  // Comentário original do autor mantido byte a byte:
+
+  // --------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Nome do motorista responsável
-  // Nome completo do motorista condutor para exibição nos relatórios e telas
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: motoristaNome
+  // - O que é: Campo imutável ('final') do tipo primitivo 'String'.
+  // - Papel: Nome completo do condutor para apresentação direta em relatórios e no PDF sem queries adicionais.
+  // --------------------------------------------------------------------------
   final String motoristaNome;
-  // Comentário original do autor mantido byte a byte:
+
+  // --------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Identificador do veículo utilizado
-  // ID do documento do veículo selecionado na coleção 'veiculos'
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: veiculoId
+  // - O que é: Campo imutável ('final') do tipo primitivo 'String'.
+  // - Papel: Chave estrangeira que referencia o veículo reservado na coleção 'veiculos'.
+  // --------------------------------------------------------------------------
   final String veiculoId;
-  // Comentário original do autor mantido byte a byte:
+
+  // --------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Placa do veículo utilizado
-  // Placa de identificação veicular (ex: ABC-1234)
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: veiculoPlaca
+  // - O que é: Campo imutável ('final') do tipo primitivo 'String'.
+  // - Papel: Placa do veículo utilizada para exibição no cabeçalho e na ficha física TFD.
+  // --------------------------------------------------------------------------
   final String veiculoPlaca;
-  // Comentário original do autor mantido byte a byte:
+
+  // --------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Modelo do veículo utilizado
-  // Marca e modelo do veículo (ex: Chevrolet Spin)
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: veiculoModelo
+  // - O que é: Campo imutável ('final') do tipo primitivo 'String'.
+  // - Papel: Modelo do automóvel impresso no relatório de transporte.
+  // --------------------------------------------------------------------------
   final String veiculoModelo;
-  // Comentário original do autor mantido byte a byte:
+
+  // --------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Quilometragem do veículo no início da viagem
-  // Leitura do hodômetro registrada na partida
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: kmInicial
+  // - O que é: Campo imutável ('final') do tipo primitivo número inteiro ('int').
+  // - Papel: Hodômetro inicial conferido pelo motorista antes de dar a partida.
+  // --------------------------------------------------------------------------
   final int kmInicial;
-  // Comentário original do autor mantido byte a byte:
+
+  // --------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Município de destino da viagem
-  // Cidade para onde os pacientes serão transportados (ex: São José do Rio Preto)
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: cidadeDestino
+  // - O que é: Campo imutável ('final') do tipo primitivo 'String'.
+  // - Papel: Cidade polo de saúde para onde os pacientes serão levados (ex.: 'São José do Rio Preto').
+  // --------------------------------------------------------------------------
   final String cidadeDestino;
-  // Comentário original do autor mantido byte a byte:
+
+  // --------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Data e hora de início da viagem
-  // Timestamp de quando o motorista iniciou oficialmente o trajeto
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: dataHoraInicio
+  // - O que é: Campo imutável ('final') do tipo 'DateTime'.
+  // - Papel: Timestamp oficial de abertura da viagem para auditoria e controle de pontualidade.
+  // --------------------------------------------------------------------------
   final DateTime dataHoraInicio;
-  // Comentário original do autor mantido byte a byte:
+
+  // --------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Situação da viagem ('ativa' ou 'encerrada')
-  // String indicativa de status de execução
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: status
+  // - O que é: Campo imutável ('final') do tipo primitivo 'String'.
+  // - Papel: 'ativa' para viagens em trânsito; 'encerrada' para viagens finalizadas.
+  // --------------------------------------------------------------------------
   final String status;
 
   // Linha em branco separadora entre atributos iniciais e de encerramento
-  // Comentário original do autor mantido byte a byte:
+  // --------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Quilometragem do veículo no encerramento da viagem
-  // Leitura do hodômetro no momento da finalização do percurso (opcional)
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: kmFinal
+  // - O que é: Campo imutável opcional/anulável ('int?').
+  // - Papel: Hodômetro de chegada digitado pelo motorista no formulário de encerramento.
+  // --------------------------------------------------------------------------
   final int? kmFinal;
-  // Comentário original do autor mantido byte a byte:
+
+  // --------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Total de quilômetros percorridos durante a viagem
-  // Diferença calculada entre kmFinal e kmInicial (opcional)
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: kmRodado
+  // - O que é: Campo imutável opcional/anulável ('int?').
+  // - Papel: Diferença matemática calculada (kmFinal - kmInicial) para prestação de contas de combustível.
+  // --------------------------------------------------------------------------
   final int? kmRodado;
-  // Comentário original do autor mantido byte a byte:
+
+  // --------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Data e hora de encerramento da viagem
-  // Timestamp da finalização da viagem (opcional)
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: dataHoraFim
+  // - O que é: Campo imutável opcional/anulável ('DateTime?').
+  // - Papel: Timestamp registrado no momento em que o motorista finaliza a rota.
+  // --------------------------------------------------------------------------
   final DateTime? dataHoraFim;
-  // Comentário original do autor mantido byte a byte:
+
+  // --------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Anotações adicionais sobre a viagem
-  // Campo de texto livre para intercorrências ou observações gerais (opcional)
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: observacoes
+  // - O que é: Campo imutável opcional/anulável ('String?').
+  // - Papel: Texto livre para registrar imprevistos, atrasos ou ocorrências no trajeto.
+  // --------------------------------------------------------------------------
   final String? observacoes;
-  // Comentário original do autor mantido byte a byte:
+
+  // --------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Identificadores dos passageiros vinculados à viagem
-  // Lista contendo os IDs dos pacientes que participam desta viagem
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: passageirosIds
+  // - O que é: Campo imutável ('final') do tipo lista de strings ('List<String>').
+  // - Papel: Lista de IDs dos documentos dos pacientes que foram associados a esta escala de transporte.
+  // --------------------------------------------------------------------------
   final List<String> passageirosIds;
 
-  // Linha em branco separadora entre atributos e construtor
-  // Comentário original do autor mantido byte a byte:
+  // Linha em branco separadora entre atributos e construtor principal
+  // ----------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Construtor com os parâmetros de inicialização da viagem
-  // Construtor constante para garantir instanciação imutável da viagem
+  // ----------------------------------------------------------------------------
+  // CONSTRUTOR CONSTANTE: ViagemModel
+  // - O que faz: Constrói uma nova instância imutável de ViagemModel.
+  // - Modificador 'const': Permite instanciação canônica e garante imutabilidade dos dados.
+  // ----------------------------------------------------------------------------
   const ViagemModel({
-    // Parâmetro obrigatório para o identificador único da viagem
+    // Parâmetro obrigatório: Identificador único no Firestore
     required this.id,
-    // Parâmetro obrigatório para o ID do motorista condutor
+    // Parâmetro obrigatório: ID do condutor responsável
     required this.motoristaId,
-    // Parâmetro obrigatório para o nome completo do motorista
+    // Parâmetro obrigatório: Nome do condutor responsável
     required this.motoristaNome,
-    // Parâmetro obrigatório para o ID do automóvel utilizado
+    // Parâmetro obrigatório: ID do veículo utilizado
     required this.veiculoId,
-    // Parâmetro obrigatório para a placa do automóvel
+    // Parâmetro obrigatório: Placa do veículo utilizado
     required this.veiculoPlaca,
-    // Parâmetro obrigatório para a descrição do modelo do automóvel
+    // Parâmetro obrigatório: Modelo do veículo utilizado
     required this.veiculoModelo,
-    // Parâmetro obrigatório para a leitura de KM no início da viagem
+    // Parâmetro obrigatório: Leitura do hodômetro na partida
     required this.kmInicial,
-    // Parâmetro obrigatório para o município de destino
+    // Parâmetro obrigatório: Município de destino
     required this.cidadeDestino,
-    // Parâmetro obrigatório para a data e hora do início da viagem
+    // Parâmetro obrigatório: Data e hora do início da rota
     required this.dataHoraInicio,
-    // Parâmetro opcional de status com valor padrão 'ativa'
+    // Parâmetro opcional: Situação operacional, padrão 'ativa'
     this.status = 'ativa',
-    // Parâmetro opcional para o KM no término da viagem
+    // Parâmetro opcional: Leitura do hodômetro na chegada
     this.kmFinal,
-    // Parâmetro opcional para a quilometragem total percorrida
+    // Parâmetro opcional: Total de quilômetros percorridos
     this.kmRodado,
-    // Parâmetro opcional para a data e hora de encerramento
+    // Parâmetro opcional: Data e hora de conclusão
     this.dataHoraFim,
-    // Parâmetro opcional para observações da viagem
+    // Parâmetro opcional: Observações e ocorrências
     this.observacoes,
-    // Parâmetro opcional para a lista de IDs de passageiros (padrão lista vazia)
+    // Parâmetro opcional: Lista de IDs dos passageiros agendados, padrão lista vazia
     this.passageirosIds = const [],
-  // Fecha a lista de parâmetros do construtor
+  // Fecha a lista de parâmetros formais nomeados do construtor
   });
 
-  // Linha em branco separadora entre construtor e toMap
-  // Comentário original do autor mantido byte a byte:
+  // Linha em branco separadora entre o construtor e o método toMap
+  // ----------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Converte os dados da viagem para uma estrutura Map de chave e valor
-  // Método que serializa a instância para um Map compatível com o Firestore
+  // ----------------------------------------------------------------------------
+  // MÉTODO DE SERIALIZAÇÃO: toMap
+  // - O que faz: Converte o objeto ViagemModel em um dicionário Map<String, dynamic>.
+  // - Retorno: Map pronto para ser persistido na coleção 'viagens' do Cloud Firestore.
+  // ----------------------------------------------------------------------------
   Map<String, dynamic> toMap() {
-    // Retorna a estrutura em Map com os pares chave-valor preenchidos
+    // ------------------------------------------------------------------------
+    // Retorna a estrutura literal de mapa com todas as propriedades da viagem:
+    // ------------------------------------------------------------------------
     return {
       // Mapeia o ID da viagem para a chave 'id'
       'id': id,
@@ -197,57 +328,64 @@ class ViagemModel {
       'veiculoPlaca': veiculoPlaca,
       // Mapeia o modelo do veículo para a chave 'veiculoModelo'
       'veiculoModelo': veiculoModelo,
-      // Mapeia o KM inicial para a chave 'kmInicial'
+      // Mapeia o hodômetro de saída para a chave 'kmInicial'
       'kmInicial': kmInicial,
       // Mapeia a cidade destino para a chave 'cidadeDestino'
       'cidadeDestino': cidadeDestino,
       // Mapeia a data de início convertida em texto ISO-8601
       'dataHoraInicio': dataHoraInicio.toIso8601String(),
-      // Mapeia a situação operacional para a chave 'status'
+      // Mapeia a situação da viagem ('ativa' ou 'encerrada') para a chave 'status'
       'status': status,
-      // Mapeia o KM final para a chave 'kmFinal'
+      // Mapeia o hodômetro de encerramento para a chave 'kmFinal'
       'kmFinal': kmFinal,
       // Mapeia a quilometragem percorrida para a chave 'kmRodado'
       'kmRodado': kmRodado,
-      // Mapeia a data de encerramento convertida em texto ISO-8601 se não for nula
+      // Mapeia a data de término convertida em texto ISO-8601 se não for nula
       'dataHoraFim': dataHoraFim?.toIso8601String(),
-      // Mapeia o campo de observações para a chave 'observacoes'
+      // Mapeia as observações para a chave 'observacoes'
       'observacoes': observacoes,
       // Mapeia a lista de passageiros para a chave 'passageirosIds'
       'passageirosIds': passageirosIds,
-    // Fecha o dicionário Map de pares chave-valor
+    // Fecha o dicionário de pares chave/valor
     };
   // Fecha o bloco de instruções do método toMap
   }
 
-  // Linha em branco separadora entre toMap e fromMap
-  // Comentário original do autor mantido byte a byte:
+  // Linha em branco separadora entre toMap e o construtor factory
+  // ----------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Constrói uma instância de ViagemModel a partir de um Map de dados
-  // Construtor factory que reconstrói a instância de ViagemModel a partir do Firestore
+  // ----------------------------------------------------------------------------
+  // CONSTRUTOR FACTORY (FÁBRICA DE DESSERIALIZAÇÃO): ViagemModel.fromMap
+  // - O que faz: Reconstrói uma instância tipada de ViagemModel a partir de um Map NoSQL do Firestore.
+  // - Parâmetros: 'map' (dados do Firestore) e 'docId' opcional (identificador do documento).
+  // ----------------------------------------------------------------------------
   factory ViagemModel.fromMap(Map<String, dynamic> map, {String? docId}) {
-    // Retorna a nova instância preenchida com conversões e fallbacks defensivos
+    // ------------------------------------------------------------------------
+    // Instancia e retorna o ViagemModel aplicando sanitização e fallbacks defensivos:
+    // ------------------------------------------------------------------------
     return ViagemModel(
-      // Atribui o identificador docId recebido, o campo 'id' do map ou string vazia
+      // Atribui 'docId', 'map["id"]' ou string vazia como identificador
       id: docId ?? map['id'] ?? '',
-      // Atribui o ID do motorista ou string vazia como fallback
+      // Atribui 'motoristaId' ou string vazia como fallback
       motoristaId: map['motoristaId'] ?? '',
-      // Atribui o nome do motorista ou string vazia como fallback
+      // Atribui 'motoristaNome' ou string vazia como fallback
       motoristaNome: map['motoristaNome'] ?? '',
-      // Atribui o ID do veículo ou string vazia como fallback
+      // Atribui 'veiculoId' ou string vazia como fallback
       veiculoId: map['veiculoId'] ?? '',
-      // Atribui a placa do veículo ou string vazia como fallback
+      // Atribui 'veiculoPlaca' ou string vazia como fallback
       veiculoPlaca: map['veiculoPlaca'] ?? '',
-      // Atribui o modelo do veículo ou string vazia como fallback
+      // Atribui 'veiculoModelo' ou string vazia como fallback
       veiculoModelo: map['veiculoModelo'] ?? '',
-      // Converte com segurança o kmInicial para int ou assume 0 como fallback
+      // Converte 'kmInicial' de forma segura com fallback para 0 km
       kmInicial: (map['kmInicial'] is num)
-          // Converte número para int
+          // Se for número, converte diretamente para inteiro
           ? (map['kmInicial'] as num).toInt()
-          // Padrão de 0 km caso não seja numérico
+          // Padrão de 0 km caso ausente ou inválido
           : 0,
-      // Atribui a cidade de destino ou string vazia como fallback
+      // Atribui 'cidadeDestino' ou string vazia como fallback
       cidadeDestino: map['cidadeDestino'] ?? '',
-      // Realiza parsing da data e hora de início ou utiliza a data atual como fallback seguro
+      // Interpreta 'dataHoraInicio' via tryParse ou assume 'DateTime.now()' como fallback seguro
       dataHoraInicio: map['dataHoraInicio'] != null
           // Tenta realizar parse da representação textual da data
           ? DateTime.tryParse(map['dataHoraInicio'].toString()) ??
@@ -255,39 +393,44 @@ class ViagemModel {
                 DateTime.now()
           // Se for nulo, assume a data e hora do momento atual
           : DateTime.now(),
-      // Atribui a situação da viagem ou 'ativa' por padrão
+      // Atribui 'status' ou 'ativa' por padrão
       status: map['status'] ?? 'ativa',
-      // Converte kmFinal para int se for numérico, ou nulo se ausente
+      // Converte 'kmFinal' para inteiro se for número, ou nulo se ausente
       kmFinal: (map['kmFinal'] is num) ? (map['kmFinal'] as num).toInt() : null,
-      // Converte kmRodado para int se for numérico, ou nulo se ausente
+      // Converte 'kmRodado' para inteiro se for número, ou nulo se ausente
       kmRodado: (map['kmRodado'] is num)
-          // Converte valor numérico para int
+          // Converte valor numérico para inteiro
           ? (map['kmRodado'] as num).toInt()
           // Mantém nulo caso não seja numérico
           : null,
-      // Realiza parsing da data de encerramento se presente no Map
+      // Interpreta 'dataHoraFim' via DateTime.tryParse se presente
       dataHoraFim: map['dataHoraFim'] != null
           // Converte texto da data de encerramento em DateTime
           ? DateTime.tryParse(map['dataHoraFim'].toString())
           // Mantém nulo se não houver data de encerramento
           : null,
-      // Atribui as observações registradas
+      // Atribui observações registradas
       observacoes: map['observacoes'],
-      // Converte a lista de IDs de passageiros com validação de tipo de lista
+      // Converte 'passageirosIds' com validação de tipo para lista de strings
       passageirosIds: (map['passageirosIds'] is List)
           // Cria nova lista de Strings a partir do iterável
           ? List<String>.from(map['passageirosIds'])
           // Fallback para lista vazia constante
           : const [],
-    // Fecha a chamada do construtor de ViagemModel
+    // Fecha a lista de argumentos passados ao construtor ViagemModel
     );
-  // Fecha o bloco do construtor factory fromMap
+  // Fecha o bloco de instruções do construtor factory fromMap
   }
 
-  // Linha em branco separadora entre fromMap e copyWith
-  // Comentário original do autor mantido byte a byte:
+  // Linha em branco separadora entre fromMap e o método copyWith
+  // ----------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Cria uma nova instância de ViagemModel copiando os campos existentes e substituindo os informados
-  // Método copyWith para criar cópias imutáveis atualizando apenas os atributos desejados
+  // ----------------------------------------------------------------------------
+  // MÉTODO DE CLONAGEM IMUTÁVEL: copyWith
+  // - O que faz: Gera uma cópia da viagem atual permitindo modificar atributos seletivos.
+  // - Papel: Usado para transições de estado (ex.: registrar kmFinal e mudar status para 'encerrada').
+  // ----------------------------------------------------------------------------
   ViagemModel copyWith({
     // Novo identificador de viagem opcional
     String? id,
@@ -319,43 +462,46 @@ class ViagemModel {
     String? observacoes,
     // Nova lista de passageiros opcional
     List<String>? passageirosIds,
-  // Fecha a lista de parâmetros do copyWith
+  // Fecha a lista de parâmetros formais nomeados do copyWith
   }) {
-    // Retorna uma nova instância mesclando novos valores com os existentes
+    // ------------------------------------------------------------------------
+    // Retorna uma nova instância com os campos mesclados (novo valor ?? valor atual):
+    // ------------------------------------------------------------------------
     return ViagemModel(
-      // Mantém ID atual se não for informado um novo
+      // Preserva o ID atual se o novo não for fornecido
       id: id ?? this.id,
-      // Mantém ID de motorista atual se não for informado um novo
+      // Preserva o ID do motorista atual se o novo não for fornecido
       motoristaId: motoristaId ?? this.motoristaId,
-      // Mantém nome de motorista atual se não for informado um novo
+      // Preserva o nome do motorista atual se o novo não for fornecido
       motoristaNome: motoristaNome ?? this.motoristaNome,
-      // Mantém ID de veículo atual se não for informado um novo
+      // Preserva o ID do veículo atual se o novo não for fornecido
       veiculoId: veiculoId ?? this.veiculoId,
-      // Mantém placa atual se não for informada uma nova
+      // Preserva a placa do veículo atual se a nova não for fornecida
       veiculoPlaca: veiculoPlaca ?? this.veiculoPlaca,
-      // Mantém modelo atual se não for informado um novo
+      // Preserva o modelo do veículo atual se o novo não for fornecido
       veiculoModelo: veiculoModelo ?? this.veiculoModelo,
-      // Mantém KM inicial atual se não for informado um novo
+      // Preserva o KM inicial atual se o novo não for fornecido
       kmInicial: kmInicial ?? this.kmInicial,
-      // Mantém destino atual se não for informado um novo
+      // Preserva o destino atual se o novo não for fornecido
       cidadeDestino: cidadeDestino ?? this.cidadeDestino,
-      // Mantém data de início atual se não for informada uma nova
+      // Preserva a data de início atual se a nova não for fornecida
       dataHoraInicio: dataHoraInicio ?? this.dataHoraInicio,
-      // Mantém status atual se não for informado um novo
+      // Preserva o status atual se o novo não for fornecido
       status: status ?? this.status,
-      // Mantém KM final se não for informado um novo
+      // Preserva o KM final se não for informado um novo
       kmFinal: kmFinal ?? this.kmFinal,
-      // Mantém KM rodado se não for informado um novo
+      // Preserva o KM total rodado se não for informado um novo
       kmRodado: kmRodado ?? this.kmRodado,
-      // Mantém data de término se não for informada uma nova
+      // Preserva a data de conclusão se não for informada uma nova
       dataHoraFim: dataHoraFim ?? this.dataHoraFim,
-      // Mantém observações se não forem informadas novas
+      // Preserva as observações se não forem informadas novas
       observacoes: observacoes ?? this.observacoes,
-      // Mantém lista de passageiros se não for informada uma nova
+      // Preserva a lista de passageiros se não for informada uma nova
       passageirosIds: passageirosIds ?? this.passageirosIds,
     // Fecha a chamada do construtor ViagemModel
     );
-  // Fecha o bloco do método copyWith
+  // Fecha o bloco de instruções do método copyWith
   }
-// Fecha o bloco de declaração da classe ViagemModel
+
+// Fecha a declaração do corpo da classe ViagemModel
 }

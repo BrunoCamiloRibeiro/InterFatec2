@@ -5,213 +5,357 @@
 // Camada: Domínio / Modelos de Dados (Models)
 //
 // O QUE ESTE ARQUIVO FAZ:
-// Modela e encapsula as informações cadastrais e operacionais de um motorista
-// do serviço municipal de transporte de saúde (TFD), incluindo dados pessoais,
-// CNH, dados do veículo padrão, capacidade, indicador de status de viagem e
-// métodos de conversão para/de Map para persistência no Firebase Firestore.
+// Modela e encapsula as informações operacionais, cadastrais e de habilitação
+// de um Motorista do transporte de saúde, estruturando atributos imutáveis e
+// fornecendo métodos de serialização (toMap) e desserialização (fromMap).
 //
 // PARA QUE SERVE NO PROJETO:
-// Permite a manipulação tipada das informações do motorista nas telas de
-// operação de viagens, no acompanhamento pelos pacientes e na gestão de
-// recursos humanos e frota pela administração municipal.
+// Representa a entidade de motorista que conduz as viagens TFD, associando
+// seus dados de identificação funcional (CNH, CPF), veículo habitual, status
+// de disponibilidade ('emViagem') e permissões no sistema.
 //
 // ONDE É USADO NO PROJETO:
-// - lib/motorista.dart (exibição de dados do motorista na tela de operações)
-// - lib/lista_pessoas.dart (listagem geral de motoristas cadastrados)
-// - test/lista_pessoas_test.dart (testes de renderização e busca na tela de pessoas)
+// - lib/motorista.dart (obtenção e exibição dos dados do motorista logado)
+// - lib/lista_pessoas.dart (listagem e filtros da equipe de motoristas)
+// - lib/components/motorista_header.dart (cabeçalho visual com dados do motorista)
+// - test/components/motorista_header_test.dart (testes unitários do cabeçalho)
+// - test/lista_pessoas_test.dart (testes de renderização e busca de motoristas)
 //
 // DE ONDE RECEBE DADOS:
-// Documentos serializados do Firebase Firestore (documentos com role 'motorista')
-// ou objetos instanciados para testes e simulações.
+// Documentos NoSQL do Firebase Firestore (coleção 'usuarios' ou 'motoristas'),
+// processados pela fábrica 'MotoristaModel.fromMap'.
 //
 // O QUE EXPORTA / EXPÕE:
-// - class MotoristaModel: classe de modelo de dados imutável
+// - class MotoristaModel: entidade imutável de dados do motorista
 // - Atributos: id, nome, cpf, telefone, email, cnh, veiculoModelo, veiculoPlaca,
 //   capacidadeVeiculo, emViagem, role, ativo, criadoEm
 // - Construtor nomeado padrão MotoristaModel(...)
-// - Map<String, dynamic> toMap(): serializa para o Firestore
-// - factory MotoristaModel.fromMap(Map, {docId}): desserializa do Firestore
+// - Map<String, dynamic> toMap(): conversão para formato persistível no Firestore
+// - factory MotoristaModel.fromMap(Map, {docId}): desserialização com fallbacks
 //
 // ORIGEM HISTÓRICA:
-// Criado no commit b7618c0 e expandido no commit ccbbe0e pela equipe do projeto
-// para unificação com a arquitetura de Firestore. Não veio de template automático.
+// Criado pela equipe de desenvolvimento no commit ccbbe0e e expandido nas
+// sprints de gestão de viagens e autenticação. Não provém de template automático.
 //
 // DEPENDÊNCIAS EXTERNAS E EFEITOS COLATERAIS:
 // Utiliza estritamente os tipos padrão do Dart SDK (sem pacotes externos).
 // É uma entidade pura de dados em memória: sem I/O, rede ou estado global.
 // ============================================================================
 
-// Linha em branco separadora entre o cabeçalho de documentação e a declaração da classe
-// Declaração da classe de modelo para os Motoristas da frota
+// Linha em branco separadora entre o cabeçalho descritivo do arquivo e a declaração da classe
+// ----------------------------------------------------------------------------
+// DECLARAÇÃO DA CLASSE DE MODELO DE DADOS: MotoristaModel
+// - O que a instrução faz: Declara formalmente a classe imutável representativa de um Motorista.
+// - O que é o elemento: Classe de domínio / Data Transfer Object (DTO) imutável.
+// - Papel arquitetural: Modela a entidade de negócio responsável pela condução dos veículos
+//   municipais de transporte de pacientes (TFD), concentrando dados de habilitação, veículo e status.
+// - De onde vem: Escrita especificamente para a regra de negócio do TransSaúde.
+// - Conexões no sistema: Utilizada em 'lib/motorista.dart', 'lib/components/motorista_header.dart'
+//   e 'lib/lista_pessoas.dart', permitindo vincular o condutor às viagens registradas.
+// - Efeitos colaterais: Nenhum. É uma declaração de tipo puro sem alocação ou mutação de estado.
+// ----------------------------------------------------------------------------
 class MotoristaModel {
-  // Identificador único do documento do motorista no Firestore
+  // --------------------------------------------------------------------------
+  // ATRIBUTO DE INSTÂNCIA: id
+  // - O que a linha faz: Declara a chave primária de identificação do motorista.
+  // - O que é o elemento: Campo imutável ('final') do tipo primitivo 'String'.
+  // - Papel no sistema: Corresponde ao Document ID no Firestore ou ao UID do Firebase Auth,
+  //   sendo a chave relacional que conecta o condutor aos documentos da coleção 'viagens'.
+  // - Conexões: Utilizado em queries como 'where("motoristaId", isEqualTo: id)'.
+  // --------------------------------------------------------------------------
   final String id;
-  // Nome completo do motorista para identificação nas escalas e telas
+
+  // --------------------------------------------------------------------------
+  // ATRIBUTO DE INSTÂNCIA: nome
+  // - O que a linha faz: Declara o nome completo do motorista municipal.
+  // - O que é o elemento: Campo imutável ('final') do tipo primitivo 'String'.
+  // - Papel no sistema: Exibido no cabeçalho superior da tela de operação ('MotoristaHeader'),
+  //   na ficha impressa do Roteiro de Viagem TFD e na escala administrativa de condutores.
+  // - Conexões: Renderizado em 'lib/components/motorista_header.dart' e pesquisável por texto.
+  // --------------------------------------------------------------------------
   final String nome;
-  // Cadastro de Pessoa Física (CPF) usado para identificação ou login
+
+  // --------------------------------------------------------------------------
+  // ATRIBUTO DE INSTÂNCIA: cpf
+  // - O que a linha faz: Declara o registro de Cadastro de Pessoa Física do motorista.
+  // - O que é o elemento: Campo imutável ('final') do tipo primitivo 'String'.
+  // - Papel no sistema: Credencial de acesso para autenticação no aplicativo móvel
+  //   e identificador funcional único para conferência junto aos registros de recursos humanos.
+  // - Conexões: Sanitizado em 'lib/services/auth_service.dart' para permitir login via CPF.
+  // --------------------------------------------------------------------------
   final String cpf;
-  // Número de telefone para contato e comunicação operacional
+
+  // --------------------------------------------------------------------------
+  // ATRIBUTO DE INSTÂNCIA: telefone
+  // - O que a linha faz: Declara o número telefônico para chamadas e mensagens operacionais.
+  // - O que é o elemento: Campo imutável ('final') do tipo primitivo 'String'.
+  // - Papel no sistema: Permite contato telefônico imediato da central de agendamento ou
+  //   de pacientes caso ocorram imprevistos, atrasos de retorno ou emergências no trajeto.
+  // - Conexões: Exibido nos cartões de detalhamento de pessoas em 'lib/lista_pessoas.dart'.
+  // --------------------------------------------------------------------------
   final String telefone;
-  // Endereço de correio eletrônico institucional ou pessoal do motorista
+
+  // --------------------------------------------------------------------------
+  // ATRIBUTO DE INSTÂNCIA: email
+  // - O que a linha faz: Declara o endereço de correio eletrônico cadastrado do condutor.
+  // - O que é o elemento: Campo imutável ('final') do tipo primitivo 'String'.
+  // - Papel no sistema: Usado como chave de autenticação interna no Firebase Auth e canal
+  //   institucional para comunicações de escalas e avisos da Secretaria de Saúde.
+  // --------------------------------------------------------------------------
   final String email;
-  // Número de registro da Carteira Nacional de Habilitação (CNH)
+
+  // --------------------------------------------------------------------------
+  // ATRIBUTO DE INSTÂNCIA: cnh
+  // - O que a linha faz: Declara o número de registro da Carteira Nacional de Habilitação.
+  // - O que é o elemento: Campo imutável ('final') do tipo primitivo 'String'.
+  // - Papel no sistema: Documento de porte obrigatório para regularidade jurídica do condutor;
+  //   permite à gestão municipal auditar a validade e a categoria adequada de condução.
+  // - Conexões: Apresentado na listagem de motoristas para validação de conformidade legal.
+  // --------------------------------------------------------------------------
   final String cnh;
-  // Modelo e marca do veículo usualmente atribuído ao motorista
+
+  // --------------------------------------------------------------------------
+  // ATRIBUTO DE INSTÂNCIA: veiculoModelo
+  // - O que a linha faz: Declara a especificação e modelo do veículo atribuído habitualmente.
+  // - O que é o elemento: Campo imutável ('final') do tipo primitivo 'String'.
+  // - Papel no sistema: Facilita o preenchimento prévio na tela de início de viagem,
+  //   associando o condutor ao seu veículo costumeiro (ex.: Spin, Van, Micro-ônibus).
+  // - Conexões: Exibido no cabeçalho do motorista e utilizado como sugestão no formulário.
+  // --------------------------------------------------------------------------
   final String veiculoModelo;
-  // Placa de trânsito do veículo atribuído
+
+  // --------------------------------------------------------------------------
+  // ATRIBUTO DE INSTÂNCIA: veiculoPlaca
+  // - O que a linha faz: Declara a placa identificadora de trânsito do veículo atribuído.
+  // - O que é o elemento: Campo imutável ('final') do tipo primitivo 'String'.
+  // - Papel no sistema: Identificador de trânsito utilizado para cruzamento de dados com
+  //   a frota de veículos ('VeiculoModel'), permitindo verificar o status de uso do automóvel.
+  // - Conexões: Exibida em 'MotoristaHeader' e vinculada à inicialização de novas viagens.
+  // --------------------------------------------------------------------------
   final String veiculoPlaca;
-  // Quantidade máxima de passageiros que o veículo suporta (capacidade)
+
+  // --------------------------------------------------------------------------
+  // ATRIBUTO DE INSTÂNCIA: capacidadeVeiculo
+  // - O que a linha faz: Declara a quantidade máxima de passageiros que o veículo suporta.
+  // - O que é o elemento: Campo imutável ('final') do tipo primitivo número inteiro ('int').
+  // - Papel no sistema: Limite operacional de lotação utilizado para impedir sobrecarga de
+  //   pacientes agendados em uma única viagem municipal de saúde.
+  // - Conexões: Validado pelo serviço de validação de viagem ('ValidacaoViagem').
+  // --------------------------------------------------------------------------
   final int capacidadeVeiculo;
-  // Indicador booleano sinalizando se o motorista está com viagem em andamento
+
+  // --------------------------------------------------------------------------
+  // ATRIBUTO DE INSTÂNCIA: emViagem
+  // - O que a linha faz: Declara a bandeira de status operacional em trânsito do motorista.
+  // - O que é o elemento: Campo imutável ('final') do tipo primitivo booleano ('bool').
+  // - Papel no sistema: 'true' sinaliza que o condutor possui viagem em andamento, impedindo
+  //   o início de uma nova viagem simultânea e alterando o estado visual da tela inicial.
+  // - Conexões: Sincronizado em tempo real pelo 'ViagemService' e ouvido pela tela 'Motorista'.
+  // --------------------------------------------------------------------------
   final bool emViagem;
-  // Papel de controle de acesso do usuário no sistema (padrão 'motorista')
+
+  // --------------------------------------------------------------------------
+  // ATRIBUTO DE INSTÂNCIA: role
+  // - O que a linha faz: Declara o identificador do papel funcional no controle de acesso (RBAC).
+  // - O que é o elemento: Campo imutável ('final') do tipo primitivo 'String'.
+  // - Papel no sistema: Estabelece o nível de permissão; fixado como 'motorista' para autorizar
+  //   a navegação exclusiva nas rotas e módulos operacionais da frota de transporte.
+  // - Conexões: Avaliado pelo 'RouteGuard' para permitir acesso à tela '/motorista'.
+  // --------------------------------------------------------------------------
   final String role;
-  // Indicador booleano de situação cadastral (ativo ou inativo)
+
+  // --------------------------------------------------------------------------
+  // ATRIBUTO DE INSTÂNCIA: ativo
+  // - O que a linha faz: Declara a situação de vínculo ativo ou inativo do cadastro.
+  // - O que é o elemento: Campo imutável ('final') do tipo primitivo booleano ('bool').
+  // - Papel no sistema: Permite desligar temporariamente ou suspender o acesso de motoristas
+  //   afastados ou de férias sem excluir o histórico de viagens passadas do banco de dados.
+  // - Conexões: Utilizado nos filtros de exibição de condutores ativos em 'lib/lista_pessoas.dart'.
+  // --------------------------------------------------------------------------
   final bool ativo;
-  // Data e hora de criação do registro no sistema (opcional)
+
+  // --------------------------------------------------------------------------
+  // ATRIBUTO DE INSTÂNCIA: criadoEm
+  // - O que a linha faz: Declara o registro cronológico de cadastro do motorista no sistema.
+  // - O que é o elemento: Campo imutável ('final') do tipo 'DateTime?', opcional/anulável.
+  // - Papel no sistema: Suporta auditoria cadastral e relatórios administrativos de antiguidade.
+  // --------------------------------------------------------------------------
   final DateTime? criadoEm;
 
-  // Linha em branco separadora entre os atributos e o construtor da classe
+  // Linha em branco separadora entre a declaração dos atributos e o construtor principal
 
-  // Construtor principal da classe MotoristaModel com inicialização nomeada
+  // --------------------------------------------------------------------------
+  // CONSTRUTOR PADRÃO COM PARÂMETROS NOMEADOS: MotoristaModel
+  // - O que faz: Inicializa todos os campos de uma instância imutável de MotoristaModel.
+  // - O que é: Construtor generativo com parâmetros obrigatórios e padrões opcionais de segurança.
+  // - Papel: Garante a criação de objetos consistentes para exibição e persistência.
+  // --------------------------------------------------------------------------
   MotoristaModel({
-    // Parâmetro obrigatório para o identificador único do motorista
+    // Parâmetro obrigatório: Identificador único no Firestore
     required this.id,
-    // Parâmetro obrigatório para o nome completo do motorista
+    // Parâmetro obrigatório: Nome completo do motorista
     required this.nome,
-    // Parâmetro obrigatório para o CPF do motorista
+    // Parâmetro obrigatório: CPF do condutor
     required this.cpf,
-    // Parâmetro obrigatório para o telefone de contato
+    // Parâmetro obrigatório: Telefone de contato
     required this.telefone,
-    // Parâmetro obrigatório para o e-mail de contato
+    // Parâmetro obrigatório: E-mail cadastrado
     required this.email,
-    // Parâmetro obrigatório para a CNH do motorista
+    // Parâmetro obrigatório: Número de registro da CNH
     required this.cnh,
-    // Parâmetro obrigatório para a descrição do modelo do veículo
+    // Parâmetro obrigatório: Descrição do modelo do veículo
     required this.veiculoModelo,
-    // Parâmetro obrigatório para a placa do veículo
+    // Parâmetro obrigatório: Placa oficial do veículo
     required this.veiculoPlaca,
-    // Parâmetro opcional com valor padrão de 4 assentos de capacidade
+    // Parâmetro opcional: Lotação do veículo com fallback padrão para 4 assentos
     this.capacidadeVeiculo = 4,
-    // Parâmetro opcional com valor padrão falso indicando que não está em viagem
+    // Parâmetro opcional: Status de viagem ativa assumindo 'false' por padrão
     this.emViagem = false,
-    // Parâmetro opcional com valor padrão de perfil 'motorista'
+    // Parâmetro opcional: Papel de acesso assumindo 'motorista' por padrão
     this.role = 'motorista',
-    // Parâmetro opcional com valor padrão verdadeiro indicando cadastro ativo
+    // Parâmetro opcional: Indicador de conta ativa assumindo 'true' por padrão
     this.ativo = true,
-    // Parâmetro opcional com a data de criação do registro
+    // Parâmetro opcional: Data e hora de criação do registro no Firestore
     this.criadoEm,
-  // Fecha a lista de parâmetros do construtor
+  // Fecha a lista de parâmetros formais nomeados do construtor
   });
 
   // Linha em branco separadora entre o construtor e o método de serialização
-  // Comentário original do autor mantido byte a byte:
+  // ----------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Salvar no Firebase
-  // Método que serializa a instância do motorista em um Map para gravação no Firestore
+  // ----------------------------------------------------------------------------
+  // MÉTODO DE SERIALIZAÇÃO: toMap
+  // - O que faz: Converte o objeto MotoristaModel em uma estrutura do tipo Map<String, dynamic>.
+  // - O que é o elemento: Método de instância público para persistência em bancos NoSQL.
+  // - Retorno: Map contendo todas as propriedades prontas para inclusão/atualização no Firestore.
+  // - Papel no sistema: Centraliza o contrato de campos da coleção 'usuarios' ou 'motoristas'.
+  // ----------------------------------------------------------------------------
   Map<String, dynamic> toMap() {
-    // Retorna a estrutura Map populada com as propriedades da instância
+    // ------------------------------------------------------------------------
+    // Retorna a representação de dicionário Map com as chaves esperadas pelo Firestore:
+    // ------------------------------------------------------------------------
     return {
-      // Mapeia o nome do motorista para a chave 'nome'
+      // Mapeia o nome civil para a chave 'nome'
       'nome': nome,
-      // Mapeia o CPF do motorista para a chave 'cpf'
+      // Mapeia o documento de CPF para a chave 'cpf'
       'cpf': cpf,
-      // Mapeia o telefone do motorista para a chave 'telefone'
+      // Mapeia o telefone de contato para a chave 'telefone'
       'telefone': telefone,
-      // Mapeia o e-mail do motorista para a chave 'email'
+      // Mapeia o e-mail cadastrado para a chave 'email'
       'email': email,
-      // Mapeia a CNH do motorista para a chave 'cnh'
+      // Mapeia a habilitação de trânsito para a chave 'cnh'
       'cnh': cnh,
-      // Mapeia o modelo do veículo para a chave 'veiculoModelo'
+      // Mapeia o modelo usual do veículo para a chave 'veiculoModelo'
       'veiculoModelo': veiculoModelo,
       // Mapeia a placa do veículo para a chave 'veiculoPlaca'
       'veiculoPlaca': veiculoPlaca,
-      // Mapeia a capacidade de passageiros para a chave 'capacidadeVeiculo'
+      // Mapeia o número inteiro de assentos para a chave 'capacidadeVeiculo'
       'capacidadeVeiculo': capacidadeVeiculo,
-      // Mapeia a situação de viagem ativa para a chave 'emViagem'
+      // Mapeia o indicador de viagem em andamento para a chave 'emViagem'
       'emViagem': emViagem,
-      // Mapeia o papel de privilégio para a chave 'role'
+      // Mapeia o papel de controle de acesso para a chave 'role'
       'role': role,
-      // Mapeia o status ativo da conta para a chave 'ativo'
+      // Mapeia o status da conta para a chave 'ativo'
       'ativo': ativo,
-      // Mapeia a data de criação no formato ISO-8601 se não for nula
+      // Mapeia a data de criação convertida para ISO-8601 se não for nula
       'criadoEm': criadoEm?.toIso8601String(),
-    // Fecha o mapa de pares chave-valor
+    // Fecha a declaração do mapa literal
     };
   // Fecha o bloco de instruções do método toMap
   }
 
-  // Linha em branco separadora entre métodos de instância e método utilitário de conversão de data
+  // Linha em branco separadora entre métodos de instância e utilitário de conversão de data
 
-  // Método estático utilitário para interpretar com resiliência datas do Firebase
+  // ----------------------------------------------------------------------------
+  // FUNÇÃO UTILITÁRIA PRIVADA ESTÁTICA: _parsearData
+  // - O que faz: Converte valores de tipos arbitrários ('dynamic') para 'DateTime?'.
+  // - O que é: Método defensivo resiliente para interpretação de datas de diferentes fontes.
+  // - Suporte abrangente: Trata 'Timestamp' nativo do Firestore, instâncias 'DateTime' e strings ISO.
+  // - Retorno: 'DateTime' tipado ou 'null' em caso de falha de conversão.
+  // ----------------------------------------------------------------------------
   static DateTime? _parsearData(dynamic valor) {
-    // Retorna nulo imediatamente caso o valor de entrada seja nulo
+    // Retorna nulo imediatamente caso a entrada seja nula
     if (valor == null) return null;
-    // Se o valor já for um DateTime válido, retorna o próprio objeto
+    // Se o valor já for DateTime, retorna diretamente a instância
     if (valor is DateTime) return valor;
-    // Bloco de tratamento para suporte a Timestamp do Firebase Firestore
+    // Tenta invocar toDate() dinamicamente caso seja um Timestamp do Firestore
     try {
-      // Executa chamada dinâmica para o método toDate() característico do Firestore
       return (valor as dynamic).toDate() as DateTime;
-    // Captura qualquer erro na chamada do método toDate()
     } catch (_) {}
-    // Bloco de tratamento para parsing de strings de data (ex: ISO-8601)
+    // Tenta interpretar o texto via DateTime.tryParse
     try {
-      // Converte o valor para string e tenta o parsing via DateTime.tryParse
       return DateTime.tryParse(valor.toString());
-    // Captura qualquer erro durante a interpretação da string
     } catch (_) {}
-    // Retorna nulo se não for possível converter o valor recebido
+    // Retorna nulo como fallback de segurança
     return null;
-  // Fecha o bloco do método estático _parsearData
+  // Fecha o bloco de instruções da função estática _parsearData
   }
 
-  // Linha em branco separadora entre o método de parsing e a factory de desserialização
-  // Comentário original do autor mantido byte a byte:
+  // Linha em branco separadora entre a função de data e o construtor de fábrica
+  // ----------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Ler do Firebase
-  // Construtor factory que cria uma instância de MotoristaModel a partir de um Map de dados
+  // ----------------------------------------------------------------------------
+  // CONSTRUTOR FACTORY (FÁBRICA DE DESSERIALIZAÇÃO): MotoristaModel.fromMap
+  // - O que faz: Constrói uma instância fortemente tipada de MotoristaModel a partir de um Map.
+  // - O que é: Construtor factory defensivo com conversão segura de tipos numéricos e booleanos.
+  // - Parâmetros: 'map' (dados brutos do documento) e 'docId' opcional (ID do documento Firestore).
+  // - Papel no sistema: Protege a aplicação contra valores corrompidos ou tipos trocados no banco.
+  // ----------------------------------------------------------------------------
   factory MotoristaModel.fromMap(Map<String, dynamic> map, {String? docId}) {
-    // Extrai o valor bruto associado à capacidade do veículo
+    // ------------------------------------------------------------------------
+    // Extrai o valor bruto associado à capacidade de passageiros do veículo:
+    // ------------------------------------------------------------------------
     final capRaw = map['capacidadeVeiculo'];
-    // Converte com segurança a capacidade para número inteiro ou usa 4 como fallback
+
+    // ------------------------------------------------------------------------
+    // Realiza a conversão segura para inteiro:
+    // Se o valor for 'num', converte via '.toInt()'; se for string ou outro, tenta 'int.tryParse'
+    // com fallback seguro para 4 assentos caso o dado seja nulo ou inválido:
+    // ------------------------------------------------------------------------
     final int capInt = (capRaw is num)
-        // Se já for numérico, extrai o inteiro
+        // Converte diretamente instâncias numéricas (int ou double) para inteiro
         ? capRaw.toInt()
-        // Caso contrário, tenta realizar parse da string ou adota 4 como padrão
+        // Tenta interpretar representação textual ou assume 4 como lotação padrão
         : (int.tryParse(capRaw?.toString() ?? '') ?? 4);
 
-    // Linha em branco separadora entre a conversão de capacidade e a instanciação do objeto
+    // Linha em branco separadora entre a normalização de variáveis e a instanciação
 
-    // Retorna uma nova instância de MotoristaModel populada a partir dos dados do Map
+    // ------------------------------------------------------------------------
+    // Cria e retorna a instância de MotoristaModel com cada campo sanitizado:
+    // ------------------------------------------------------------------------
     return MotoristaModel(
-      // Atribui o identificador único fornecido ou uma string vazia
+      // Atribui o identificador do documento ou string vazia se nulo
       id: docId ?? '',
-      // Atribui o nome extraído ou string vazia em caso de ausência
+      // Atribui o nome recuperado ou string vazia se nulo
       nome: (map['nome'] ?? '').toString(),
-      // Atribui o CPF extraído ou string vazia em caso de ausência
+      // Atribui o CPF recuperado ou string vazia se nulo
       cpf: (map['cpf'] ?? '').toString(),
-      // Atribui o telefone extraído ou string vazia em caso de ausência
+      // Atribui o telefone recuperado ou string vazia se nulo
       telefone: (map['telefone'] ?? '').toString(),
-      // Atribui o e-mail extraído ou string vazia em caso de ausência
+      // Atribui o e-mail recuperado ou string vazia se nulo
       email: (map['email'] ?? '').toString(),
-      // Atribui o registro de CNH extraído ou string vazia
+      // Atribui a CNH recuperada ou string vazia se nulo
       cnh: (map['cnh'] ?? '').toString(),
-      // Atribui a descrição do modelo do veículo ou string vazia
+      // Atribui a descrição do modelo do veículo ou string vazia se nulo
       veiculoModelo: (map['veiculoModelo'] ?? '').toString(),
-      // Atribui a placa do veículo ou string vazia
+      // Atribui a placa do veículo ou string vazia se nulo
       veiculoPlaca: (map['veiculoPlaca'] ?? '').toString(),
-      // Atribui o valor inteiro validado da capacidade de passageiros
+      // Atribui a capacidade sanitizada em inteiro
       capacidadeVeiculo: capInt,
-      // Converte a propriedade emViagem considerando booleanos ou representação textual 'true'
+      // Interpreta 'emViagem' aceitando booleano verdadeiro ou string 'true'
       emViagem: map['emViagem'] == true || map['emViagem'] == 'true',
-      // Atribui o perfil de permissão ou adota 'motorista' como padrão seguro
+      // Atribui o papel de permissão com fallback padrão para 'motorista'
       role: (map['role'] ?? 'motorista').toString(),
-      // Valida se a conta está ativa, considerando nulos como ativo por padrão
+      // Interpreta 'ativo' com tolerância a booleano, nulo (ativo por padrão) ou 'true'
       ativo: map['ativo'] == true || map['ativo'] == null || map['ativo'] == 'true',
-      // Realiza a conversão segura da data de criação com _parsearData
+      // Desserializa a data de criação através da função resiliente '_parsearData'
       criadoEm: _parsearData(map['criadoEm']),
-    // Fecha a chamada do construtor de MotoristaModel
+    // Fecha a lista de argumentos passados ao construtor MotoristaModel
     );
-  // Fecha o bloco do construtor factory fromMap
+  // Fecha o bloco de instruções do construtor factory fromMap
   }
-// Fecha o bloco de declaração da classe MotoristaModel
+
+// Fecha a declaração do corpo da classe MotoristaModel
 }

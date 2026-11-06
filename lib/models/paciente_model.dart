@@ -5,38 +5,36 @@
 // Camada: Domínio / Modelos de Dados (Models)
 //
 // O QUE ESTE ARQUIVO FAZ:
-// Modela e encapsula as informações cadastrais, de transporte e o ciclo de
-// atendimento de um paciente do sistema TFD (Tratamento Fora de Domicílio),
-// centralizando o mapeamento de status de viagem (0 a 5) com suas respectivas
-// cores, ícones e textos amigáveis, além de métodos de conversão para o Firebase.
+// Modela e centraliza os dados cadastrais, clínicos, de viagem e de status
+// de um Paciente atendido pelo Tratamento Fora de Domicílio (TFD), incluindo
+// dados de acompanhante e uma máquina de estados visual e textual (dadosStatus).
 //
 // PARA QUE SERVE NO PROJETO:
-// É a entidade central para o acompanhamento dos deslocamentos de saúde do
-// município, sendo utilizada na visualização do paciente, no controle de
-// embarque/desembarque pelo motorista, na listagem administrativa de usuários
-// e na composição do documento oficial "Ficha de Atendimento TFD" em PDF.
+// É o modelo central da experiência do paciente e do motorista: representa cada
+// passageiro na lista do dia, mapeando seu ciclo completo de transporte
+// (Aguardando Transporte -> Embarcou Ida -> Desembarcou Consulta ->
+// Reembarcou Volta -> Concluído ou Cancelado).
 //
 // ONDE É USADO NO PROJETO:
-// - lib/motorista.dart (gestão e atualização dos pacientes na rota ativa)
-// - lib/paciente.dart (painel do paciente acompanhando status da sua viagem)
-// - lib/lista_pessoas.dart (listagem geral de pacientes cadastrados na saúde)
-// - lib/components/card_paciente.dart (card do paciente na tela do motorista)
-// - lib/components/card_identificacao_paciente.dart (dados de contato e endereço)
-// - lib/components/footer_pacientes.dart (contadores de embarcados/desembarcados)
-// - lib/components/formulario_encerramento.dart (baixa final ao encerrar viagem)
-// - lib/services/relatorio_pdf_service.dart (geração do roteiro de viagem impresso)
-// - test/lista_pessoas_test.dart (testes de renderização da lista de pacientes)
-// - test/relatorio_pdf_test.dart (testes de geração do PDF da viagem TFD)
+// - lib/motorista.dart (lista de passageiros do dia, contadores e filtros)
+// - lib/paciente.dart (painel de acompanhamento do paciente)
+// - lib/components/card_paciente.dart (renderização visual com cores/ícones)
+// - lib/components/card_identificacao_paciente.dart (resumo com avatar)
+// - lib/components/card_dados_consulta.dart (detalhes da consulta e acompanhante)
+// - lib/components/bloco_acompanhante.dart (exibição de acompanhante)
+// - lib/services/relatorio_pdf_service.dart (geração do Roteiro de Viagem TFD)
+// - test/components/motorista_header_test.dart e test/lista_pessoas_test.dart
 //
 // DE ONDE RECEBE DADOS:
-// Documentos do Firebase Firestore (coleção de usuários/pacientes ou listas
-// de passageiros vinculadas a viagens), dados em JSON e objetos de mock em testes.
+// Documentos NoSQL da coleção 'pacientes' do Firebase Firestore ou instâncias
+// criadas durante a montagem da escala diária de viagens.
 //
 // O QUE EXPORTA / EXPÕE:
-// - class PacienteModel: modelo imutável de dados do paciente
+// - class PacienteModel: modelo de dados imutável do paciente
 // - Atributos: id, nome, cpf, telefone, enderecoPaciente, localConsulta,
 //   localSaida, horarioConsulta, status, nomeAcompanhante, telAcompanhante,
 //   role, ativo, criadoEm
+// - Construtor nomeado PacienteModel(...)
 // - static (String, Color, IconData) dadosStatus(int status): mapeamento central de status
 // - Getters: textoStatus, corStatus, iconeStatus
 // - Map<String, dynamic> toMap(): serialização para Firestore
@@ -52,166 +50,332 @@
 // sem efeitos colaterais, sem mutabilidade e sem chamadas diretas de I/O ou rede.
 // ============================================================================
 
-// Importação do pacote Material do Flutter para os tipos Color, IconData e biblioteca de ícones
+// ----------------------------------------------------------------------------
+// IMPORTAÇÃO DE PACOTE DE TERCEIROS / FLUTTER FRAMEWORK:
+// - O que faz: Importa o ecossistema Material Design do Flutter SDK.
+// - Símbolos consumidos neste arquivo: 'Color', 'IconData', 'Icons' e 'Colors'.
+// - Papel arquitetural: Fornece as definições de cores e ícones vetoriais utilizadas
+//   na tupla de retorno da função de mapeamento de status ('dadosStatus').
+// ----------------------------------------------------------------------------
 import 'package:flutter/material.dart';
 
-// Linha em branco separadora entre imports e a definição da classe
-// Declaração da classe do modelo de dados para Pacientes do TFD
+// Linha em branco separadora entre os imports e a declaração da classe principal
+// ----------------------------------------------------------------------------
+// DECLARAÇÃO DA CLASSE DE MODELO DE DOMÍNIO: PacienteModel
+// - O que a instrução faz: Declara formalmente a entidade imutável de dados do Paciente TFD.
+// - O que é o elemento: Classe de dados (DTO/Model) com atributos finais imutáveis.
+// - Papel no sistema: Representa os cidadãos transportados pelo serviço municipal de saúde,
+//   agrupando identificação civil, endereço de embarque, agendamento de consulta médica,
+//   necessidade de acompanhante e o status do ciclo de vida na viagem diária.
+// - De onde vem: Escrita especificamente para a arquitetura do projeto TransSaúde.
+// - Efeitos colaterais: Nenhum. É uma declaração de tipo puro sem alocação ou mutação de estado.
+// ----------------------------------------------------------------------------
 class PacienteModel {
-  // Identificador único do documento do paciente no Firebase Firestore
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: id
+  // - O que é: Campo final imutável do tipo primitivo 'String'.
+  // - Papel: Identificador primário exclusivo do documento do paciente no Cloud Firestore.
+  // - Conexões: Utilizado como chave única ('Key') em widgets Flutter e para atualizações de status.
+  // --------------------------------------------------------------------------
   final String id;
-  // Nome completo do paciente atendido pelo transporte de saúde
+
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: nome
+  // - O que é: Campo final imutável do tipo primitivo 'String'.
+  // - Papel: Nome completo do paciente transportado.
+  // - Conexões: Renderizado nos cards da lista do motorista, no painel do paciente e na ficha física PDF.
+  // --------------------------------------------------------------------------
   final String nome;
-  // Cadastro de Pessoa Física (CPF) do paciente
+
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: cpf
+  // - O que é: Campo final imutável do tipo primitivo 'String'.
+  // - Papel: Cadastro de Pessoa Física do paciente, usado para controle clínico e login.
+  // - Conexões: Sanitizado pelo AuthService e pesquisado em buscas textuais da gestão de pessoas.
+  // --------------------------------------------------------------------------
   final String cpf;
-  // Número de telefone para contato direto com o paciente
+
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: telefone
+  // - O que é: Campo final imutável do tipo primitivo 'String'.
+  // - Papel: Número de contato telefônico do paciente para alinhamento de horários e avisos.
+  // - Conexões: Exibido na ficha impressa PDF e disponível para discagem rápida pelo motorista.
+  // --------------------------------------------------------------------------
   final String telefone;
-  // Endereço de residência onde o paciente deve ser buscado ou contatado
+
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: enderecoPaciente
+  // - O que é: Campo final imutável do tipo primitivo 'String'.
+  // - Papel: Endereço residencial completo do paciente (rua, número, bairro).
+  // - Conexões: Utilizado pelo motorista para planejar a rota de coleta e impresso na ficha TFD.
+  // --------------------------------------------------------------------------
   final String enderecoPaciente;
-  // Local de atendimento médico no município de destino (ex: Hospital, AME, UBS)
+
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: localConsulta
+  // - O que é: Campo final imutável do tipo primitivo 'String'.
+  // - Papel: Nome do hospital, clínica especializada, AME ou unidade de saúde de destino.
+  // - Conexões: Exibido com destaque nos cards de viagem e na coluna Destino do relatório PDF.
+  // --------------------------------------------------------------------------
   final String localConsulta;
-  // Ponto de partida do paciente (ex: 'Residência' ou 'Unidade Básica de Saúde')
+
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: localSaida
+  // - O que é: Campo final imutável do tipo primitivo 'String'.
+  // - Papel: Ponto específico onde o paciente aguarda o transporte (ex.: 'Residência' ou 'UBS Poloni').
+  // - Conexões: Exibido na ficha física de viagem e nos detalhes do agendamento.
+  // --------------------------------------------------------------------------
   final String localSaida;
-  // Horário agendado para a consulta médica ou exame de saúde
+
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: horarioConsulta
+  // - O que é: Campo final imutável do tipo primitivo 'String'.
+  // - Papel: Horário programado para o procedimento médico na cidade de destino (ex.: '08:00', '13:30').
+  // - Conexões: Crucial para o motorista priorizar o itinerário de entrega dos pacientes a tempo.
+  // --------------------------------------------------------------------------
   final String horarioConsulta;
-  // Código numérico indicando o estágio atual do paciente na viagem (0 a 5)
+
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: status
+  // - O que é: Campo final imutável do tipo primitivo inteiro ('int').
+  // - Papel: Código numérico (0 a 5) que representa o estágio atual do paciente no ciclo da viagem.
+  // - Valores válidos:
+  //   * 0: Aguardando Transporte
+  //   * 1: Embarcou para Ida
+  //   * 2: Desembarcou para Consulta
+  //   * 3: Reembarcou para Volta
+  //   * 4: Concluído
+  //   * 5: Cancelado
+  // - Conexões: Altera a cor do card, o badge visual, os contadores do cabeçalho e a lógica de baixa.
+  // --------------------------------------------------------------------------
   final int status;
-  // Nome completo do acompanhante do paciente, se houver necessidade legal/médica
+
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: nomeAcompanhante
+  // - O que é: Campo final opcional/anulável ('String?').
+  // - Papel: Nome do acompanhante do paciente, quando houver exigência médica ou legal (ex.: idoso/menor).
+  // - Conexões: Contabiliza +1 na lotação geral da viagem e gera bloco visual dedicado na ficha PDF.
+  // --------------------------------------------------------------------------
   final String? nomeAcompanhante;
-  // Telefone para contato com o acompanhante responsável
+
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: telAcompanhante
+  // - O que é: Campo final opcional/anulável ('String?').
+  // - Papel: Telefone de contato do acompanhante responsável.
+  // - Conexões: Exibido ao motorista para contato de emergência e registrado na ficha de transporte.
+  // --------------------------------------------------------------------------
   final String? telAcompanhante;
-  // Papel de perfil de controle de acesso (padrão 'paciente')
+
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: role
+  // - O que é: Campo final imutável do tipo primitivo 'String'.
+  // - Papel: Identificador de papel de acesso RBAC, com valor padrão 'paciente'.
+  // - Conexões: Usado na autorização de rotas pelo RouteGuard.
+  // --------------------------------------------------------------------------
   final String role;
-  // Indicador se o cadastro do paciente está ativo no sistema
+
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: ativo
+  // - O que é: Campo final imutável do tipo primitivo booleano ('bool').
+  // - Papel: Situação de atividade cadastral no sistema municipal.
+  // --------------------------------------------------------------------------
   final bool ativo;
-  // Data e hora de criação do cadastro no sistema (opcional)
+
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: criadoEm
+  // - O que é: Campo final imutável do tipo 'DateTime?', opcional.
+  // - Papel: Registro temporal da data e hora de inclusão do paciente no sistema.
+  // --------------------------------------------------------------------------
   final DateTime? criadoEm;
 
-  // Linha em branco separadora entre declarações de campos e o construtor
+  // Linha em branco separadora entre a declaração dos campos e o construtor principal
 
-  // Construtor principal da classe PacienteModel com parâmetros nomeados
+  // --------------------------------------------------------------------------
+  // CONSTRUTOR PADRÃO COM PARÂMETROS NOMEADOS: PacienteModel
+  // - O que faz: Constrói uma nova instância imutável de PacienteModel com validações de nulidade.
+  // - O que é: Construtor generativo com parâmetros obrigatórios ('required') e padrões defensivos.
+  // --------------------------------------------------------------------------
   PacienteModel({
-    // Parâmetro obrigatório para o ID do documento
+    // Parâmetro obrigatório: Identificador único no Firestore
     required this.id,
-    // Parâmetro obrigatório para o nome do paciente
+    // Parâmetro obrigatório: Nome completo do paciente
     required this.nome,
-    // Parâmetro obrigatório para o CPF do paciente
+    // Parâmetro obrigatório: CPF do paciente
     required this.cpf,
-    // Parâmetro obrigatório para o telefone do paciente
+    // Parâmetro obrigatório: Telefone de contato
     required this.telefone,
-    // Parâmetro obrigatório para o endereço residencial do paciente
+    // Parâmetro obrigatório: Endereço residencial
     required this.enderecoPaciente,
-    // Parâmetro obrigatório para o local de destino/consulta
+    // Parâmetro obrigatório: Local de atendimento médico no destino
     required this.localConsulta,
-    // Parâmetro opcional para o ponto de saída, padrão vazio
+    // Parâmetro opcional: Ponto de partida, padrão vazio
     this.localSaida = '',
-    // Parâmetro opcional para o horário da consulta médica
+    // Parâmetro opcional: Horário da consulta médica, padrão vazio
     this.horarioConsulta = '',
-    // Parâmetro opcional para o código de status com valor padrão 0 (Aguardando)
+    // Parâmetro opcional: Código numérico de status, padrão 0 (Aguardando Transporte)
     this.status = 0,
-    // Parâmetro opcional para o nome do acompanhante
+    // Parâmetro opcional: Nome completo do acompanhante
     this.nomeAcompanhante,
-    // Parâmetro opcional para o telefone do acompanhante
+    // Parâmetro opcional: Telefone de contato do acompanhante
     this.telAcompanhante,
-    // Parâmetro opcional para o perfil de permissão com padrão 'paciente'
+    // Parâmetro opcional: Papel de acesso RBAC, padrão 'paciente'
     this.role = 'paciente',
-    // Parâmetro opcional para a situação cadastral ativa
+    // Parâmetro opcional: Indicador de conta ativa, padrão verdadeiro
     this.ativo = true,
-    // Parâmetro opcional para a data e hora do cadastro
+    // Parâmetro opcional: Data e hora de criação do registro
     this.criadoEm,
-  // Fecha a lista de parâmetros do construtor
+  // Fecha a lista de parâmetros formais nomeados do construtor
   });
 
-  // Linha em branco separadora entre o construtor e o método de status
-  // Comentário original do autor mantido byte a byte:
+  // Linha em branco separadora entre o construtor e a máquina de status
+  // ----------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Mapeamento centralizado de status numérico para texto, cor e ícone em todo o app
-  // Método estático que mapeia o código numérico de status em uma tupla contendo texto, cor e ícone
+  // ----------------------------------------------------------------------------
+  // FUNÇÃO ESTÁTICA CENTRAL DE STATUS: dadosStatus
+  // - O que faz: Converte o código numérico de status (0 a 5) em uma tupla estruturada
+  //   composta por (String texto, Color cor, IconData icone).
+  // - O que é o elemento: Método estático puro de domínio utilizando Records (tuplas) do Dart 3.
+  // - Papel arquitetural: Centraliza a identidade visual e semântica de todo o fluxo de transporte.
+  //   Evita duplicação de switches ou mapeamentos dispersos em telas e componentes.
+  // - Chamadores no sistema: 'CardPaciente', 'CardTrackingPaciente', 'MotoristaHeader',
+  //   'FooterPacientes', 'RelatorioPdfService' e os próprios getters desta classe.
+  // ----------------------------------------------------------------------------
   static (String texto, Color cor, IconData icone) dadosStatus(int status) {
-    // Avalia o código numérico recebido através de uma expressão switch pattern matching
+    // ------------------------------------------------------------------------
+    // Avaliação do status via Pattern Matching do Dart 3 (switch expression):
+    // ------------------------------------------------------------------------
     return switch (status) {
-      // Caso 0: Paciente aguardando início da rota ou embarque na cidade de origem
+      // ----------------------------------------------------------------------
+      // ESTÁGIO 0: Aguardando Transporte
+      // - Significado: Paciente agendado aguardando coleta em domicílio ou ponto de encontro.
+      // - Cor visual: Azul vibrante (0xFF2563EB) representando estado pendente programado.
+      // - Ícone: 'Icons.schedule_outlined' (relógio).
+      // ----------------------------------------------------------------------
       0 => (
-        // Rótulo textual representativo da etapa inicial
         'Aguardando Transporte',
-        // Cor azul de destaque visual para o status de espera
         const Color(0xFF2563EB),
-        // Ícone de relógio indicando tempo de espera programado
         Icons.schedule_outlined,
-      // Fecha a tupla correspondente ao status 0
       ),
-      // Caso 1: Paciente confirmado a bordo do veículo para a ida ao destino
+
+      // ----------------------------------------------------------------------
+      // ESTÁGIO 1: Embarcou para Ida
+      // - Significado: Paciente confirmado a bordo do veículo no trajeto até o município de destino.
+      // - Cor visual: Azul cobalto escuro (0xFF1D4ED8) indicando deslocamento ativo em curso.
+      // - Ícone: 'Icons.near_me_outlined' (seta direcional de rota).
+      // ----------------------------------------------------------------------
       1 => (
-        // Rótulo textual confirmando o embarque no trajeto de ida
         'Embarcou para Ida',
-        // Tom de azul mais escuro para indicar progresso ativo da viagem
         const Color(0xFF1D4ED8),
-        // Ícone de navegação indicando deslocamento em curso
         Icons.near_me_outlined,
-      // Fecha a tupla correspondente ao status 1
       ),
-      // Caso 2: Paciente desembarcado no hospital ou posto de consulta
+
+      // ----------------------------------------------------------------------
+      // ESTÁGIO 2: Desembarcou para Consulta
+      // - Significado: Paciente entregue no hospital, AME ou clínica de atendimento médico.
+      // - Cor visual: Âmbar/Laranja (0xFFD97706) sinalizando espera de procedimento clínico.
+      // - Ícone: 'Icons.exit_to_app' (desembarque hospitalar).
+      // ----------------------------------------------------------------------
       2 => (
-        // Rótulo textual confirmando o desembarque na clínica ou hospital
         'Desembarcou para Consulta',
-        // Cor âmbar/laranja chamando atenção para o período de espera do atendimento médico
         const Color(0xFFD97706),
-        // Ícone de saída indicando que o paciente deixou o veículo no destino
         Icons.exit_to_app,
-      // Fecha a tupla correspondente ao status 2
       ),
-      // Caso 3: Paciente já atendido e reembarcado no veículo para a viagem de volta
+
+      // ----------------------------------------------------------------------
+      // ESTÁGIO 3: Reembarcou para Volta
+      // - Significado: Procedimento médico finalizado; paciente reembarcado no veículo para o retorno.
+      // - Cor visual: Índigo/Púrpura (0xFF4338CA) sinalizando a perna de retorno da viagem.
+      // - Ícone: 'Icons.reply_outlined' (retorno municipal).
+      // ----------------------------------------------------------------------
       3 => (
-        // Rótulo textual confirmando o retorno do paciente ao veículo para a viagem de volta
         'Reembarcou para Volta',
-        // Cor índigo diferenciada para a fase de retorno municipal
         const Color(0xFF4338CA),
-        // Ícone de retorno representando a viagem de volta ao ponto de origem
         Icons.reply_outlined,
-      // Fecha a tupla correspondente ao status 3
       ),
-      // Caso 4: Ciclo completo da viagem concluído com sucesso e paciente entregue
+
+      // ----------------------------------------------------------------------
+      // ESTÁGIO 4: Concluído
+      // - Significado: Paciente entregue em segurança em seu município/residência de origem.
+      // - Cor visual: Verde sucesso (0xFF16A34A) indicando conclusão plena do atendimento.
+      // - Ícone: 'Icons.check_outlined' (confirmação de sucesso).
+      // ----------------------------------------------------------------------
       4 => ('Concluído', const Color(0xFF16A34A), Icons.check_outlined),
-      // Caso 5: Atendimento ou transporte cancelado pelo paciente ou equipe de saúde
+
+      // ----------------------------------------------------------------------
+      // ESTÁGIO 5: Cancelado
+      // - Significado: Atendimento cancelado por desistência, falta ou suspensão médica.
+      // - Cor visual: Vermelho de alerta (0xFFB83227) sinalizando cancelamento operacional.
+      // - Ícone: 'Icons.cancel' (alerta de cancelamento).
+      // ----------------------------------------------------------------------
       5 => ('Cancelado', const Color(0xFFB83227), Icons.cancel),
-      // Caso padrão (fallback): Status não reconhecido ou inválido
+
+      // ----------------------------------------------------------------------
+      // ESTÁGIO PADRÃO (FALLBACK DEFENSIVO):
+      // - Significado: Código de status não catalogado, corrompido ou desconhecido.
+      // - Cor visual: Cinza neutro ('Colors.grey').
+      // - Ícone: 'Icons.help' (interrogação/ajuda).
+      // ----------------------------------------------------------------------
       _ => ('Pendente', Colors.grey, Icons.help),
-    // Fecha a expressão switch
+    // Fecha a expressão switch pattern matching
     };
   // Fecha o bloco de instruções do método dadosStatus
   }
 
-  // Linha em branco separadora entre dadosStatus e os getters utilitários
-  // Comentário original do autor mantido byte a byte:
+  // Linha em branco separadora entre dadosStatus e os getters de conveniência
+  // ----------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Getters utilitários para acesso rápido na instância do paciente
-  // Getter conveniente que extrai diretamente a descrição textual do status da instância
+  // ----------------------------------------------------------------------------
+  // GETTER: textoStatus
+  // - O que faz: Extrai o rótulo textual do status da instância a partir de dadosStatus.
+  // - Retorno: String com o texto amigável do status (ex.: 'Aguardando Transporte').
+  // ----------------------------------------------------------------------------
   String get textoStatus => dadosStatus(status).$1;
-  // Getter conveniente que extrai diretamente a cor representativa do status da instância
+
+  // ----------------------------------------------------------------------------
+  // GETTER: corStatus
+  // - O que faz: Extrai a cor associada ao status da instância a partir de dadosStatus.
+  // - Retorno: Objeto Color tipado para aplicação em BoxDecoration, textos e ícones.
+  // ----------------------------------------------------------------------------
   Color get corStatus => dadosStatus(status).$2;
-  // Getter conveniente que extrai diretamente o ícone representativo do status da instância
+
+  // ----------------------------------------------------------------------------
+  // GETTER: iconeStatus
+  // - O que faz: Extrai o ícone representativo do status da instância a partir de dadosStatus.
+  // - Retorno: Objeto IconData pronto para ser renderizado pelo widget Icon().
+  // ----------------------------------------------------------------------------
   IconData get iconeStatus => dadosStatus(status).$3;
 
   // Linha em branco separadora entre os getters e o método de serialização
-  // Comentário original do autor mantido byte a byte:
+  // ----------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Salvar no Firebase
-  // Método que serializa a instância do paciente em um Map de pares chave-valor para o Firestore
+  // ----------------------------------------------------------------------------
+  // MÉTODO DE SERIALIZAÇÃO: toMap
+  // - O que faz: Converte o objeto PacienteModel em um dicionário Map<String, dynamic>.
+  // - Retorno: Estrutura serializável para operações de gravação e atualização no Cloud Firestore.
+  // ----------------------------------------------------------------------------
   Map<String, dynamic> toMap() {
-    // Retorna a estrutura Map populada com as propriedades da instância
+    // ------------------------------------------------------------------------
+    // Retorna a estrutura literal de mapa com todas as propriedades da entidade:
+    // ------------------------------------------------------------------------
     return {
-      // Mapeia o nome do paciente para a chave 'nome'
+      // Mapeia o nome completo civil para a chave 'nome'
       'nome': nome,
-      // Mapeia o CPF do paciente para a chave 'cpf'
+      // Mapeia o número de CPF para a chave 'cpf'
       'cpf': cpf,
-      // Mapeia o telefone do paciente para a chave 'telefone'
+      // Mapeia o telefone principal para a chave 'telefone'
       'telefone': telefone,
       // Mapeia o endereço residencial para a chave 'enderecoPaciente'
       'enderecoPaciente': enderecoPaciente,
-      // Mapeia o local de destino médico para a chave 'localConsulta'
+      // Mapeia a unidade médica de atendimento para a chave 'localConsulta'
       'localConsulta': localConsulta,
-      // Mapeia o ponto de saída para a chave 'localSaida'
+      // Mapeia o ponto de partida para a chave 'localSaida'
       'localSaida': localSaida,
-      // Mapeia o horário agendado da consulta para a chave 'horarioConsulta'
+      // Mapeia o horário agendado do atendimento médico para a chave 'horarioConsulta'
       'horarioConsulta': horarioConsulta,
-      // Mapeia o código numérico de status para a chave 'status'
+      // Mapeia o código numérico de status (0 a 5) para a chave 'status'
       'status': status,
       // Mapeia o nome do acompanhante para a chave 'nomeAcompanhante'
       'nomeAcompanhante': nomeAcompanhante,
@@ -219,89 +383,104 @@ class PacienteModel {
       'telAcompanhante': telAcompanhante,
       // Mapeia o papel de privilégio para a chave 'role'
       'role': role,
-      // Mapeia o status cadastral ativo para a chave 'ativo'
+      // Mapeia a bandeira booleana de atividade da conta para a chave 'ativo'
       'ativo': ativo,
-      // Mapeia a data de criação convertida para formato de texto padrão ISO-8601
+      // Mapeia a data de criação convertida para string ISO-8601 se não for nula
       'criadoEm': criadoEm?.toIso8601String(),
-    // Fecha o dicionário Map de pares chave-valor
+    // Fecha o dicionário de pares chave/valor
     };
   // Fecha o bloco de instruções do método toMap
   }
 
-  // Linha em branco separadora entre toMap e a função utilitária de conversão de data
+  // Linha em branco separadora entre toMap e a rotina de interpretação de data
 
-  // Método estático utilitário para converter datas oriundas do Firebase de forma resiliente
+  // ----------------------------------------------------------------------------
+  // FUNÇÃO UTILITÁRIA PRIVADA ESTÁTICA: _parsearData
+  // - O que faz: Converte valores de tipos arbitrários ('dynamic') para 'DateTime?'.
+  // - O que é: Função utilitária resiliente com suporte a Timestamp do Firestore e ISO-8601.
+  // ----------------------------------------------------------------------------
   static DateTime? _parsearData(dynamic valor) {
-    // Retorna nulo se o valor for nulo
+    // Retorna nulo imediatamente caso a entrada seja nula
     if (valor == null) return null;
-    // Se já for uma instância DateTime, retorna o próprio valor
+    // Se o valor já for DateTime, retorna diretamente a instância
     if (valor is DateTime) return valor;
-    // Tenta interpretar objeto Timestamp característico do Cloud Firestore
+    // Tenta invocar toDate() dinamicamente caso seja um Timestamp do Firestore
     try {
-      // Invoca dinamicamente toDate() do Timestamp
       return (valor as dynamic).toDate() as DateTime;
-    // Ignora falhas caso o objeto não seja um Timestamp do Firestore
     } catch (_) {}
-    // Tenta interpretar o valor em formato string ISO-8601
+    // Tenta interpretar o texto via DateTime.tryParse
     try {
-      // Realiza parse seguro da representação textual da data
       return DateTime.tryParse(valor.toString());
-    // Ignora falhas de parse de string
     } catch (_) {}
-    // Retorna nulo caso todas as tentativas falhem
+    // Retorna nulo como fallback de segurança
     return null;
-  // Fecha o bloco da função estática _parsearData
+  // Fecha o corpo de execução da função utilitária estática _parsearData
   }
 
   // Linha em branco separadora entre a função de data e o construtor factory
-  // Comentário original do autor mantido byte a byte:
+  // ----------------------------------------------------------------------------
+  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
   // Ler do Firebase
-  // Construtor factory que reconstrói uma instância de PacienteModel a partir de um Map de dados
+  // ----------------------------------------------------------------------------
+  // CONSTRUTOR FACTORY (FÁBRICA DE DESSERIALIZAÇÃO): PacienteModel.fromMap
+  // - O que faz: Reconstrói uma instância tipada de PacienteModel a partir de um Map de dados NoSQL.
+  // - O que é: Construtor de fábrica defensivo com tratamento robusto para campos nulos e conversões.
+  // - Parâmetros: 'map' (dados do Firestore) e 'docId' opcional (identificador do documento).
+  // ----------------------------------------------------------------------------
   factory PacienteModel.fromMap(Map<String, dynamic> map, {String? docId}) {
-    // Extrai o valor bruto associado ao código numérico de status
+    // ------------------------------------------------------------------------
+    // Extrai o valor bruto associado ao status numérico:
+    // ------------------------------------------------------------------------
     final statusRaw = map['status'];
-    // Converte de maneira resiliente o status para número inteiro ou usa 0 como fallback
+
+    // ------------------------------------------------------------------------
+    // Normaliza o status para número inteiro:
+    // Trata instâncias numéricas ('num') ou strings numéricas, com fallback para 0 (Aguardando):
+    // ------------------------------------------------------------------------
     final int statusInt = (statusRaw is num)
-        // Se já for número, converte diretamente para int
+        // Converte diretamente instâncias numéricas para inteiro
         ? statusRaw.toInt()
-        // Caso contrário, tenta realizar parse da string ou adota 0 (Aguardando)
+        // Tenta interpretar representação textual ou adota 0 como padrão de segurança
         : (int.tryParse(statusRaw?.toString() ?? '') ?? 0);
 
-    // Linha em branco separadora entre a conversão de status e a instanciação do objeto
+    // Linha em branco separadora entre a conversão de status e a instanciação
 
-    // Retorna uma nova instância de PacienteModel populada a partir dos dados do Map
+    // ------------------------------------------------------------------------
+    // Instancia e retorna o PacienteModel aplicando sanitização e fallbacks defensivos:
+    // ------------------------------------------------------------------------
     return PacienteModel(
-      // Atribui o identificador único fornecido ou uma string vazia
+      // Atribui o identificador do documento ou string vazia se nulo
       id: docId ?? '',
-      // Atribui o nome extraído ou string vazia em caso de ausência
+      // Atribui o nome recuperado ou string vazia se nulo
       nome: (map['nome'] ?? '').toString(),
-      // Atribui o CPF extraído ou string vazia em caso de ausência
+      // Atribui o CPF recuperado ou string vazia se nulo
       cpf: (map['cpf'] ?? '').toString(),
-      // Atribui o telefone extraído ou string vazia em caso de ausência
+      // Atribui o telefone recuperado ou string vazia se nulo
       telefone: (map['telefone'] ?? '').toString(),
-      // Atribui o endereço residencial extraído ou string vazia
+      // Atribui o endereço residencial recuperado ou string vazia se nulo
       enderecoPaciente: (map['enderecoPaciente'] ?? '').toString(),
-      // Atribui o local da consulta médica extraído ou string vazia
+      // Atribui a unidade médica de consulta ou string vazia se nulo
       localConsulta: (map['localConsulta'] ?? '').toString(),
-      // Atribui o local de saída ou 'Residência' como valor padrão amigável
+      // Atribui o ponto de saída, assumindo 'Residência' como padrão amigável caso nulo
       localSaida: (map['localSaida'] ?? 'Residência').toString(),
-      // Atribui o horário da consulta médica ou string vazia
+      // Atribui o horário agendado da consulta ou string vazia se nulo
       horarioConsulta: (map['horarioConsulta'] ?? '').toString(),
-      // Atribui o código de status validado e convertido
+      // Atribui o código de status validado e convertido em inteiro
       status: statusInt,
-      // Atribui o nome do acompanhante convertido para texto se presente
+      // Converte o nome do acompanhante para String ou preserva null se ausente
       nomeAcompanhante: map['nomeAcompanhante']?.toString(),
-      // Atribui o telefone do acompanhante convertido para texto se presente
+      // Converte o telefone do acompanhante para String ou preserva null se ausente
       telAcompanhante: map['telAcompanhante']?.toString(),
-      // Atribui o perfil de permissão com padrão seguro 'paciente'
+      // Atribui o papel de permissão com fallback padrão para 'paciente'
       role: (map['role'] ?? 'paciente').toString(),
-      // Avalia se o registro está ativo, tratando nulos como verdadeiro por padrão
+      // Avalia 'ativo' com tolerância a booleano verdadeiro, nulo (ativo por padrão) ou 'true'
       ativo: map['ativo'] == true || map['ativo'] == null || map['ativo'] == 'true',
-      // Converte o campo de data de criação usando a função resiliente _parsearData
+      // Desserializa a data de criação através da função resiliente '_parsearData'
       criadoEm: _parsearData(map['criadoEm']),
-    // Fecha a chamada do construtor PacienteModel
+    // Fecha a chamada do construtor de PacienteModel
     );
-  // Fecha o bloco do construtor factory fromMap
+  // Fecha o bloco de instruções do construtor factory fromMap
   }
-// Fecha o bloco de declaração da classe PacienteModel
+
+// Fecha a declaração do corpo da classe PacienteModel
 }
