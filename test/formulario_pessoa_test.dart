@@ -140,5 +140,55 @@ void main() {
       expect(novaPessoa!.role, equals('paciente'));
       expect(novaPessoa!.detalheExtra, contains('Hospital das Clínicas'));
     });
+
+    testWidgets('Modo Edição Motorista: Preserva CNH, modelo e placa do veículo', (
+      WidgetTester tester,
+    ) async {
+      PessoaItem? pessoaRetornada;
+
+      const motoristaOriginal = PessoaItem(
+        id: 'mot_teste_1',
+        nome: 'Marcos Silveira',
+        cpf: '529.982.247-25',
+        telefone: '(14) 99887-7665',
+        role: 'motorista',
+        badgeLabel: 'Motorista',
+        badgeCor: Color(0xFF0F172A),
+        cnh: '12345678901',
+        veiculoModelo: 'Renault Master',
+        veiculoPlaca: 'ABC1D23',
+        detalheExtra: 'Veículo: Renault Master (ABC1D23)',
+      );
+
+      await tester.pumpWidget(criarAppTeste(
+        FormularioPessoa(
+          pessoaParaEditar: motoristaOriginal,
+          onSalvo: (p) => pessoaRetornada = p,
+        ),
+      ));
+
+      // Verifica se os campos de CNH e Veículo foram pré-carregados
+      expect(find.text('12345678901'), findsOneWidget);
+      expect(find.text('Renault Master'), findsOneWidget);
+      expect(find.text('ABC1D23'), findsOneWidget);
+
+      // Modifica apenas o nome do motorista
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Marcos Silveira'),
+        'Marcos Silveira Atualizado',
+      );
+      await tester.pumpAndSettle();
+
+      // Salva
+      await tester.tap(find.text('Salvar Alterações'));
+      await tester.pumpAndSettle();
+
+      expect(pessoaRetornada, isNotNull);
+      expect(pessoaRetornada!.nome, equals('Marcos Silveira Atualizado'));
+      expect(pessoaRetornada!.cnh, equals('12345678901'));
+      expect(pessoaRetornada!.veiculoModelo, equals('Renault Master'));
+      expect(pessoaRetornada!.veiculoPlaca, equals('ABC1D23'));
+      expect(pessoaRetornada!.detalheExtra, contains('Renault Master (ABC1D23)'));
+    });
   });
 }

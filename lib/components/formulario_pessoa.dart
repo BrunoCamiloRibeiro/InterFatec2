@@ -114,21 +114,32 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
     _cpfController = TextEditingController(text: p?.cpf ?? '');
     _telefoneController = TextEditingController(text: p?.telefone ?? '');
 
-    // Inicializa campos contextuais
-    _enderecoController = TextEditingController();
-    _consultaController = TextEditingController();
-    _cnhController = TextEditingController();
-    _veiculoModeloController = TextEditingController();
-    _veiculoPlacaController = TextEditingController();
-    _emailController = TextEditingController();
+    // Inicializa campos contextuais com os valores já existentes (preservando CNH e veículo na edição)
+    _enderecoController = TextEditingController(text: p?.endereco ?? '');
+    _consultaController = TextEditingController(text: p?.localConsulta ?? '');
+    _cnhController = TextEditingController(text: p?.cnh ?? '');
+    _veiculoModeloController = TextEditingController(text: p?.veiculoModelo ?? '');
+    _veiculoPlacaController = TextEditingController(text: p?.veiculoPlaca ?? '');
+    _emailController = TextEditingController(text: p?.email ?? '');
 
-    // Se estiver em modo edição, extrai detalhes contextuais conhecidos
+    // Se estiver em modo edição, extrai detalhes contextuais conhecidos caso algum campo ainda esteja vazio
     if (p != null && p.detalheExtra != null) {
       final extra = p.detalheExtra!;
-      if (extra.startsWith('Consulta: ')) {
+      if (extra.startsWith('Consulta: ') && _consultaController.text.isEmpty) {
         _consultaController.text = extra.replaceFirst('Consulta: ', '');
-      } else if (extra.startsWith('E-mail: ')) {
+      } else if (extra.startsWith('E-mail: ') && _emailController.text.isEmpty) {
         _emailController.text = extra.replaceFirst('E-mail: ', '');
+      } else if (extra.startsWith('Veículo: ')) {
+        // Exemplo: "Veículo: Chevrolet Spin (BRA2E19)"
+        final match = RegExp(r'^Veículo:\s*(.*?)(?:\s*\((.*?)\))?$').firstMatch(extra);
+        if (match != null) {
+          if (_veiculoModeloController.text.isEmpty) {
+            _veiculoModeloController.text = (match.group(1) ?? '').trim();
+          }
+          if (_veiculoPlacaController.text.isEmpty && match.group(2) != null) {
+            _veiculoPlacaController.text = (match.group(2) ?? '').trim();
+          }
+        }
       }
     }
   }
@@ -168,6 +179,25 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
     final telefone = _telefoneController.text.trim();
     final role = _roleSelecionado;
 
+    // Garante preservação integral de dados na edição de motoristas e demais papéis
+    final cnhInput = _cnhController.text.trim();
+    final cnhFinal = cnhInput.isNotEmpty ? cnhInput : (widget.pessoaParaEditar?.cnh ?? '');
+
+    final modeloInput = _veiculoModeloController.text.trim();
+    final modeloFinal = modeloInput.isNotEmpty ? modeloInput : (widget.pessoaParaEditar?.veiculoModelo ?? '');
+
+    final placaInput = _veiculoPlacaController.text.trim().toUpperCase();
+    final placaFinal = placaInput.isNotEmpty ? placaInput : (widget.pessoaParaEditar?.veiculoPlaca ?? '');
+
+    final consultaInput = _consultaController.text.trim();
+    final consultaFinal = consultaInput.isNotEmpty ? consultaInput : (widget.pessoaParaEditar?.localConsulta ?? '');
+
+    final enderecoInput = _enderecoController.text.trim();
+    final enderecoFinal = enderecoInput.isNotEmpty ? enderecoInput : (widget.pessoaParaEditar?.endereco ?? '');
+
+    final emailInput = _emailController.text.trim();
+    final emailFinal = emailInput.isNotEmpty ? emailInput : (widget.pessoaParaEditar?.email ?? '');
+
     // Constrói detalhe contextual para exibição no card
     String? detalheExtra;
     Color badgeCor;
@@ -176,21 +206,17 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
     if (role == 'paciente') {
       badgeCor = const Color(0xFF2563EB);
       badgeLabel = 'Paciente';
-      final consulta = _consultaController.text.trim();
-      if (consulta.isNotEmpty) detalheExtra = 'Consulta: $consulta';
+      if (consultaFinal.isNotEmpty) detalheExtra = 'Consulta: $consultaFinal';
     } else if (role == 'motorista') {
       badgeCor = const Color(0xFF0F172A);
       badgeLabel = 'Motorista';
-      final mod = _veiculoModeloController.text.trim();
-      final plc = _veiculoPlacaController.text.trim().toUpperCase();
-      if (mod.isNotEmpty || plc.isNotEmpty) {
-        detalheExtra = 'Veículo: $mod ${plc.isNotEmpty ? '($plc)' : ''}'.trim();
+      if (modeloFinal.isNotEmpty || placaFinal.isNotEmpty) {
+        detalheExtra = 'Veículo: $modeloFinal ${placaFinal.isNotEmpty ? '($placaFinal)' : ''}'.trim();
       }
     } else {
       badgeCor = const Color(0xFF7C3AED);
       badgeLabel = 'Administrador';
-      final email = _emailController.text.trim();
-      if (email.isNotEmpty) detalheExtra = 'E-mail: $email';
+      if (emailFinal.isNotEmpty) detalheExtra = 'E-mail: $emailFinal';
     }
 
     try {
@@ -210,15 +236,14 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
           };
 
           if (role == 'paciente') {
-            payload['localConsulta'] = _consultaController.text.trim();
-            payload['enderecoPaciente'] = _enderecoController.text.trim();
+            payload['localConsulta'] = consultaFinal;
+            payload['enderecoPaciente'] = enderecoFinal;
           } else if (role == 'motorista') {
-            payload['cnh'] = _cnhController.text.trim();
-            payload['veiculoModelo'] = _veiculoModeloController.text.trim();
-            payload['veiculoPlaca'] =
-                _veiculoPlacaController.text.trim().toUpperCase();
+            payload['cnh'] = cnhFinal;
+            payload['veiculoModelo'] = modeloFinal;
+            payload['veiculoPlaca'] = placaFinal;
           } else if (role == 'admin') {
-            payload['email'] = _emailController.text.trim();
+            payload['email'] = emailFinal;
           }
 
           await col.doc(idFinal).update(payload);
@@ -233,24 +258,24 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
             'telefone': telefone,
             'role': role,
             'ativo': true,
+            'status': 'ativo',
             'criadoEm': FieldValue.serverTimestamp(),
             'atualizadoEm': FieldValue.serverTimestamp(),
           };
 
           if (role == 'paciente') {
-            payload['localConsulta'] = _consultaController.text.trim();
-            payload['enderecoPaciente'] = _enderecoController.text.trim();
+            payload['localConsulta'] = consultaFinal;
+            payload['enderecoPaciente'] = enderecoFinal;
             payload['localSaida'] = 'Residência';
             payload['status'] = 0;
           } else if (role == 'motorista') {
-            payload['cnh'] = _cnhController.text.trim();
-            payload['veiculoModelo'] = _veiculoModeloController.text.trim();
-            payload['veiculoPlaca'] =
-                _veiculoPlacaController.text.trim().toUpperCase();
+            payload['cnh'] = cnhFinal;
+            payload['veiculoModelo'] = modeloFinal;
+            payload['veiculoPlaca'] = placaFinal;
             payload['capacidadeVeiculo'] = 4;
             payload['emViagem'] = false;
           } else if (role == 'admin') {
-            payload['email'] = _emailController.text.trim();
+            payload['email'] = emailFinal;
           }
 
           await docRef.set(payload);
@@ -273,6 +298,12 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
         detalheExtra: detalheExtra,
         status: widget.pessoaParaEditar?.status ?? 0,
         ativo: true,
+        endereco: enderecoFinal.isNotEmpty ? enderecoFinal : null,
+        localConsulta: consultaFinal.isNotEmpty ? consultaFinal : null,
+        cnh: cnhFinal.isNotEmpty ? cnhFinal : null,
+        veiculoModelo: modeloFinal.isNotEmpty ? modeloFinal : null,
+        veiculoPlaca: placaFinal.isNotEmpty ? placaFinal : null,
+        email: emailFinal.isNotEmpty ? emailFinal : null,
       );
 
       widget.onSalvo?.call(pessoaResultante);

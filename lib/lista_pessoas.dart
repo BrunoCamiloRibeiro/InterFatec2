@@ -47,6 +47,14 @@ class PessoaItem {
   /// Indicador de situação cadastral para suporte a exclusão lógica (LGPD/Auditoria)
   final bool ativo;
 
+  /// Campos específicos preservados para edição sem perdas
+  final String? endereco;
+  final String? localConsulta;
+  final String? cnh;
+  final String? veiculoModelo;
+  final String? veiculoPlaca;
+  final String? email;
+
   const PessoaItem({
     required this.id,
     required this.nome,
@@ -58,6 +66,12 @@ class PessoaItem {
     this.status = 0,
     this.detalheExtra,
     this.ativo = true,
+    this.endereco,
+    this.localConsulta,
+    this.cnh,
+    this.veiculoModelo,
+    this.veiculoPlaca,
+    this.email,
   });
 
   /// Construtor fábrica para converter uma instância de [PacienteModel] em [PessoaItem]
@@ -74,6 +88,8 @@ class PessoaItem {
         ? 'Consulta: ${p.localConsulta}'
         : null,
     ativo: p.ativo,
+    endereco: p.enderecoPaciente,
+    localConsulta: p.localConsulta,
   );
 
   /// Construtor fábrica para converter uma instância de [MotoristaModel] em [PessoaItem]
@@ -88,6 +104,10 @@ class PessoaItem {
     status: 0,
     detalheExtra: 'Veículo: ${m.veiculoModelo} (${m.veiculoPlaca})',
     ativo: m.ativo,
+    cnh: m.cnh,
+    veiculoModelo: m.veiculoModelo,
+    veiculoPlaca: m.veiculoPlaca,
+    email: m.email,
   );
 
   /// Construtor fábrica para converter uma instância de [AdminModel] em [PessoaItem]
@@ -102,6 +122,7 @@ class PessoaItem {
     status: 0,
     detalheExtra: a.email.isNotEmpty ? 'E-mail: ${a.email}' : null,
     ativo: a.ativo,
+    email: a.email,
   );
 }
 
@@ -303,7 +324,19 @@ class _ListaPessoasState extends State<ListaPessoas> {
 
                 // Respeita a regra de exclusão lógica (ignora inativados)
                 final ativo = dados['ativo'];
-                if (ativo == false || ativo == 'false') continue;
+                final statusStr =
+                    dados['status']?.toString().toLowerCase().trim();
+                final situacaoStr =
+                    dados['situacao']?.toString().toLowerCase().trim();
+
+                final isInativo = ativo == false ||
+                    ativo == 'false' ||
+                    statusStr == 'inativo' ||
+                    statusStr == 'excluido' ||
+                    situacaoStr == 'inativo' ||
+                    situacaoStr == 'excluido';
+
+                if (isInativo) continue;
 
                 final rawRole = dados['role'];
                 final role = (rawRole != null)
@@ -332,10 +365,8 @@ class _ListaPessoasState extends State<ListaPessoas> {
             (pessoas) {
               if (!mounted) return;
               setState(() {
-                // Atualiza a lista caso o Firestore possua registros
-                if (pessoas.isNotEmpty) {
-                  _todasPessoas = pessoas;
-                }
+                // Atualiza a lista sincronizada com o Firestore
+                _todasPessoas = pessoas;
                 _carregando = false;
                 _erroGeral = null;
                 _atualizarFiltros();
@@ -460,7 +491,7 @@ class _ListaPessoasState extends State<ListaPessoas> {
         _salvando = true;
       });
 
-      // Aplica a exclusão lógica no Cloud Firestore (ativo = false)
+      // Aplica a exclusão lógica no Cloud Firestore (ativo = false, status = inativo)
       if (_isFirebaseDisponivel()) {
         try {
           await FirebaseFirestore.instance
@@ -468,7 +499,10 @@ class _ListaPessoasState extends State<ListaPessoas> {
               .doc(pessoa.id)
               .update({
                 'ativo': false,
+                'status': 'inativo',
+                'situacao': 'inativo',
                 'excluidoEm': FieldValue.serverTimestamp(),
+                'atualizadoEm': FieldValue.serverTimestamp(),
               });
         } catch (e) {
           // Para mocks iniciais locais, apenas registra debug sem poluir a interface
@@ -486,9 +520,7 @@ class _ListaPessoasState extends State<ListaPessoas> {
 
       // Atualiza a memória local para resposta visual imediata ao usuário
       setState(() {
-        _todasPessoas.removeWhere(
-          (p) => p.id == pessoa.id && p.role == pessoa.role,
-        );
+        _todasPessoas.removeWhere((p) => p.id == pessoa.id);
         _atualizarFiltros();
         _salvando = false;
       });

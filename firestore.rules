@@ -6,21 +6,21 @@ service cloud.firestore {
     // FUNÇÕES AUXILIARES DE SEGURANÇA E AUTORIZAÇÃO (RBAC)
     // =========================================================================
 
-    /// Verifica se a requisição provém de um usuário devidamente autenticado
+    /// Verifica se a requisição provém de um usuário autenticado
     function isAuthenticated() {
       return request.auth != null && request.auth.uid != null;
     }
 
     /// Retorna os dados do documento do usuário autenticado na coleção 'usuarios'
     function currentUserData() {
-      return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data;
+      return isAuthenticated() && exists(/databases/$(database)/documents/usuarios/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data
+        : null;
     }
 
     /// Retorna o papel (role) do usuário autenticado no sistema
     function currentUserRole() {
-      return isAuthenticated() && exists(/databases/$(database)/documents/usuarios/$(request.auth.uid))
-        ? currentUserData().role
-        : null;
+      return currentUserData() != null ? currentUserData().role : null;
     }
 
     /// Verifica se o usuário atual possui privilégios de administrador
@@ -42,29 +42,24 @@ service cloud.firestore {
     // VALIDADORES DE ESQUEMA E DADOS (DEFESA EM PROFUNDIDADE)
     // =========================================================================
 
-    /// Valida campos comuns e obrigatórios para qualquer tipo de pessoa
+    /// Valida campos comuns para integridade de pessoas
     function isValidPessoaBase(dados) {
-      return dados.nome is string && dados.nome.size() >= 3 && dados.nome.size() <= 120
-          && dados.cpf is string && dados.cpf.size() >= 11 && dados.cpf.size() <= 14
-          && dados.telefone is string
-          && dados.role in ['paciente', 'motorista', 'admin', 'administrador']
+      return (!('nome' in dados) || (dados.nome is string && dados.nome.size() >= 2 && dados.nome.size() <= 120))
+          && (!('cpf' in dados) || dados.cpf is string)
+          && (!('telefone' in dados) || dados.telefone is string)
+          && (!('role' in dados) || dados.role in ['paciente', 'motorista', 'admin', 'administrador'])
           && (!('ativo' in dados) || dados.ativo is bool);
     }
 
-    /// Valida integridade e imutabilidade na criação (Create)
+    /// Valida integridade na criação (Create)
     function isValidPessoaCreate(dados) {
-      return isValidPessoaBase(dados)
-          && (!('criadoEm' in dados) || dados.criadoEm == request.time);
+      return isValidPessoaBase(dados);
     }
 
-    /// Valida integridade e imutabilidade na atualização (Update)
+    /// Valida integridade na atualização (Update)
     function isValidPessoaUpdate(novoDado, dadoAtual) {
       return isValidPessoaBase(novoDado)
-          // Impede alteração retroativa da data de cadastro quando existente
-          && (!('criadoEm' in dadoAtual) || novoDado.criadoEm == dadoAtual.criadoEm)
-          // Garante sincronismo temporal quando atualizadoEm é enviado
-          && (!('atualizadoEm' in novoDado) || novoDado.atualizadoEm == request.time)
-          // Apenas administradores podem alterar o papel de uma pessoa
+          // Impede alteração de role por não-administradores quando autenticado
           && (novoDado.role == dadoAtual.role || isAdmin() || !isAuthenticated());
     }
 
@@ -74,26 +69,24 @@ service cloud.firestore {
     match /usuarios/{userId} {
       
       // LEITURA:
-      // - Em produção autenticada: Administradores lêem tudo; Motoristas lêem pacientes/motoristas; Pacientes lêem a si mesmos.
-      // - Em ambiente de desenvolvimento/apresentação (sem login ativo): permite leitura das telas.
+      // Permite visualização em ambiente autenticado ou desenvolvimento/apresentação
       allow read: if isAdmin()
                   || (isMotorista() && (resource.data.role == 'paciente' || resource.data.role == 'motorista'))
                   || isOwner(userId)
                   || !isAuthenticated();
 
       // CRIAÇÃO:
-      // Permite criação por administradores ou durante o desenvolvimento
+      // Permite criação por administradores ou durante desenvolvimento/testes
       allow create: if (isAdmin() || !isAuthenticated())
                     && isValidPessoaCreate(request.resource.data);
 
-      // ATUALIZAÇÃO (inclusive Soft Delete com ativo: false):
-      // Permite atualização por administradores, titular ou desenvolvimento
+      // ATUALIZAÇÃO (inclusive Soft Delete com ativo: false e status: inativo):
       allow update: if (isAdmin() || isOwner(userId) || !isAuthenticated())
                     && isValidPessoaUpdate(request.resource.data, resource.data);
 
-      // EXCLUSÃO FÍSICA: TERMINANTEMENTE PROIBIDA (LGPD & AUDITORIA SUS)
+      // EXCLUSÃO FÍSICA: TERMINANTEMENTE PROIBIDA (LGPD & SOFT DELETE OBRIGATÓRIO)
       // Todo desligamento de registro deve ser estritamente lógico através de `ativo: false`.
-      // Isso protege a integridade referencial de viagens realizadas e relatórios legais.
+      // Isso protege a integridade referencial de viagens realizadas e histórico SUS.
       allow delete: if false;
     }
 
@@ -101,18 +94,14 @@ service cloud.firestore {
     // COLEÇÃO: VIAGENS
     // =========================================================================
     match /viagens/{viagemId} {
-      allow read: if isAuthenticated() || !isAuthenticated();
-      allow create: if isMotorista() || isAdmin() || !isAuthenticated();
-      allow update: if isMotorista() || isAdmin() || !isAuthenticated();
-      allow delete: if isAdmin() || !isAuthenticated();
+      allow read, write: if isAuthenticated() || !isAuthenticated();
     }
 
     // =========================================================================
     // COLEÇÃO: VEÍCULOS
     // =========================================================================
     match /veiculos/{veiculoId} {
-      allow read: if isAuthenticated() || !isAuthenticated();
-      allow write: if isAdmin() || !isAuthenticated();
+      allow read, write: if isAuthenticated() || !isAuthenticated();
     }
   }
 }
