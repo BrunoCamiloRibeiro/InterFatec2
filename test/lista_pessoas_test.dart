@@ -5,7 +5,16 @@ import 'package:trans_saude/models/admin_model.dart';
 import 'package:trans_saude/models/motorista_model.dart';
 import 'package:trans_saude/models/paciente_model.dart';
 
+/// ============================================================================
+/// SUÍTE DE TESTES DE WIDGET: LISTA E GESTÃO DE PESSOAS (ISSUE #34)
+/// ============================================================================
+/// Valida as funcionalidades centrais da tela de Gestão de Pessoas (CRUD):
+/// 1. Renderização inicial com contadores consolidados e prevenção de colisões.
+/// 2. Filtragem polimórfica por papel (Abas: Todos, Pacientes, Motoristas, Admins).
+/// 3. Busca em tempo real por nome e CPF com feedback de estado vazio.
+/// 4. Disparo de ações contextuais: modal de cadastro, edição e exclusão lógica.
 void main() {
+  // Mocks de teste isolados para injeção direta no widget
   final mockPacientes = [
     PacienteModel(
       id: 'p1',
@@ -38,6 +47,7 @@ void main() {
     ),
   ];
 
+  /// Helper para montar a tela de teste injetando dados controlados
   Widget criarTelaTeste({List<AdminModel>? mockAdmins}) {
     return MaterialApp(
       home: ListaPessoas(
@@ -48,6 +58,7 @@ void main() {
     );
   }
 
+  /// Configura o tamanho físico da viewport para testes com listas extensas
   void configurarViewportLongo(WidgetTester tester) {
     tester.view.physicalSize = const Size(800, 1200);
     tester.view.devicePixelRatio = 1.0;
@@ -59,9 +70,13 @@ void main() {
     testWidgets(
       'Carrega com dados padrão sem colisão de chaves (sem exceptions)',
       (WidgetTester tester) async {
+        // Arranjo: Viewport expandida para visualização de cards múltiplos
         configurarViewportLongo(tester);
 
+        // Ação: Renderiza com a lista padrão sem sobrecargas
         await tester.pumpWidget(const MaterialApp(home: ListaPessoas()));
+
+        // Verificação: Nenhuma exceção de concorrência ou colisão de chaves
         expect(tester.takeException(), isNull);
         expect(find.text('Gestão de Pessoas'), findsOneWidget);
         expect(find.text('Maria Silva Santos'), findsOneWidget);
@@ -72,8 +87,10 @@ void main() {
     testWidgets('Carrega título, barra de busca e abas de filtro', (
       WidgetTester tester,
     ) async {
+      // Ação: Monta a tela com dados mockados
       await tester.pumpWidget(criarTelaTeste());
 
+      // Verificação: Elementos estruturais essenciais presentes na AppBar e cabeçalho
       expect(find.text('Gestão de Pessoas'), findsOneWidget);
       expect(find.text('Buscar por nome ou CPF...'), findsOneWidget);
       expect(find.text('Todos (3)'), findsOneWidget);
@@ -86,8 +103,10 @@ void main() {
     ) async {
       configurarViewportLongo(tester);
 
+      // Ação: Monta a tela na aba padrão ('Todos')
       await tester.pumpWidget(criarTelaTeste());
 
+      // Verificação: Todos os pacientes e motoristas são renderizados
       expect(find.text('Carlos Drummond'), findsOneWidget);
       expect(find.text('Clarice Lispector'), findsOneWidget);
       expect(find.text('Machado de Assis'), findsOneWidget);
@@ -100,10 +119,11 @@ void main() {
     ) async {
       await tester.pumpWidget(criarTelaTeste());
 
-      // Clica na aba Pacientes
+      // Ação: Clica na aba Pacientes
       await tester.tap(find.text('Pacientes (2)'));
       await tester.pumpAndSettle();
 
+      // Verificação: Apenas pacientes visíveis, motorista filtrado
       expect(find.text('Carlos Drummond'), findsOneWidget);
       expect(find.text('Clarice Lispector'), findsOneWidget);
       expect(find.text('Machado de Assis'), findsNothing);
@@ -114,10 +134,11 @@ void main() {
     ) async {
       await tester.pumpWidget(criarTelaTeste());
 
-      // Clica na aba Motoristas
+      // Ação: Clica na aba Motoristas
       await tester.tap(find.text('Motoristas (1)'));
       await tester.pumpAndSettle();
 
+      // Verificação: Apenas motorista visível, pacientes ocultados
       expect(find.text('Machado de Assis'), findsOneWidget);
       expect(find.text('Carlos Drummond'), findsNothing);
       expect(find.text('Clarice Lispector'), findsNothing);
@@ -126,6 +147,7 @@ void main() {
     testWidgets(
       'Filtra apenas administradores ao selecionar a aba Administradores',
       (WidgetTester tester) async {
+        // Arranjo: Mock pontual de administrador
         final mockAdmins = [
           AdminModel(
             id: 'adm_teste',
@@ -138,10 +160,12 @@ void main() {
 
         await tester.pumpWidget(criarTelaTeste(mockAdmins: mockAdmins));
 
+        // Ação: Clica na aba Administradores
         expect(find.text('Administradores (1)'), findsOneWidget);
         await tester.tap(find.text('Administradores (1)'));
         await tester.pumpAndSettle();
 
+        // Verificação: Exibe apenas o administrador
         expect(find.text('Guimarães Rosa'), findsOneWidget);
         expect(find.text('Carlos Drummond'), findsNothing);
         expect(find.text('Machado de Assis'), findsNothing);
@@ -155,9 +179,11 @@ void main() {
     ) async {
       await tester.pumpWidget(criarTelaTeste());
 
+      // Ação: Digita busca parcial por nome
       await tester.enterText(find.byType(TextField), 'Clarice');
       await tester.pumpAndSettle();
 
+      // Verificação: Apenas o registro correspondente permanece na lista
       expect(find.text('Clarice Lispector'), findsOneWidget);
       expect(find.text('Carlos Drummond'), findsNothing);
       expect(find.text('Machado de Assis'), findsNothing);
@@ -168,9 +194,11 @@ void main() {
     ) async {
       await tester.pumpWidget(criarTelaTeste());
 
+      // Ação: Digita trecho do CPF formatado
       await tester.enterText(find.byType(TextField), '999.888');
       await tester.pumpAndSettle();
 
+      // Verificação: Filtro localiza o motorista correspondente
       expect(find.text('Machado de Assis'), findsOneWidget);
       expect(find.text('Carlos Drummond'), findsNothing);
     });
@@ -180,9 +208,11 @@ void main() {
     ) async {
       await tester.pumpWidget(criarTelaTeste());
 
+      // Ação: Digita termo sem correspondência
       await tester.enterText(find.byType(TextField), 'Inexistente XYZ');
       await tester.pumpAndSettle();
 
+      // Verificação: Exibe mensagem amigável de estado vazio
       expect(find.text('Nenhuma pessoa encontrada'), findsOneWidget);
       expect(
         find.text('Tente buscar com outro nome ou número de CPF.'),
@@ -197,23 +227,23 @@ void main() {
     ) async {
       await tester.pumpWidget(criarTelaTeste());
 
-      // Localiza o botão 'Excluir' do primeiro card
+      // Ação: Localiza o botão 'Excluir' do primeiro card e clica
       final botaoExcluir = find.text('Excluir').first;
       await tester.tap(botaoExcluir);
       await tester.pumpAndSettle();
 
-      // Confirma que abriu o alerta explicativo com a justificativa de governança
+      // Verificação: Diálogo explicativo de auditoria e governança é exibido
       expect(find.text('Excluir Registro'), findsOneWidget);
       expect(
         find.textContaining('Conforme as regras de governança e auditoria'),
         findsOneWidget,
       );
 
-      // Clica em Confirmar Exclusão
+      // Ação: Confirma a exclusão lógica
       await tester.tap(find.text('Confirmar Exclusão'));
       await tester.pumpAndSettle();
 
-      // Registro do Carlos foi excluído da lista
+      // Verificação: O registro é imediatamente removido da lista exibida
       expect(find.text('Carlos Drummond'), findsNothing);
       expect(find.text('Clarice Lispector'), findsOneWidget);
     });
@@ -223,12 +253,14 @@ void main() {
       (WidgetTester tester) async {
         await tester.pumpWidget(criarTelaTeste());
 
+        // Ação: Clica no FloatingActionButton 'Novo'
         final botaoNovo = find.widgetWithText(FloatingActionButton, 'Novo');
         expect(botaoNovo, findsOneWidget);
 
         await tester.tap(botaoNovo);
         await tester.pumpAndSettle();
 
+        // Verificação: Abre o modal de cadastro com título e botão correspondentes
         expect(find.text('Nova Pessoa'), findsOneWidget);
         expect(find.text('Cadastrar'), findsOneWidget);
       },
@@ -239,12 +271,14 @@ void main() {
       (WidgetTester tester) async {
         await tester.pumpWidget(criarTelaTeste());
 
+        // Ação: Clica no botão 'Editar' do primeiro card
         final botaoEditar = find.text('Editar').first;
         expect(botaoEditar, findsOneWidget);
 
         await tester.tap(botaoEditar);
         await tester.pumpAndSettle();
 
+        // Verificação: Modal abre em modo de edição com o nome preenchido
         expect(find.text('Editar Pessoa'), findsOneWidget);
         expect(find.text('Salvar Alterações'), findsOneWidget);
         expect(

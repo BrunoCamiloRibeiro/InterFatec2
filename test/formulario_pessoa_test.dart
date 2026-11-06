@@ -3,7 +3,16 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:trans_saude/components/formulario_pessoa.dart';
 import 'package:trans_saude/lista_pessoas.dart';
 
+/// ============================================================================
+/// SUÍTE DE TESTES DE WIDGET: FORMULÁRIO DE CADASTRO E EDIÇÃO (ISSUE #34)
+/// ============================================================================
+/// Valida o ciclo completo do formulário polimórfico de pessoas:
+/// 1. Validação de obrigatoriedade e máscaras na criação de novo registro.
+/// 2. Alternância de campos contextuais conforme o perfil (Paciente, Motorista, Admin).
+/// 3. Pré-carregamento e preservação de campos específicos (CNH, Veículo) na edição.
+/// 4. Submissão bem-sucedida e emissão de callbacks com modelos tipados.
 void main() {
+  /// Helper puro para envolver widgets de teste sob um MaterialApp com Scaffold
   Widget criarAppTeste(Widget filho) {
     return MaterialApp(home: Scaffold(body: filho));
   }
@@ -12,15 +21,18 @@ void main() {
     testWidgets(
       'Modo Criação: Exibe campos base e validação de campos obrigatórios',
       (WidgetTester tester) async {
+        // Arranjo: Renderiza formulário em modo criação (sem pessoa prévia)
         await tester.pumpWidget(criarAppTeste(const FormularioPessoa()));
 
+        // Verificação inicial de títulos e botões de ação
         expect(find.text('Nova Pessoa'), findsOneWidget);
         expect(find.text('Cadastrar'), findsOneWidget);
 
-        // Clica em cadastrar com campos vazios para disparar validação
+        // Ação: Clica em cadastrar com campos vazios para disparar validação do Form
         await tester.tap(find.text('Cadastrar'));
         await tester.pumpAndSettle();
 
+        // Verificação: Exibição das mensagens de erro nos campos obrigatórios
         expect(find.textContaining('Informe o nome completo'), findsOneWidget);
         expect(find.textContaining('CPF inválido'), findsOneWidget);
       },
@@ -31,25 +43,28 @@ void main() {
     testWidgets(
       'Alterna perfil dinamicamente entre Paciente, Motorista e Admin',
       (WidgetTester tester) async {
+        // Arranjo: Renderiza formulário em estado inicial
         await tester.pumpWidget(criarAppTeste(const FormularioPessoa()));
 
-        // Inicialmente em Paciente: campos de consulta visíveis
+        // Verificação de perfil padrão (Paciente): exibe campo de consulta médica
         expect(find.text('Local da Consulta Médica'), findsOneWidget);
         expect(find.text('Número da CNH'), findsNothing);
 
-        // Seleciona Motorista
+        // Ação: Seleciona o perfil de Motorista
         await tester.tap(find.text('Motorista'));
         await tester.pumpAndSettle();
 
+        // Verificação: Exibe campos de CNH, modelo e placa; esconde campos de consulta
         expect(find.text('Número da CNH'), findsOneWidget);
         expect(find.text('Modelo do Veículo'), findsOneWidget);
         expect(find.text('Placa'), findsOneWidget);
         expect(find.text('Local da Consulta Médica'), findsNothing);
 
-        // Seleciona Administrador
+        // Ação: Seleciona o perfil de Administrador
         await tester.tap(find.text('Administrador'));
         await tester.pumpAndSettle();
 
+        // Verificação: Exibe campo de e-mail institucional; esconde campos de motorista
         expect(find.text('E-mail Corporativo/Admin'), findsOneWidget);
         expect(find.text('Número da CNH'), findsNothing);
       },
@@ -60,6 +75,7 @@ void main() {
     testWidgets(
       'Modo Edição: Pré-carrega dados da pessoa e permite atualizar',
       (WidgetTester tester) async {
+        // Arranjo: Cria mock de paciente para edição
         const pessoaMock = PessoaItem(
           id: 'pac_teste_1',
           nome: 'Maria da Silva',
@@ -73,6 +89,7 @@ void main() {
 
         PessoaItem? pessoaRetornada;
 
+        // Renderiza o formulário com dados pré-carregados
         await tester.pumpWidget(
           criarAppTeste(
             FormularioPessoa(
@@ -82,23 +99,25 @@ void main() {
           ),
         );
 
+        // Verificação: Confirma pré-população dos campos na interface
         expect(find.text('Editar Pessoa'), findsOneWidget);
         expect(find.text('Salvar Alterações'), findsOneWidget);
         expect(find.text('Maria da Silva'), findsOneWidget);
         expect(find.text('529.982.247-25'), findsOneWidget);
         expect(find.text('AME Bauru'), findsOneWidget);
 
-        // Edita o nome
+        // Ação: Altera o nome do paciente
         await tester.enterText(
           find.widgetWithText(TextFormField, 'Maria da Silva'),
           'Maria da Silva Santos Alterada',
         );
         await tester.pumpAndSettle();
 
-        // Salva alterações
+        // Submete a atualização
         await tester.tap(find.text('Salvar Alterações'));
         await tester.pumpAndSettle();
 
+        // Verificação: Objeto de retorno deve refletir a alteração mantendo o mesmo ID
         expect(pessoaRetornada, isNotNull);
         expect(pessoaRetornada!.nome, equals('Maria da Silva Santos Alterada'));
         expect(pessoaRetornada!.id, equals('pac_teste_1'));
@@ -108,6 +127,7 @@ void main() {
     testWidgets(
       'Modo Edição Motorista: Preserva CNH, modelo e placa do veículo',
       (WidgetTester tester) async {
+        // Arranjo: Mock de motorista com dados de veículo e habilitação
         PessoaItem? pessoaRetornada;
 
         const motoristaOriginal = PessoaItem(
@@ -133,22 +153,23 @@ void main() {
           ),
         );
 
-        // Verifica se os campos de CNH e Veículo foram pré-carregados
+        // Verificação: Garante que os campos de CNH e Veículo vieram pré-carregados
         expect(find.text('12345678901'), findsOneWidget);
         expect(find.text('Renault Master'), findsOneWidget);
         expect(find.text('ABC1D23'), findsOneWidget);
 
-        // Modifica apenas o nome do motorista
+        // Ação: Modifica apenas o nome, sem tocar nos campos de veículo
         await tester.enterText(
           find.widgetWithText(TextFormField, 'Marcos Silveira'),
           'Marcos Silveira Atualizado',
         );
         await tester.pumpAndSettle();
 
-        // Salva
+        // Submete as alterações
         await tester.tap(find.text('Salvar Alterações'));
         await tester.pumpAndSettle();
 
+        // Verificação: Dados essenciais do veículo e CNH não podem ser apagados ou perdidos
         expect(pessoaRetornada, isNotNull);
         expect(pessoaRetornada!.nome, equals('Marcos Silveira Atualizado'));
         expect(pessoaRetornada!.cnh, equals('12345678901'));
@@ -166,13 +187,14 @@ void main() {
     testWidgets(
       'Criação com sucesso aciona callback onSalvo com nova PessoaItem',
       (WidgetTester tester) async {
+        // Arranjo: Captura da instância emitida após salvar
         PessoaItem? novaPessoa;
 
         await tester.pumpWidget(
           criarAppTeste(FormularioPessoa(onSalvo: (p) => novaPessoa = p)),
         );
 
-        // Preenche dados válidos (CPF com dígitos verificadores matematicamente válidos)
+        // Ação: Preenche dados válidos (com CPF atendendo o algoritmo de Módulo 11)
         await tester.enterText(
           find.byType(TextFormField).at(0),
           'João Batista Ferreira',
@@ -185,9 +207,11 @@ void main() {
         );
         await tester.pumpAndSettle();
 
+        // Dispara criação do registro
         await tester.tap(find.text('Cadastrar'));
         await tester.pumpAndSettle();
 
+        // Verificação: Callback executado com os dados formatados corretamente
         expect(novaPessoa, isNotNull);
         expect(novaPessoa!.nome, equals('João Batista Ferreira'));
         expect(novaPessoa!.role, equals('paciente'));
