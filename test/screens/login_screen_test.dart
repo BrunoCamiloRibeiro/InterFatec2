@@ -35,6 +35,24 @@ class FakeAuthService implements AuthService {
 
   @override
   Future<void> logout() async {}
+
+  @override
+  Stream<String?> get authStateChanges => const Stream.empty();
+
+  @override
+  Future<UserRole> resolveUserRole(
+    String uid, {
+    bool forceRefresh = false,
+  }) async => roleToReturn ?? UserRole.motorista;
+
+  @override
+  UserRole? getCachedRole(String uid) => roleToReturn;
+
+  @override
+  void clearRoleCache() {}
+
+  @override
+  String? get currentUserId => null;
 }
 
 Widget buildTestableWidget({

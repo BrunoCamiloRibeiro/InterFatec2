@@ -260,4 +260,146 @@ void main() {
       expect(fakeAuth.signedOut, isTrue);
     });
   });
+
+  group('AuthService - Resolução de Perfil de Usuário (Issue #28)', () {
+    test('resolveUserRole retorna UserRole.motorista', () async {
+      final service = FirebaseAuthService(
+        userDocFetcher: (uid) async => {'role': 'motorista', 'nome': 'João'},
+      );
+      final role = await service.resolveUserRole('mot_1');
+      expect(role, UserRole.motorista);
+    });
+
+    test('resolveUserRole retorna UserRole.admin', () async {
+      final service = FirebaseAuthService(
+        userDocFetcher: (uid) async => {'role': 'admin', 'nome': 'Gestor'},
+      );
+      final role = await service.resolveUserRole('adm_1');
+      expect(role, UserRole.admin);
+    });
+
+    test('resolveUserRole retorna UserRole.paciente', () async {
+      final service = FirebaseAuthService(
+        userDocFetcher: (uid) async => {'role': 'paciente', 'nome': 'Maria'},
+      );
+      final role = await service.resolveUserRole('pac_1');
+      expect(role, UserRole.paciente);
+    });
+
+    test(
+      'documento ausente lança AuthException com code user-not-registered',
+      () async {
+        final service = FirebaseAuthService(
+          userDocFetcher: (uid) async => null,
+        );
+        expect(
+          () => service.resolveUserRole('sem_doc'),
+          throwsA(
+            isA<AuthException>().having(
+              (e) => e.code,
+              'code',
+              'user-not-registered',
+            ),
+          ),
+        );
+      },
+    );
+
+    test(
+      'campo role ausente lança AuthException com code invalid-profile',
+      () async {
+        final service = FirebaseAuthService(
+          userDocFetcher: (uid) async => {'nome': 'Sem Role'},
+        );
+        expect(
+          () => service.resolveUserRole('sem_role'),
+          throwsA(
+            isA<AuthException>().having(
+              (e) => e.code,
+              'code',
+              'invalid-profile',
+            ),
+          ),
+        );
+      },
+    );
+
+    test(
+      'role desconhecido lança AuthException com code unknown-role',
+      () async {
+        final service = FirebaseAuthService(
+          userDocFetcher: (uid) async => {'role': 'perfil_alienigena'},
+        );
+        expect(
+          () => service.resolveUserRole('desconhecido'),
+          throwsA(
+            isA<AuthException>().having((e) => e.code, 'code', 'unknown-role'),
+          ),
+        );
+      },
+    );
+
+    test('erro temporário de rede no Firestore lança AuthException com code unavailable', () async {
+      final service = FirebaseAuthService(
+        userDocFetcher: (uid) async => throw FirebaseException(
+          plugin: 'cloud_firestore',
+          code: 'unavailable',
+          message: 'The service is currently unavailable.',
+        ),
+      );
+      expect(
+        () => service.resolveUserRole('offline_uid'),
+        throwsA(
+          isA<AuthException>().having((e) => e.code, 'code', 'unavailable'),
+        ),
+      );
+    });
+
+    test('erro de permission-denied lança AuthException com code permission-denied', () async {
+      final service = FirebaseAuthService(
+        userDocFetcher: (uid) async => throw FirebaseException(
+          plugin: 'cloud_firestore',
+          code: 'permission-denied',
+          message: 'Missing or insufficient permissions.',
+        ),
+      );
+      expect(
+        () => service.resolveUserRole('denied_uid'),
+        throwsA(
+          isA<AuthException>().having(
+            (e) => e.code,
+            'code',
+            'permission-denied',
+          ),
+        ),
+      );
+    });
+
+    test('cache armazena role e evita nova chamada ao fetcher', () async {
+      int fetchCalls = 0;
+      final service = FirebaseAuthService(
+        userDocFetcher: (uid) async {
+          fetchCalls++;
+          return {'role': 'motorista'};
+        },
+      );
+
+      final role1 = await service.resolveUserRole('uid_cached');
+      final role2 = await service.resolveUserRole('uid_cached');
+      expect(role1, UserRole.motorista);
+      expect(role2, UserRole.motorista);
+      expect(fetchCalls, equals(1));
+      expect(service.getCachedRole('uid_cached'), equals(UserRole.motorista));
+
+      final role3 = await service.resolveUserRole(
+        'uid_cached',
+        forceRefresh: true,
+      );
+      expect(role3, UserRole.motorista);
+      expect(fetchCalls, equals(2));
+
+      service.clearRoleCache();
+      expect(service.getCachedRole('uid_cached'), isNull);
+    });
+  });
 }
