@@ -427,11 +427,12 @@ void main() {
 
         await tester.pumpWidget(
           MaterialApp(
+            initialRoute: '/admin',
             routes: {
-              '/login': (context) =>
-                  const Scaffold(body: Text('Tela Login Destino')),
+              '/': (context) => const Scaffold(body: Text('Tela Raiz Destino')),
+              '/admin': (context) =>
+                  AdminPlaceholderScreen(authService: fakeAuth),
             },
-            home: AdminPlaceholderScreen(authService: fakeAuth),
           ),
         );
         await tester.pumpAndSettle();
@@ -440,7 +441,69 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(fakeAuth.logoutCalls, equals(1));
-        expect(find.text('Tela Login Destino'), findsOneWidget);
+        expect(find.text('Tela Raiz Destino'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      '14. RouteGuard sem injeção: quando usuário autenticado não tem role em cache, redireciona para AuthGate',
+      (WidgetTester tester) async {
+        final fakeAuth = FakeGateAuthService();
+        addTearDown(fakeAuth.dispose);
+        fakeAuth.currentUserIdOverride = 'usr_online_sem_cache';
+        fakeAuth.cachedRoleOverride = null;
+
+        final route = RouteGuard.onGenerateRoute(
+          const RouteSettings(name: '/motorista'),
+          authService: fakeAuth,
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(home: Navigator(onGenerateRoute: (settings) => route)),
+        );
+        await tester.pump();
+
+        // Deve renderizar AuthGate (que exibe o splash durante carregamento)
+        expect(find.byType(AuthGate), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      '15. AuthGate preserva card de Perfil Inválido mesmo quando logout emite null na stream',
+      (WidgetTester tester) async {
+        final fakeAuth = FakeGateAuthService();
+        addTearDown(fakeAuth.dispose);
+
+        await tester.pumpWidget(
+          buildGateTestApp(
+            authGate: AuthGate(
+              authService: fakeAuth,
+              roleResolver: (uid) async => throw const AuthException(
+                'Perfil de usuário inválido ou não cadastrado no sistema.',
+                code: 'invalid-profile',
+              ),
+              authStateStream: fakeAuth.authStateChanges,
+            ),
+          ),
+        );
+
+        fakeAuth.emitAuthState('uid_invalido_com_stream');
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('telaPerfilInvalido')), findsOneWidget);
+
+        // Simula a emissão de null decorrente de auth.signOut()
+        fakeAuth.emitAuthState(null);
+        await tester.pumpAndSettle();
+
+        // O card de erro NÃO pode ter sido sobrescrito pelo login!
+        expect(find.byKey(const Key('telaPerfilInvalido')), findsOneWidget);
+        expect(find.byType(LoginScreen), findsNothing);
+
+        // Ao clicar no botão de voltar, aí sim retorna ao login
+        await tester.tap(find.byKey(const Key('botaoVoltarLogin')));
+        await tester.pumpAndSettle();
+        expect(find.byType(LoginScreen), findsOneWidget);
       },
     );
   });

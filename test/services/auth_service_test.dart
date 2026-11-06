@@ -401,5 +401,26 @@ void main() {
       service.clearRoleCache();
       expect(service.getCachedRole('uid_cached'), isNull);
     });
+
+    test('cache estático é compartilhado entre diferentes instâncias do FirebaseAuthService', () async {
+      final instanciaA = FirebaseAuthService(
+        userDocFetcher: (uid) async => {'role': 'admin'},
+      );
+      final instanciaB = FirebaseAuthService();
+
+      instanciaA.clearRoleCache();
+      expect(instanciaB.getCachedRole('uid_compartilhado'), isNull);
+
+      await instanciaA.resolveUserRole('uid_compartilhado');
+
+      // Instância B deve enxergar o perfil em cache resolvido por Instância A sem novo fetch
+      expect(
+        instanciaB.getCachedRole('uid_compartilhado'),
+        equals(UserRole.admin),
+      );
+
+      instanciaB.clearRoleCache();
+      expect(instanciaA.getCachedRole('uid_compartilhado'), isNull);
+    });
   });
 }

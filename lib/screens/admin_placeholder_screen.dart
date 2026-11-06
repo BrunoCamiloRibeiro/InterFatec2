@@ -13,7 +13,7 @@ class AdminPlaceholderScreen extends StatelessWidget {
   Future<void> _logout(BuildContext context) async {
     await authService.logout();
     if (!context.mounted) return;
-    Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+    Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
   }
 
   @override
