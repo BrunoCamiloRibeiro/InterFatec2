@@ -5,6 +5,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
 import 'components/card_identificacao_paciente.dart';
+import 'components/formulario_pessoa.dart';
 import 'models/admin_model.dart';
 import 'models/motorista_model.dart';
 import 'models/paciente_model.dart';
@@ -494,6 +495,60 @@ class _ListaPessoasState extends State<ListaPessoas> {
     }
   }
 
+  /// Abre o diálogo de cadastro para criação de uma nova pessoa (Create)
+  Future<void> _abrirFormularioCadastro() async {
+    final pessoaCriada = await showDialog<PessoaItem>(
+      context: context,
+      builder: (ctx) => FormularioPessoa(
+        onSalvo: (novaPessoa) {
+          setState(() {
+            _todasPessoas.insert(0, novaPessoa);
+            _atualizarFiltros();
+          });
+        },
+      ),
+    );
+
+    if (pessoaCriada != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${pessoaCriada.nome} cadastrado(a) com sucesso!'),
+          backgroundColor: const Color(0xFF16A34A),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  /// Abre o diálogo de edição para atualização de uma pessoa existente (Update)
+  Future<void> _abrirFormularioEdicao(PessoaItem pessoa) async {
+    final pessoaEditada = await showDialog<PessoaItem>(
+      context: context,
+      builder: (ctx) => FormularioPessoa(
+        pessoaParaEditar: pessoa,
+        onSalvo: (atualizada) {
+          setState(() {
+            final idx = _todasPessoas.indexWhere((p) => p.id == pessoa.id);
+            if (idx != -1) {
+              _todasPessoas[idx] = atualizada;
+              _atualizarFiltros();
+            }
+          });
+        },
+      ),
+    );
+
+    if (pessoaEditada != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${pessoaEditada.nome} atualizado(a) com sucesso!'),
+          backgroundColor: const Color(0xFF2563EB),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
   /// Constrói o banner de alerta em caso de falha de comunicação ou sincronização
   Widget _construirMensagemErro() {
     if (_erroGeral == null) return const SizedBox.shrink();
@@ -673,7 +728,7 @@ class _ListaPessoasState extends State<ListaPessoas> {
             corBadge: pessoa.badgeCor,
             telefone: pessoa.telefone,
             detalheExtra: pessoa.detalheExtra,
-            onEditar: () {},
+            onEditar: () => _abrirFormularioEdicao(pessoa),
             onInativar: () => _aoExcluir(pessoa),
           ),
         );
@@ -701,11 +756,7 @@ class _ListaPessoasState extends State<ListaPessoas> {
         title: const Text('Gestão de Pessoas'),
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _salvando
-            ? null
-            : () {
-                // TODO: Abrir formulário de cadastro de pessoas
-              },
+        onPressed: _salvando ? null : _abrirFormularioCadastro,
         backgroundColor: const Color(0xFF0F172A),
         foregroundColor: Colors.white,
         icon: const Icon(Icons.add),

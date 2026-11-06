@@ -58,8 +58,11 @@ class _PacienteState extends State<Paciente> {
           .limit(1)
           .snapshots()
           .map((snapshot) {
-            if (snapshot.docs.isEmpty) return null;
-            final doc = snapshot.docs.first;
+            final docsValidos = snapshot.docs.where(
+              (d) => d.data()['ativo'] != false && d.data()['ativo'] != 'false',
+            );
+            if (docsValidos.isEmpty) return null;
+            final doc = docsValidos.first;
             return PacienteModel.fromMap(doc.data(), docId: doc.id);
           });
     }

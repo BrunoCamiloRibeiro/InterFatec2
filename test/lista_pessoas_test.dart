@@ -213,5 +213,36 @@ void main() {
       expect(find.text('Carlos Drummond'), findsNothing);
       expect(find.text('Clarice Lispector'), findsOneWidget);
     });
+
+    testWidgets('Botão flutuante Novo abre diálogo de cadastro FormularioPessoa', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(criarTelaTeste());
+
+      final botaoNovo = find.widgetWithText(FloatingActionButton, 'Novo');
+      expect(botaoNovo, findsOneWidget);
+
+      await tester.tap(botaoNovo);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Nova Pessoa'), findsOneWidget);
+      expect(find.text('Cadastrar'), findsOneWidget);
+    });
+
+    testWidgets('Botão Editar no card abre formulário de edição com dados pré-carregados', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(criarTelaTeste());
+
+      final botaoEditar = find.text('Editar').first;
+      expect(botaoEditar, findsOneWidget);
+
+      await tester.tap(botaoEditar);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Editar Pessoa'), findsOneWidget);
+      expect(find.text('Salvar Alterações'), findsOneWidget);
+      expect(find.widgetWithText(TextFormField, 'Carlos Drummond'), findsOneWidget);
+    });
   });
 }

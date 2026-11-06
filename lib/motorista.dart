@@ -126,7 +126,10 @@ class _MotoristaState extends State<Motorista> {
           .where('role', isEqualTo: 'paciente')
           .snapshots()
           .map((snapshot) {
-            return snapshot.docs.map((doc) {
+            return snapshot.docs
+                .where((d) =>
+                    d.data()['ativo'] != false && d.data()['ativo'] != 'false')
+                .map((doc) {
               return PacienteModel.fromMap(doc.data(), docId: doc.id);
             }).toList();
           });
