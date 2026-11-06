@@ -57,7 +57,12 @@ Interface simplificada e acessível, focada em três ações essenciais:
 Painel de controle para a equipe da Secretaria de Saúde:
 * **Gestão Diária de Viagens:** Visualização da grade de pacientes do dia, locais de atendimento, horários agendados e alocação nas rotas.
 * **Escala de Motoristas:** Controle dos motoristas ativos por turno, vinculando-os aos veículos disponíveis.
-* **Cadastros (CRUD):** Inserção, edição e importação de dados de pacientes (endereço, telefone, local habitual de consulta) e motoristas (CNH, contato, veículo).
+* **Gestão de Pessoas (CRUD - Issue #34):**
+  - **Listagem Unificada:** Painel polimórfico (`ListaPessoas`) que centraliza Pacientes, Motoristas e Administradores com badges visuais temáticos e ordenados.
+  - **Busca em Tempo Real:** Filtragem instantânea por Nome ou CPF insensível a maiúsculas/minúsculas.
+  - **Abas de Filtros com Contadores $O(N)$:** Seleção rápida entre `Todos`, `Pacientes`, `Motoristas` e `Administradores`, com cálculo consolidado em passada única fora do ciclo de renderização.
+  - **Exclusão Lógica e Governança:** Diálogo de confirmação para inativação de registros (`ativo: false`), respeitando as diretrizes da LGPD e preservando a rastreabilidade histórica.
+  - **Sincronização com Cloud Firestore:** Atualização automática em tempo real através da coleção `usuarios`, com fallback offline e blindagem contra anomalias de tipos.
 
 ---
 
