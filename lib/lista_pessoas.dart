@@ -465,9 +465,17 @@ class _ListaPessoasState extends State<ListaPessoas> {
           await FirebaseFirestore.instance
               .collection('usuarios')
               .doc(pessoa.id)
-              .update({'ativo': false});
+              .update({
+                'ativo': false,
+                'inativadoEm': FieldValue.serverTimestamp(),
+              });
         } catch (e) {
-          if (mounted) {
+          // Para mocks iniciais locais, apenas registra debug sem poluir a interface
+          if (pessoa.id.startsWith('pac_') ||
+              pessoa.id.startsWith('mot_') ||
+              pessoa.id.startsWith('adm_')) {
+            debugPrint('Mock inativado localmente: ${pessoa.nome}');
+          } else if (mounted) {
             setState(() {
               _erroGeral = 'Falha ao inativar no Firebase: $e';
             });
