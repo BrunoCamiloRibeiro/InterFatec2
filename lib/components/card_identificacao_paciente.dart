@@ -207,12 +207,12 @@ class CardIdentificacaoPaciente extends StatelessWidget {
                       TextButton.icon(
                         onPressed: onInativar,
                         icon: const Icon(
-                          Icons.person_off_outlined,
+                          Icons.delete_outline,
                           size: 16,
                           color: Color(0xFFDC2626),
                         ),
                         label: const Text(
-                          'Inativar',
+                          'Excluir',
                           style: TextStyle(
                             color: Color(0xFFDC2626),
                             fontWeight: FontWeight.w600,

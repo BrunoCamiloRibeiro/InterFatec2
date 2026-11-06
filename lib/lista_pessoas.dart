@@ -407,7 +407,7 @@ class _ListaPessoasState extends State<ListaPessoas> {
   }
 
   /// Diálogo puro de confirmação: apresenta as justificativas de governança e auditoria
-  Future<bool?> _mostrarConfirmacaoInativacao(String nome) {
+  Future<bool?> _mostrarConfirmacaoExclusao(String nome) {
     return showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -417,13 +417,13 @@ class _ListaPessoasState extends State<ListaPessoas> {
             Icon(Icons.warning_amber_rounded, color: Color(0xFFDC2626)),
             SizedBox(width: 8),
             Text(
-              'Inativar Registro',
+              'Excluir Registro',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
           ],
         ),
         content: Text(
-          'Deseja inativar $nome?\n\n'
+          'Deseja excluir $nome?\n\n'
           'Conforme as regras de governança e auditoria, o registro ficará indisponível para novos agendamentos.',
           style: const TextStyle(fontSize: 14, color: Color(0xFF475569)),
         ),
@@ -444,16 +444,16 @@ class _ListaPessoasState extends State<ListaPessoas> {
               ),
             ),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Confirmar Inativação'),
+            child: const Text('Confirmar Exclusão'),
           ),
         ],
       ),
     );
   }
 
-  /// Executa o fluxo de inativação lógica no Firestore e atualiza o estado local
-  Future<void> _aoInativar(PessoaItem pessoa) async {
-    final confirmado = await _mostrarConfirmacaoInativacao(pessoa.nome);
+  /// Executa o fluxo de exclusão lógica no Firestore e atualiza o estado local
+  Future<void> _aoExcluir(PessoaItem pessoa) async {
+    final confirmado = await _mostrarConfirmacaoExclusao(pessoa.nome);
     if (confirmado == true && mounted) {
       setState(() {
         _salvando = true;
@@ -467,17 +467,17 @@ class _ListaPessoasState extends State<ListaPessoas> {
               .doc(pessoa.id)
               .update({
                 'ativo': false,
-                'inativadoEm': FieldValue.serverTimestamp(),
+                'excluidoEm': FieldValue.serverTimestamp(),
               });
         } catch (e) {
           // Para mocks iniciais locais, apenas registra debug sem poluir a interface
           if (pessoa.id.startsWith('pac_') ||
               pessoa.id.startsWith('mot_') ||
               pessoa.id.startsWith('adm_')) {
-            debugPrint('Mock inativado localmente: ${pessoa.nome}');
+            debugPrint('Mock excluído localmente: ${pessoa.nome}');
           } else if (mounted) {
             setState(() {
-              _erroGeral = 'Falha ao inativar no Firebase: $e';
+              _erroGeral = 'Falha ao excluir no Firebase: $e';
             });
           }
         }
@@ -674,7 +674,7 @@ class _ListaPessoasState extends State<ListaPessoas> {
             telefone: pessoa.telefone,
             detalheExtra: pessoa.detalheExtra,
             onEditar: () {},
-            onInativar: () => _aoInativar(pessoa),
+            onInativar: () => _aoExcluir(pessoa),
           ),
         );
       },

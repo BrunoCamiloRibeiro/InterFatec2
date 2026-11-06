@@ -188,28 +188,28 @@ void main() {
       );
     });
 
-    testWidgets('Diálogo de inativação (exclusão lógica) abre e confirma', (
+    testWidgets('Diálogo de exclusão lógica abre e confirma', (
       tester,
     ) async {
       await tester.pumpWidget(criarTelaTeste());
 
-      // Localiza o botão 'Inativar' do primeiro card
-      final botaoInativar = find.text('Inativar').first;
-      await tester.tap(botaoInativar);
+      // Localiza o botão 'Excluir' do primeiro card
+      final botaoExcluir = find.text('Excluir').first;
+      await tester.tap(botaoExcluir);
       await tester.pumpAndSettle();
 
       // Confirma que abriu o alerta explicativo com a justificativa de governança
-      expect(find.text('Inativar Registro'), findsOneWidget);
+      expect(find.text('Excluir Registro'), findsOneWidget);
       expect(
         find.textContaining('Conforme as regras de governança e auditoria'),
         findsOneWidget,
       );
 
-      // Clica em Confirmar Inativação
-      await tester.tap(find.text('Confirmar Inativação'));
+      // Clica em Confirmar Exclusão
+      await tester.tap(find.text('Confirmar Exclusão'));
       await tester.pumpAndSettle();
 
-      // Registro do Carlos foi inativado da lista
+      // Registro do Carlos foi excluído da lista
       expect(find.text('Carlos Drummond'), findsNothing);
       expect(find.text('Clarice Lispector'), findsOneWidget);
     });
