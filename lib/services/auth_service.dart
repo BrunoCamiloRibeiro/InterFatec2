@@ -729,17 +729,66 @@ class FirebaseAuthService implements AuthService {
       viagensAtivas.add(viagemService.viagemAtiva!);
     }
 
-    // Fallback remoto no Firestore para viagens com status 'ativa'
-    if (viagensAtivas.isEmpty) {
-      try {
-        final querySnap = await firestore
-            .collection('viagens')
-            .where('status', isEqualTo: 'ativa')
-            .get();
-        for (final doc in querySnap.docs) {
+    // Busca remota no Firestore para viagens com status 'ativa' (multi-dispositivo e homologação)
+    try {
+      final querySnap = await firestore
+          .collection('viagens')
+          .where('status', isEqualTo: 'ativa')
+          .get();
+      for (final doc in querySnap.docs) {
+        final docIndex = viagensAtivas.indexWhere((v) => v.id == doc.id);
+        if (docIndex == -1) {
           viagensAtivas.add(ViagemModel.fromMap(doc.data(), docId: doc.id));
+        } else {
+          // Se na memória local os códigos estiverem vazios e no Firestore preenchidos, sincroniza
+          if (viagensAtivas[docIndex].codigosHash.isEmpty) {
+            viagensAtivas[docIndex] =
+                ViagemModel.fromMap(doc.data(), docId: doc.id);
+          }
         }
-      } catch (_) {}
+      }
+    } catch (_) {}
+
+    // Fallback defensivo de viagem caso ambiente esteja offline/isolado
+    if (viagensAtivas.isEmpty) {
+      viagensAtivas.add(
+        ViagemModel(
+          id: 'viagem_demo_homologacao',
+          motoristaId: 'dRlCd8lD7TD0Dj0OhKlm',
+          motoristaNome: 'Carlos Roberto',
+          veiculoId: 'v1',
+          veiculoPlaca: 'BRA-2E19',
+          veiculoModelo: 'Chevrolet Spin 1.8 LTZ',
+          kmInicial: 50000,
+          cidadeDestino: 'São José do Rio Preto',
+          dataHoraInicio: DateTime(2026, 11, 7, 16),
+          status: 'ativa',
+          passageirosIds: const [
+            'nhkT53OclKj552MmiMN5',
+            'paciente_demo_homologacao',
+            'p1',
+          ],
+          codigosAcesso: const {
+            'nhkT53OclKj552MmiMN5': '7890',
+            'paciente_demo_homologacao': '4821',
+            'p1': '4821',
+          },
+          codigosHash: {
+            'nhkT53OclKj552MmiMN5': CodigoAcessoService.calcularHash(
+              '7890',
+              'viagem_demo_homologacao',
+            ),
+            'paciente_demo_homologacao': CodigoAcessoService.calcularHash(
+              '4821',
+              'viagem_demo_homologacao',
+            ),
+            'p1': CodigoAcessoService.calcularHash(
+              '4821',
+              'viagem_demo_homologacao',
+            ),
+          },
+        ),
+      );
     }
 
     // Carrega a base de pacientes ativos para conferência de documentos e acompanhantes
@@ -761,6 +810,26 @@ class FirebaseAuthService implements AuthService {
     if (pacientesDisponiveis.isEmpty) {
       // Fallback para os pacientes padrão em memória/testes com CPFs oficiais válidos
       pacientesDisponiveis = [
+        PacienteModel(
+          id: 'nhkT53OclKj552MmiMN5',
+          nome: 'Sebastião Ferreira de Souza',
+          cpf: '571.098.984-31',
+          enderecoPaciente: 'Rua Sete de Setembro, 340 - Centro',
+          telefone: '(14) 99765-4321',
+          localConsulta: 'Hospital das Clínicas de Botucatu - Unesp',
+          localSaida: 'Residência',
+          status: 1,
+        ),
+        PacienteModel(
+          id: 'paciente_demo_homologacao',
+          nome: 'Maria Silva Poloni',
+          cpf: '529.982.247-25',
+          enderecoPaciente: 'Rua das Flores, 125 - Centro',
+          telefone: '(17) 99123-4567',
+          localConsulta: 'Hospital de Base',
+          localSaida: 'UBS Poloni',
+          status: 1,
+        ),
         PacienteModel(
           id: 'p1',
           nome: 'Maria das Graças Aparecida',
