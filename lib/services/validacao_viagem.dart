@@ -407,5 +407,195 @@ class ValidacaoViagem {
   // Fecha o método resolverEstadoMotorista
   }
 
+  // ----------------------------------------------------------------------------
+  // REGRAS DE NEGÓCIO E CASOS DE BORDA: GERENCIADOR DE HORÁRIOS (FASE 1)
+  // ----------------------------------------------------------------------------
+
+  /// Valida se um motorista possui conflito de alocação em múltiplos horários simultâneos na mesma data.
+  static ResultadoValidacao validarConflitoMotorista({
+    required String motoristaId,
+    required DateTime data,
+    required String horario,
+    required List<ViagemModel> viagensDoDia,
+    String? viagemIdAtual,
+  }) {
+    if (motoristaId.trim().isEmpty) {
+      return ResultadoValidacao.erro('Selecione um motorista responsável.');
+    }
+
+    final dataAlvo = DateTime(data.year, data.month, data.day);
+
+    for (final v in viagensDoDia) {
+      if (viagemIdAtual != null && v.id == viagemIdAtual) continue;
+      if (v.isCancelada) continue;
+
+      final dataV = v.dataOperacional;
+      final mesmaData = dataV.year == dataAlvo.year &&
+          dataV.month == dataAlvo.month &&
+          dataV.day == dataAlvo.day;
+
+      if (mesmaData && v.motoristaId == motoristaId) {
+        final horarioV = v.tituloHorario.toLowerCase().trim();
+        final horarioNovo = horario.toLowerCase().trim();
+        final hmNovo = _extrairHoraMinuto(horarioNovo) ?? (hour: data.hour, minute: data.minute);
+        final hmV = _extrairHoraMinuto(horarioV) ?? (hour: v.dataHoraInicio.hour, minute: v.dataHoraInicio.minute);
+        final mesmoHorarioSaida = hmNovo.hour == hmV.hour && hmNovo.minute == hmV.minute;
+
+        if (horarioV == horarioNovo || mesmoHorarioSaida) {
+          return ResultadoValidacao.erro(
+            'O motorista ${v.motoristaNome} já está escalado para outro Horário simultâneo ($horarioV) nesta data.',
+          );
+        }
+      }
+    }
+    return ResultadoValidacao.sucesso();
+  }
+
+  /// Valida se um veículo possui conflito de alocação em múltiplos horários simultâneos na mesma data.
+  static ResultadoValidacao validarConflitoVeiculo({
+    required String veiculoId,
+    required DateTime data,
+    required String horario,
+    required List<ViagemModel> viagensDoDia,
+    String? viagemIdAtual,
+  }) {
+    if (veiculoId.trim().isEmpty) {
+      return ResultadoValidacao.erro('Selecione um veículo para a viagem.');
+    }
+
+    final dataAlvo = DateTime(data.year, data.month, data.day);
+
+    for (final v in viagensDoDia) {
+      if (viagemIdAtual != null && v.id == viagemIdAtual) continue;
+      if (v.isCancelada) continue;
+
+      final dataV = v.dataOperacional;
+      final mesmaData = dataV.year == dataAlvo.year &&
+          dataV.month == dataAlvo.month &&
+          dataV.day == dataAlvo.day;
+
+      if (mesmaData && v.veiculoId == veiculoId) {
+        final horarioV = v.tituloHorario.toLowerCase().trim();
+        final horarioNovo = horario.toLowerCase().trim();
+        final hmNovo = _extrairHoraMinuto(horarioNovo) ?? (hour: data.hour, minute: data.minute);
+        final hmV = _extrairHoraMinuto(horarioV) ?? (hour: v.dataHoraInicio.hour, minute: v.dataHoraInicio.minute);
+        final mesmoHorarioSaida = hmNovo.hour == hmV.hour && hmNovo.minute == hmV.minute;
+
+        if (horarioV == horarioNovo || mesmoHorarioSaida) {
+          return ResultadoValidacao.erro(
+            'O veículo ${v.veiculoPlaca} (${v.veiculoModelo}) já está alocado para o Horário "$horarioV" nesta data.',
+          );
+        }
+      }
+    }
+    return ResultadoValidacao.sucesso();
+  }
+
+  /// Valida se o total de passageiros (incluindo acompanhantes) excede a capacidade do veículo.
+  static ResultadoValidacao validarCapacidade({
+    required int totalPassageirosComAcompanhantes,
+    required int capacidadeVeiculo,
+  }) {
+    if (capacidadeVeiculo <= 0) {
+      return ResultadoValidacao.sucesso();
+    }
+    if (totalPassageirosComAcompanhantes > capacidadeVeiculo) {
+      return ResultadoValidacao.erro(
+        'Capacidade excedida: $totalPassageirosComAcompanhantes passageiros para um veículo com $capacidadeVeiculo assentos.',
+      );
+    }
+    return ResultadoValidacao.sucesso();
+  }
+
+  /// Valida se um paciente já está agendado em outro horário conflitante no mesmo dia.
+  static ResultadoValidacao validarConflitoPaciente({
+    required String pacienteId,
+    required DateTime data,
+    required String horario,
+    required List<ViagemModel> viagensDoDia,
+    String? viagemIdAtual,
+  }) {
+    final dataAlvo = DateTime(data.year, data.month, data.day);
+
+    for (final v in viagensDoDia) {
+      if (viagemIdAtual != null && v.id == viagemIdAtual) continue;
+      if (v.isCancelada) continue;
+
+      final dataV = v.dataOperacional;
+      final mesmaData = dataV.year == dataAlvo.year &&
+          dataV.month == dataAlvo.month &&
+          dataV.day == dataAlvo.day;
+
+      if (mesmaData && v.passageirosIds.contains(pacienteId)) {
+        final horarioV = v.tituloHorario.toLowerCase().trim();
+        final horarioNovo = horario.toLowerCase().trim();
+        final hmNovo = _extrairHoraMinuto(horarioNovo) ?? (hour: data.hour, minute: data.minute);
+        final hmV = _extrairHoraMinuto(horarioV) ?? (hour: v.dataHoraInicio.hour, minute: v.dataHoraInicio.minute);
+        final mesmoHorarioSaida = hmNovo.hour == hmV.hour && hmNovo.minute == hmV.minute;
+
+        if (horarioV == horarioNovo || mesmoHorarioSaida) {
+          return ResultadoValidacao.erro(
+            'O paciente já consta agendado no Horário simultâneo "$horarioV" deste dia.',
+          );
+        }
+      }
+    }
+    return ResultadoValidacao.sucesso();
+  }
+
+  /// Valida se o horário da consulta/atendimento médico é cronologicamente posterior à saída do transporte.
+  static ResultadoValidacao validarCompatibilidadeHorarioConsulta({
+    required String horarioSaida,
+    required String horarioAtendimento,
+  }) {
+    if (horarioSaida.trim().isEmpty || horarioAtendimento.trim().isEmpty) {
+      return ResultadoValidacao.sucesso();
+    }
+
+    final partesSaida = _extrairHoraMinuto(horarioSaida);
+    final partesAtendimento = _extrairHoraMinuto(horarioAtendimento);
+
+    if (partesSaida != null && partesAtendimento != null) {
+      final minutosSaida = partesSaida.hour * 60 + partesSaida.minute;
+      final minutosAtendimento =
+          partesAtendimento.hour * 60 + partesAtendimento.minute;
+
+      if (minutosAtendimento <= minutosSaida) {
+        return ResultadoValidacao.erro(
+          'Horário de consulta ($horarioAtendimento) incompatível: é anterior ou igual à saída do transporte ($horarioSaida).',
+        );
+      }
+    }
+    return ResultadoValidacao.sucesso();
+  }
+
+  /// Helper para extração de hora e minuto de strings flexíveis (ex: "08:30", "08h30", "08:30 - SP")
+  static ({int hour, int minute})? _extrairHoraMinuto(String texto) {
+    final match = RegExp(r'(\d{1,2})[:hH](\d{2})').firstMatch(texto);
+    if (match != null) {
+      final h = int.tryParse(match.group(1)!);
+      final m = int.tryParse(match.group(2)!);
+      if (h != null && m != null && h >= 0 && h < 24 && m >= 0 && m < 60) {
+        return (hour: h, minute: m);
+      }
+    }
+    return null;
+  }
+
+  /// Valida se um acompanhante possui paciente titular correspondente.
+  static ResultadoValidacao validarAcompanhante({
+    required String? acompanhanteNome,
+    required String pacienteId,
+  }) {
+    if (acompanhanteNome != null &&
+        acompanhanteNome.trim().isNotEmpty &&
+        pacienteId.trim().isEmpty) {
+      return ResultadoValidacao.erro(
+        'Acompanhante não pode ser vinculado sem um paciente titular associado.',
+      );
+    }
+    return ResultadoValidacao.sucesso();
+  }
+
 // Fecha a declaração da classe ValidacaoViagem
 }
