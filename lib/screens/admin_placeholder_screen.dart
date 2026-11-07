@@ -45,6 +45,8 @@
 // ----------------------------------------------------------------------------
 import 'package:flutter/material.dart';
 
+import '../Outdated/administrativo.dart';
+import '../lista_pessoas.dart';
 import '../services/auth_service.dart';
 import 'gerenciador_viagens_screen.dart';
 
@@ -199,11 +201,11 @@ class AdminPlaceholderScreen extends StatelessWidget {
                         textAlign: TextAlign.center,
                       // Fecha o Text do título
                       ),
-                      // Espaçamento vertical de 12 pontos
-                      const SizedBox(height: 12),
+                      // Espaçamento vertical de 8 pontos
+                      const SizedBox(height: 8),
                       // Texto explicativo para o usuário
                       const Text(
-                        'Esta funcionalidade está sendo implementada pela equipe. Utilize o botão abaixo para encerrar a sessão.',
+                        'Selecione o módulo administrativo que deseja gerenciar:',
                         style: TextStyle(
                           fontSize: 14,
                           color: Color(0xFF64748B),
@@ -247,6 +249,64 @@ class AdminPlaceholderScreen extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 12),
+                      // Botão de acesso à Gestão de Pessoas (CRUD feito pelo João na Issue #34)
+                      SizedBox(
+                        width: double.infinity,
+                        height: 48,
+                        child: OutlinedButton.icon(
+                          key: const Key('botaoAcessarGestaoPessoas'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFF0F172A),
+                            side: const BorderSide(color: Color(0xFF0F172A), width: 1.5),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          icon: const Icon(Icons.people_alt_outlined),
+                          label: const Text(
+                            'Gestão de Pessoas (CRUD)',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const ListaPessoas(),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      // Botão para o Protótipo Administrativo Legado (Figma inicial com cadastro rápido)
+                      SizedBox(
+                        width: double.infinity,
+                        height: 42,
+                        child: TextButton.icon(
+                          key: const Key('botaoAcessarAdminLegado'),
+                          style: TextButton.styleFrom(
+                            foregroundColor: const Color(0xFF64748B),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          icon: const Icon(Icons.history_edu, size: 20),
+                          label: const Text(
+                            'Protótipo Administrativo Legado',
+                            style: TextStyle(fontSize: 13),
+                          ),
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => Administrativo(),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 16),
                       // Container dimensionado para o botão de largura total
                       SizedBox(
                         // Ocupa 100% da largura do card

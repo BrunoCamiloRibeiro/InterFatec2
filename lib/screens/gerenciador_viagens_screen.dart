@@ -34,6 +34,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 
+import '../lista_pessoas.dart';
 import '../models/motorista_model.dart';
 import '../models/paciente_model.dart';
 import '../models/user_role.dart';
@@ -340,6 +341,16 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
           ],
         ),
         actions: [
+          IconButton(
+            key: const Key('botaoGestaoPessoasAppBar'),
+            icon: const Icon(Icons.people_alt_outlined),
+            tooltip: 'Gestão de Pessoas (CRUD)',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const ListaPessoas()),
+              );
+            },
+          ),
           IconButton(
             key: const Key('botaoLogoutAdminAppBar'),
             icon: const Icon(Icons.logout),
