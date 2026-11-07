@@ -263,6 +263,49 @@ class FirebaseAuthService implements AuthService {
   // Identificador da sessão ativa de paciente/acompanhante autenticado via código temporário
   static String? _pacienteLogadoId;
 
+  // Controle de rate limiting e bloqueio contra ataques de força bruta (FASE 2)
+  static final Map<String, int> _tentativasLoginOperacional = {};
+  static final Map<String, DateTime> _bloqueioAteOperacional = {};
+
+  /// Verifica se o CPF operacional está temporariamente bloqueado por exceder 5 tentativas falhas
+  static bool estaBloqueadoOperacional(String cpf) {
+    final clean = cpf.replaceAll(RegExp(r'\D'), '');
+    final expira = _bloqueioAteOperacional[clean];
+    if (expira != null) {
+      if (DateTime.now().isBefore(expira)) {
+        return true;
+      } else {
+        _bloqueioAteOperacional.remove(clean);
+        _tentativasLoginOperacional.remove(clean);
+      }
+    }
+    return false;
+  }
+
+  /// Registra uma tentativa falha de autenticação para o CPF operacional
+  static void registrarFalhaOperacional(String cpf) {
+    final clean = cpf.replaceAll(RegExp(r'\D'), '');
+    final tentativas = (_tentativasLoginOperacional[clean] ?? 0) + 1;
+    _tentativasLoginOperacional[clean] = tentativas;
+    if (tentativas >= 5) {
+      _bloqueioAteOperacional[clean] =
+          DateTime.now().add(const Duration(minutes: 15));
+    }
+  }
+
+  /// Reseta o contador de tentativas após sucesso na autenticação
+  static void resetarTentativasOperacional(String cpf) {
+    final clean = cpf.replaceAll(RegExp(r'\D'), '');
+    _tentativasLoginOperacional.remove(clean);
+    _bloqueioAteOperacional.remove(clean);
+  }
+
+  /// Utilitário de testes para purgar bloqueios e tentativas
+  static void resetarRateLimitParaTestes() {
+    _tentativasLoginOperacional.clear();
+    _bloqueioAteOperacional.clear();
+  }
+
   // Linha em branco separadora entre atributos e construtor
 
   // --------------------------------------------------------------------------
@@ -576,8 +619,20 @@ class FirebaseAuthService implements AuthService {
   @override
   // Método assíncrono para autenticação de usuários via CPF e senha
   Future<UserRole> login(String cpf, String senha) async {
+    // 1. Reseta o ID de paciente para evitar contaminação de sessão entre perfis
+    _pacienteLogadoId = null;
+
     // Sanitiza o CPF removendo caracteres não numéricos
     final cleanCpf = cpf.replaceAll(RegExp(r'\D'), '');
+
+    // 2. Proteção contra ataques de força bruta (Rate Limiting de 5 tentativas)
+    if (estaBloqueadoOperacional(cleanCpf)) {
+      throw const AuthException(
+        'Muitas tentativas incorretas. Acesso bloqueado temporariamente por 15 minutos.',
+        code: 'rate-limit-exceeded',
+      );
+    }
+
     // Resolve o e-mail correspondente ao CPF
     final email = await _resolveEmail(cleanCpf, cpf.trim());
 
@@ -593,10 +648,12 @@ class FirebaseAuthService implements AuthService {
       );
     // Captura erros específicos de autenticação do FirebaseAuth
     } on FirebaseAuthException catch (e) {
+      registrarFalhaOperacional(cleanCpf);
       // Lança AuthException com mensagem traduzida via mapFirebaseAuthException
       throw AuthException(mapFirebaseAuthException(e), code: e.code);
     // Captura qualquer outro erro inesperado
     } catch (e) {
+      registrarFalhaOperacional(cleanCpf);
       // Se já for AuthException, propaga
       if (e is AuthException) rethrow;
       // Lança AuthException genérica
@@ -611,6 +668,7 @@ class FirebaseAuthService implements AuthService {
     final user = credential.user;
     // Verifica se o usuário é nulo
     if (user == null) {
+      registrarFalhaOperacional(cleanCpf);
       // Lança erro de falha na identificação
       throw const AuthException(
         'Falha na identificação do usuário autenticado.',
@@ -627,14 +685,17 @@ class FirebaseAuthService implements AuthService {
       // Linha em branco separadora entre resolução e checagem de privilégio
       // Se o usuário for motorista, retorna o papel permitindo prosseguimento
       if (role == UserRole.motorista) {
+        resetarTentativasOperacional(cleanCpf);
         return UserRole.motorista;
       // Se o usuário for administrador, retorna o papel permitindo prosseguimento
       } else if (role == UserRole.admin) {
+        resetarTentativasOperacional(cleanCpf);
         return UserRole.admin;
       // Se for paciente ou outro perfil não operacional, nega acesso à tela de motoristas/admins
       } else {
         // Encerra a sessão imediatamente no Firebase para deslogar a conta
         await auth.signOut();
+        registrarFalhaOperacional(cleanCpf);
         // Lança exceção de acesso negado
         throw const AuthException(
           'Acesso restrito a motoristas e administradores.',
@@ -646,6 +707,7 @@ class FirebaseAuthService implements AuthService {
     } on AuthException catch (e) {
       // Encerra a sessão no Firebase para não manter conta conectada em caso de erro
       await auth.signOut();
+      registrarFalhaOperacional(cleanCpf);
       // Se for erro de papel desconhecido, padroniza como acesso negado
       if (e.code == 'unknown-role') {
         throw const AuthException(
@@ -660,6 +722,7 @@ class FirebaseAuthService implements AuthService {
     } catch (_) {
       // Desloga o usuário da sessão do Firebase
       await auth.signOut();
+      registrarFalhaOperacional(cleanCpf);
       // Lança erro amigável orientando tentar novamente
       throw const AuthException(
         'Erro ao consultar perfil de acesso. Tente novamente.',
