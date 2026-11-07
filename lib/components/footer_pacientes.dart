@@ -44,6 +44,8 @@ import '../models/paciente_model.dart';
 import '../models/viagem_model.dart';
 // Importa o formulário de encerramento (FormularioEncerramento) disparado ao clicar no botão de relatório
 import 'formulario_encerramento.dart';
+// Importa o serviço de gerenciamento de viagens para recuperar N viagens ativas (Issue #65)
+import '../services/viagem_service.dart';
 
 // Linha em branco separadora entre imports e a declaração de FooterPacientes
 // Comentários originais do autor mantidos byte a byte:
@@ -216,6 +218,8 @@ class FooterPacientes extends StatelessWidget {
                   return FormularioEncerramento(
                     // Repassa o objeto da viagem ativa
                     viagem: viagem,
+                    // Repassa a lista de todas as N viagens ativas (Issue #65)
+                    viagens: ViagemService().viagensAtivas,
                     // Repassa a lista de pacientes transportados
                     pacientes: pacientes,
                   // Fecha a instanciação de FormularioEncerramento
