@@ -601,6 +601,7 @@ class _FormularioInicioViagemState extends State<FormularioInicioViagem> {
                 // Campo de entrada de texto numérico da quilometragem
                 // Campo de digitação de quilometragem inicial do veículo
                 TextField(
+                  key: const Key('campoKmInicial'),
                   controller: _kmController,
                   enabled: _veiculoSelecionado != null && !_salvando,
                   keyboardType: TextInputType.number,

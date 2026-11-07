@@ -49,6 +49,8 @@ import '../models/paciente_model.dart';
 import '../models/viagem_model.dart';
 // Importa o serviço de geração do documento PDF oficial TFD
 import '../services/relatorio_pdf_service.dart';
+// Importa o serviço de gerenciamento de viagens para finalizar sessão e viagens ativas
+import '../services/viagem_service.dart';
 
 // Linha em branco separadora entre imports e a declaração de FormularioEncerramento
 // Comentários originais do autor mantidos byte a byte:
@@ -450,12 +452,19 @@ class _FormularioEncerramentoState extends State<FormularioEncerramento> {
                         ? [widget.viagem!]
                         : const <ViagemModel>[]);
 
+            // Converte a string de KM retorno para inteiro numérico
+            final kmRetornoNum = int.tryParse(kmRetorno);
+            // Converte a string de KM rodado para inteiro numérico
+            final kmRodadoNum = int.tryParse(kmRodado);
+
+            // Finaliza as viagens e a sessão do veículo no serviço
+            await ViagemService().encerrarTodasViagens(
+              kmFinal: kmRetornoNum,
+              kmRodado: kmRodadoNum,
+            );
+
             // Checagem de disponibilidade: se há viagens e pacientes informados, gera e exibe o PDF
             if (viagensAlvo.isNotEmpty && widget.pacientes != null) {
-              // Converte a string de KM retorno para inteiro numérico
-              final kmRetornoNum = int.tryParse(kmRetorno);
-              // Converte a string de KM rodado para inteiro numérico
-              final kmRodadoNum = int.tryParse(kmRodado);
 
               if (viagensAlvo.length > 1) {
                 // Emissão em lote atômica de todas as N viagens ativas (Issue #65)

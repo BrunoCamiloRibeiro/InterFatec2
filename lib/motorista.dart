@@ -74,6 +74,8 @@ import 'components/card_paciente.dart';
 import 'components/footer_pacientes.dart';
 // Importa o componente visual do cabeçalho de viagem com título e paginação
 import 'components/motorista_header.dart';
+// Importa o formulário de início de viagem para declaração de veículo e KM inicial
+import 'components/formulario_inicio_viagem.dart';
 
 // Declaração do StatefulWidget Motorista, tela operacional acessível pelo perfil motorista
 class Motorista extends StatefulWidget {
@@ -168,6 +170,9 @@ class _MotoristaState extends State<Motorista> {
     if (_viagensAtivas.isNotEmpty && _viagemAtiva == null) {
       _viagemAtiva = _viagensAtivas.first;
     }
+    if (_viagemAtiva == null && _viagemService.viagemAtiva != null) {
+      _viagemAtiva = _viagemService.viagemAtiva;
+    }
 
     // Assina a stream de atualização da viagem ativa
     // Ouve reativamente qualquer alteração na viagem ativa transmitida pelo serviço
@@ -195,6 +200,8 @@ class _MotoristaState extends State<Motorista> {
               _indiceViagemAtual = _viagensAtivas.length - 1;
             }
             _viagemAtiva = _viagensAtivas[_indiceViagemAtual];
+          } else {
+            _viagemAtiva = null;
           }
         });
       }
@@ -292,6 +299,24 @@ class _MotoristaState extends State<Motorista> {
     // Fechamento da condicional de stream injetada
     }
 
+    // Se a viagem ativa possuir passageiros cadastrados (ex: definidos pelo admin no Gerenciador)
+    if (_viagemAtiva != null && _viagemAtiva!.passageiros.isNotEmpty) {
+      return Stream.value(
+        _viagemAtiva!.passageiros.map<PacienteModel>((pv) => PacienteModel(
+          id: pv.pacienteId,
+          nome: pv.pacienteNome,
+          cpf: pv.pacienteCpf ?? '',
+          telefone: pv.acompanhanteTelefone ?? '',
+          enderecoPaciente: pv.localOrigem,
+          localSaida: pv.localOrigem,
+          localConsulta: pv.localDestino,
+          nomeAcompanhante: pv.acompanhanteNome,
+          telAcompanhante: pv.acompanhanteTelefone,
+          status: pv.statusEmbarque,
+        )).toList(),
+      );
+    }
+
     // Se o serviço do Firebase estiver ativo e inicializado no app
     if (_isFirebaseDisponivel()) {
       // Realiza a consulta contínua na coleção 'usuarios' do Firestore
@@ -363,10 +388,61 @@ class _MotoristaState extends State<Motorista> {
   // Fechamento do método carregarPacientes
   }
 
+  // Verifica se o condutor possui viagem ativa em andamento no momento
+  bool get _temViagemAtiva {
+    if (_viagemAtiva != null && _viagemAtiva!.isAtiva) return true;
+    if (_viagensAtivas.isNotEmpty && _viagensAtivas.any((v) => v.isAtiva)) return true;
+    if (_viagemService.viagemAtiva != null && _viagemService.viagemAtiva!.isAtiva) return true;
+    return false;
+  }
+
   // Método que constrói a árvore de widgets da interface do motorista
   @override
   // Recebe o contexto de montagem do widget
   Widget build(BuildContext context) {
+    // Caso o motorista não possua viagem ativa (primeira vez do dia que entrar ou
+    // após finalizar a viagem gerando o relatório final), exibe o formulário de
+    // início de viagem para escolher o veículo e registrar a quilometragem inicial.
+    if (!_temViagemAtiva) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Início da Viagem'),
+          backgroundColor: const Color(0xFF0F172A),
+          foregroundColor: Colors.white,
+          elevation: 2,
+          actions: [
+            IconButton(
+              key: const Key('botaoLogoutMotorista'),
+              icon: const Icon(Icons.logout),
+              tooltip: 'Sair da conta',
+              onPressed: () async {
+                await FirebaseAuthService().logout();
+                if (context.mounted) {
+                  Navigator.of(context).pushReplacementNamed('/');
+                }
+              },
+            ),
+          ],
+        ),
+        backgroundColor: const Color(0xFFF7F8FA),
+        body: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+              child: FormularioInicioViagem(
+                motoristaId: FirebaseAuthService().currentUserId ?? 'motorista_atual',
+                onViagemIniciada: (novaViagem) {
+                  setState(() {
+                    _viagemAtiva = novaViagem;
+                  });
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     // Define lista inicial de pacientes quando o Firebase não está disponível
     // Fornece dados iniciais caso o Firebase esteja offline para evitar tela em branco
     final pacientesIniciais = _isFirebaseDisponivel()
@@ -844,7 +920,7 @@ class _MotoristaState extends State<Motorista> {
             // Quantidade de assentos ocupados no momento
             lugaresPreenchidos: preenchidos,
             // Capacidade máxima total de assentos do veículo
-            lugaresTotais: _capacidadeVeiculo,
+            lugaresTotais: _capacidadeVeiculo > 0 ? _capacidadeVeiculo : 7,
             // Viagem ativa em andamento para controlar se o botão exibe Iniciar ou Finalizar
             viagem: _viagemAtiva,
             // Lista completa de pacientes para validação de encerramento

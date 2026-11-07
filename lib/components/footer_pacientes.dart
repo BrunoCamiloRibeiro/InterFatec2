@@ -205,7 +205,71 @@ class FooterPacientes extends StatelessWidget {
             // Fecha o widget Text do rótulo
             ),
             // Propriedade onPressed: callback executado ao clicar no botão
-            onPressed: () {
+            onPressed: () async {
+              // Pergunta de confirmação obrigatória antes de finalizar a viagem
+              final bool? querFinalizar = await showDialog<bool>(
+                context: context,
+                builder: (BuildContext dialogContext) {
+                  return AlertDialog(
+                    key: const Key('dialogConfirmarFinalizacaoViagem'),
+                    backgroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    title: Row(
+                      children: [
+                        Icon(
+                          Icons.help_outline,
+                          color: Colors.blueGrey[900],
+                          size: 24,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Finalizar Viagem',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blueGrey[900],
+                          ),
+                        ),
+                      ],
+                    ),
+                    content: const Text(
+                      'Você tem certeza que quer finalizar a viagem?',
+                      style: TextStyle(fontSize: 14),
+                    ),
+                    actions: [
+                      TextButton(
+                        key: const Key('botaoCancelarFinalizacao'),
+                        onPressed: () => Navigator.of(dialogContext).pop(false),
+                        child: Text(
+                          'Cancelar',
+                          style: TextStyle(color: Colors.grey.shade700),
+                        ),
+                      ),
+                      ElevatedButton(
+                        key: const Key('botaoConfirmarFinalizacao'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blueGrey[900],
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        onPressed: () => Navigator.of(dialogContext).pop(true),
+                        child: const Text(
+                          'Sim, finalizar',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              );
+
+              // Se o condutor cancelar ou fechar o diálogo, não prossegue
+              if (querFinalizar != true || !context.mounted) return;
+
               // Comentário original do autor mantido byte a byte:
               // Abre o POPUP do Formulário de Encerramento (Retorno, Km Retorno, Km Rodado e Emissão PDF)
               // Função showDialog: exibe caixa de diálogo modal flutuante na tela

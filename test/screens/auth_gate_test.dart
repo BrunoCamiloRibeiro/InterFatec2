@@ -216,7 +216,8 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.byType(Motorista), findsOneWidget);
-        expect(find.text('Lista de Passageiros'), findsOneWidget);
+        // Na primeira vez do dia que o motorista entra, exibe o formulário de início de viagem
+        expect(find.text('Início da Viagem'), findsOneWidget);
       },
     );
 
