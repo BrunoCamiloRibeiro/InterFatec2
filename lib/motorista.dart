@@ -539,12 +539,16 @@ class _MotoristaState extends State<Motorista> {
 
         // Retorna a estrutura visual completa da página com Scaffold
         return Scaffold(
-          // Barra de navegação superior da aplicação
+          // Barra de navegação superior da aplicação com identidade visual consistente
           appBar: AppBar(
+            backgroundColor: const Color(0xFF0F172A),
+            foregroundColor: Colors.white,
+            elevation: 2,
             // Botão de retorno na extremidade esquerda da barra superior
             leading: IconButton(
               // Ícone com seta apontando para a esquerda
               icon: const Icon(Icons.arrow_back),
+              color: Colors.white,
               // Ação executada ao tocar no botão de voltar
               onPressed: () {
                 // Retorna à tela anterior ou redireciona para a rota inicial
@@ -563,7 +567,14 @@ class _MotoristaState extends State<Motorista> {
             // Fechamento do IconButton leading
             ),
             // Título central da barra de navegação superior
-            title: const Text('Lista de Passageiros'),
+            title: const Text(
+              'Lista de Passageiros',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
             // Ações e widgets auxiliares na extremidade direita da barra superior
             actions: [
               // Exibe a placa do veículo associado à viagem ativa
@@ -572,7 +583,7 @@ class _MotoristaState extends State<Motorista> {
                 // Espaçamento horizontal externo da etiqueta de placa
                 Padding(
                   // Aplica recuo de 12 pixels nas laterais
-                  padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                  padding: const EdgeInsets.symmetric(horizontal: 10.0),
                   // Centraliza verticalmente o widget indicador
                   child: Center(
                     // Contêiner estilizado como uma badge/pílula verde
@@ -580,9 +591,9 @@ class _MotoristaState extends State<Motorista> {
                       // Espaçamento interno da badge
                       padding: const EdgeInsets.symmetric(
                         // Recuo horizontal interno
-                        horizontal: 8,
+                        horizontal: 10,
                         // Recuo vertical interno
-                        vertical: 4,
+                        vertical: 5,
                       // Fechamento do EdgeInsets
                       ),
                       // Decoração visual da badge com cor de fundo verde e cantos arredondados
@@ -619,6 +630,7 @@ class _MotoristaState extends State<Motorista> {
               IconButton(
                 key: const Key('botaoLogoutMotorista'),
                 icon: const Icon(Icons.logout),
+                color: Colors.white,
                 tooltip: 'Sair da conta',
                 onPressed: () async {
                   await FirebaseAuthService().logout();
@@ -631,8 +643,8 @@ class _MotoristaState extends State<Motorista> {
             ],
           // Fechamento do AppBar
           ),
-          // Cor de fundo branca padronizada para toda a página
-          backgroundColor: Colors.white,
+          // Cor de fundo padronizada para toda a página
+          backgroundColor: const Color(0xFFF8FAFC),
           // Área protegida contra entalhes de tela (notches) e barras do sistema operacional
           body: SafeArea(
             // Lista rolável vertical contendo os cabeçalhos e os cartões de pacientes
@@ -803,21 +815,7 @@ class _MotoristaState extends State<Motorista> {
                             novoStatus = statusAtual - 1;
                           // Fechamento do if de validação do status
                           }
-                          // Exibe notificação de feedback na tela via SnackBar
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            // Configuração da mensagem de feedback
-                            const SnackBar(
-                              // Conteúdo textual da barra
-                              content: Text(
-                                // Mensagem indicando o gesto detectado
-                                'Puxado da Esquerda para a Direita',
-                              // Fechamento do Text
-                              ),
-                            // Fechamento do SnackBar
-                            ),
-                          // Fechamento do showSnackBar
-                          );
-                          // Incrementa o status do paciente ao arrastar da direita para a esquerda
+                        // Incrementa o status do paciente ao arrastar da direita para a esquerda
                         // Trata o gesto no sentido avançar
                         } else if (direction == DismissDirection.endToStart) {
                           // Se o status estiver entre 0 e 3, permite incrementar
@@ -826,20 +824,6 @@ class _MotoristaState extends State<Motorista> {
                             novoStatus = statusAtual + 1;
                           // Fechamento do if de validação do status
                           }
-                          // Exibe notificação de feedback na tela via SnackBar
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            // Configuração da mensagem de feedback
-                            const SnackBar(
-                              // Conteúdo textual da barra
-                              content: Text(
-                                // Mensagem indicando o gesto detectado
-                                'Puxado da Direita para a Esquerda',
-                              // Fechamento do Text
-                              ),
-                            // Fechamento do SnackBar
-                            ),
-                          // Fechamento do showSnackBar
-                          );
                         // Fechamento do bloco condicional de direção
                         }
                         // Atualiza o status do paciente e gera código de acesso único se avançou para embarque (Issue #65)

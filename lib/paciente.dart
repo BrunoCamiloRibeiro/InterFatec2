@@ -64,6 +64,8 @@ import 'components/card_identificacao_paciente.dart';
 import 'components/card_tracking_paciente.dart';
 // Importa o modelo de dados representativo da entidade Paciente
 import 'models/paciente_model.dart';
+// Importa o serviço de autenticação para logout
+import 'services/auth_service.dart';
 
 // Tela principal do Módulo do Paciente (Issue #18)
 // Centraliza a identificação, dados da consulta agendada, tracking e botões de ação
@@ -253,14 +255,18 @@ class _PacienteState extends State<Paciente> {
 
         // Renderiza a estrutura completa da tela quando os dados do paciente estão disponíveis
         return Scaffold(
-          // Fundo branco padronizado com as demais telas do aplicativo
-          backgroundColor: Colors.white,
-          // Barra de navegação superior da tela
+          // Fundo padronizado com as demais telas do aplicativo
+          backgroundColor: const Color(0xFFF8FAFC),
+          // Barra de navegação superior da tela com identidade visual consistente
           appBar: AppBar(
+            backgroundColor: const Color(0xFF0F172A),
+            foregroundColor: Colors.white,
+            elevation: 2,
             // Botão de navegação na extremidade esquerda
             leading: IconButton(
               // Ícone com seta de retrocesso
               icon: const Icon(Icons.arrow_back),
+              color: Colors.white,
               // Ação disparada ao clicar no botão de voltar
               onPressed: () {
                 // Se puder desempilhar rota atual, volta para a tela anterior
@@ -278,7 +284,28 @@ class _PacienteState extends State<Paciente> {
             // Fechamento do IconButton
             ),
             // Título central da barra de navegação
-            title: const Text('Painel do Paciente'),
+            title: const Text(
+              'Painel do Paciente',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+            actions: [
+              IconButton(
+                key: const Key('botaoLogoutPaciente'),
+                icon: const Icon(Icons.logout),
+                color: Colors.white,
+                tooltip: 'Sair da conta',
+                onPressed: () async {
+                  await FirebaseAuthService().logout();
+                  if (context.mounted) {
+                    Navigator.of(context).pushReplacementNamed('/');
+                  }
+                },
+              ),
+            ],
           // Fechamento do AppBar
           ),
           // Layout responsivo adaptável a 100% da largura da tela, assim como a Lista de Passageiros

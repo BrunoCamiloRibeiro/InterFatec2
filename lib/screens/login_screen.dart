@@ -122,11 +122,13 @@ class CpfInputFormatter extends TextInputFormatter {
 class LoginScreen extends StatefulWidget {
   // Instância do serviço de autenticação utilizada para login
   final AuthService authService;
+  // Modo inicial de exibição (0 = Motorista/Gestão, 1 = Paciente/Acompanhante)
+  final int modoInicial;
 
   // Linha em branco separadora entre atributo e construtor
 
   // Construtor com parâmetro opcional de authService para injeção de dependência em testes
-  LoginScreen({super.key, AuthService? authService})
+  LoginScreen({super.key, AuthService? authService, this.modoInicial = 0})
     // Inicializa authService com a instância repassada ou cria FirebaseAuthService padrão
     : authService = authService ?? FirebaseAuthService();
 
@@ -158,7 +160,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   // Linha em branco separadora entre controladores e variáveis de estado
   // Modo de login selecionado: 0 = Motorista / Gestão, 1 = Paciente / Acompanhante
-  int _modoLogin = 0;
+  late int _modoLogin = widget.modoInicial;
   // Booleano para alternar a ocultação da senha (inicia oculta como true)
   bool _obscurePassword = true;
   // Indicador de carregamento durante a submissão assíncrona
@@ -690,56 +692,6 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                                 ),
                               ),
-                              const Divider(height: 28),
-                              const Text(
-                                'Acesso Rápido para Teste:',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF64748B),
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Wrap(
-                                alignment: WrapAlignment.center,
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: [
-                                  ActionChip(
-                                    key: const Key('chipTesteAdmin'),
-                                    avatar: const Icon(
-                                      Icons.admin_panel_settings,
-                                      size: 16,
-                                    ),
-                                    label: const Text('Admin (Fernanda)'),
-                                    onPressed: () {
-                                      setState(() {
-                                        _cpfController.text =
-                                            '678.901.234-55';
-                                        _senhaController.text = 'admin123';
-                                        _errorMessage = null;
-                                      });
-                                    },
-                                  ),
-                                  ActionChip(
-                                    key: const Key('chipTesteMotorista'),
-                                    avatar: const Icon(
-                                      Icons.directions_bus,
-                                      size: 16,
-                                    ),
-                                    label: const Text('Motorista (João)'),
-                                    onPressed: () {
-                                      setState(() {
-                                        _cpfController.text =
-                                            '456.789.012-33';
-                                        _senhaController.text = 'motorista123';
-                                        _errorMessage = null;
-                                      });
-                                    },
-                                  ),
-                                ],
-                              ),
                             ],
                           ),
                         )
@@ -1028,56 +980,6 @@ class _LoginScreenState extends State<LoginScreen> {
                                     ),
                                   ),
                                 ),
-                              ),
-                              const Divider(height: 28),
-                              const Text(
-                                'Acesso Rápido para Teste:',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF64748B),
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Wrap(
-                                alignment: WrapAlignment.center,
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: [
-                                  ActionChip(
-                                    key: const Key('chipTestePaciente1'),
-                                    avatar: const Icon(
-                                      Icons.airline_seat_recline_normal,
-                                      size: 16,
-                                    ),
-                                    label: const Text('Sebastião (Cód: 7890)'),
-                                    onPressed: () {
-                                      setState(() {
-                                        _documentoPacienteController.text =
-                                            '571.098.984-31';
-                                        _codigoAcessoController.text = '7890';
-                                        _errorMessage = null;
-                                      });
-                                    },
-                                  ),
-                                  ActionChip(
-                                    key: const Key('chipTestePaciente2'),
-                                    avatar: const Icon(
-                                      Icons.airline_seat_recline_normal,
-                                      size: 16,
-                                    ),
-                                    label: const Text('Maria (Cód: 4821)'),
-                                    onPressed: () {
-                                      setState(() {
-                                        _documentoPacienteController.text =
-                                            '529.982.247-25';
-                                        _codigoAcessoController.text = '4821';
-                                        _errorMessage = null;
-                                      });
-                                    },
-                                  ),
-                                ],
                               ),
                             ],
                           ),

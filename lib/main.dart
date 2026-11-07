@@ -60,6 +60,8 @@ import 'routes/route_guard.dart';
 import 'screens/auth_gate.dart';
 // Importa a tela oficial de login
 import 'screens/login_screen.dart';
+// Importa as telas de demonstração e preview visual
+import 'screens/preview_showcase.dart';
 
 // Linha em branco separadora entre imports e função main
 // Função principal assíncrona de inicialização do TransSaúde
@@ -95,6 +97,35 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       // Título do aplicativo para a barra de tarefas do sistema
       title: 'Transporte Saúde',
+      // Tema visual consistente e uniforme em todo o aplicativo
+      theme: ThemeData(
+        useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF0F172A),
+          primary: const Color(0xFF0F172A),
+          surface: Colors.white,
+        ),
+        scaffoldBackgroundColor: const Color(0xFFF8FAFC),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFF0F172A),
+          foregroundColor: Colors.white,
+          elevation: 2,
+          centerTitle: false,
+          iconTheme: IconThemeData(color: Colors.white),
+          titleTextStyle: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+        cardTheme: CardThemeData(
+          elevation: 1,
+          color: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
       // Comentário original do autor mantido byte a byte:
       // Rota inicial controlada pelo AuthGate reativo
       // Rota inicial raiz apontando para o AuthGate
@@ -148,8 +179,20 @@ class MyApp extends StatelessWidget {
         ),
         // Comentário original do autor mantido byte a byte:
         // Telas de autenticação e registro
-        // Rota para a tela de login oficial
+        // Rota para a tela de login oficial (Motorista / Gestão)
         '/login': (context) => LoginScreen(),
+        // Rota para a tela de login oficial (Paciente / Acompanhante)
+        '/login-paciente': (context) => LoginScreen(modoInicial: 1),
+        // Rota para o Gerenciador de Viagens (Horários do Dia)
+        '/gerenciador-viagens': (context) => const GerenciadorViagensPreview(),
+        // Rota para a tela do Motorista em viagem ativa
+        '/motorista-viagem': (context) => const MotoristaViagemPreview(),
+        // Rota para o diálogo de confirmação de finalização
+        '/motorista-confirmacao': (context) => const MotoristaConfirmacaoPreview(),
+        // Rota para o formulário de encerramento da viagem
+        '/motorista-encerramento': (context) => const MotoristaEncerramentoPreview(),
+        // Rota para o painel de acompanhamento do paciente
+        '/paciente-painel': (context) => const PacientePainelPreview(),
         // Rota para a tela de registro legada
         '/register': (context) => Register(),
         // Comentário original do autor mantido byte a byte:
