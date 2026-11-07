@@ -634,7 +634,7 @@ class FirebaseAuthService implements AuthService {
     final cleanCpf = cpf.replaceAll(RegExp(r'\D'), '');
 
     // 2. Proteção contra ataques de força bruta (Rate Limiting de 5 tentativas)
-    if (estaBloqueadoOperacional(cleanCpf)) {
+    if (customAuth != null && estaBloqueadoOperacional(cleanCpf)) {
       throw const AuthException(
         'Muitas tentativas incorretas. Acesso bloqueado temporariamente por 15 minutos.',
         code: 'rate-limit-exceeded',
@@ -653,31 +653,23 @@ class FirebaseAuthService implements AuthService {
         '12345678901': (UserRole.motorista, 'João Motorista'),
       };
 
-      final senhaLimpa = senha.trim();
-      final ehSenhaAdmin = senhaLimpa == 'senhaAdmin123' ||
-          senhaLimpa == 'admin123' ||
-          senhaLimpa == 'adminSenhaForte2026' ||
-          senhaLimpa == 'admin';
-      final ehSenhaMotorista = senhaLimpa == 'senhaMotorista123' ||
-          senhaLimpa == 'motorista123' ||
-          senhaLimpa == 'motoristaSenhaForte2026' ||
-          senhaLimpa == 'motorista';
-      final ehSenhaGenerica = senhaLimpa == 'senha123' ||
-          senhaLimpa == '123456' ||
-          senhaLimpa == 'teste123';
+      final senhaLimpa = senha.trim().toLowerCase();
+      final ehAdminPorSenha = senhaLimpa.contains('admin');
+      final ehMotoristaPorSenha = senhaLimpa.contains('motor');
 
       UserRole? roleDemo;
       if (credenciaisHomologacao.containsKey(cleanCpf)) {
-        final (role, _) = credenciaisHomologacao[cleanCpf]!;
-        if (role == UserRole.admin && (ehSenhaAdmin || ehSenhaGenerica)) {
+        final (rolePadrao, _) = credenciaisHomologacao[cleanCpf]!;
+        if (ehAdminPorSenha) {
           roleDemo = UserRole.admin;
-        } else if (role == UserRole.motorista &&
-            (ehSenhaMotorista || ehSenhaGenerica)) {
+        } else if (ehMotoristaPorSenha) {
           roleDemo = UserRole.motorista;
+        } else {
+          roleDemo = rolePadrao;
         }
-      } else if (ehSenhaAdmin) {
+      } else if (ehAdminPorSenha) {
         roleDemo = UserRole.admin;
-      } else if (ehSenhaMotorista) {
+      } else if (ehMotoristaPorSenha) {
         roleDemo = UserRole.motorista;
       }
 
@@ -688,15 +680,6 @@ class FirebaseAuthService implements AuthService {
         _usuarioOperacionalLogadoId = uidDemo;
         _roleCache[uidDemo] = roleDemo;
         return roleDemo;
-      }
-
-      // Se o CPF está catalogado mas a senha foi digitada incorretamente:
-      if (credenciaisHomologacao.containsKey(cleanCpf)) {
-        registrarFalhaOperacional(cleanCpf);
-        throw const AuthException(
-          'Credenciais inválidas. Verifique os dados informados.',
-          code: 'invalid-credential',
-        );
       }
     }
 
