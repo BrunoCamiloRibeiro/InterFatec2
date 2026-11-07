@@ -116,6 +116,15 @@ class _MotoristaState extends State<Motorista> {
   // Assinatura na stream para desinscrever adequadamente no método dispose
   StreamSubscription<ViagemModel?>? _subViagemAtiva;
 
+  // Inscrição para escutar a lista com todas as N viagens ativas (Issue #65)
+  StreamSubscription<List<ViagemModel>>? _subViagensAtivas;
+
+  // Lista com as N viagens ativas sob a sessão do motorista (Issue #65)
+  List<ViagemModel> _viagensAtivas = [];
+
+  // Índice da viagem em exibição ativa na tela (0 a N-1)
+  int _indiceViagemAtual = 0;
+
   // Viagem ativa associada à sessão do motorista
   // Armazena a viagem em andamento para exibir na interface e controlar fluxos
   ViagemModel? _viagemAtiva;
@@ -153,6 +162,12 @@ class _MotoristaState extends State<Motorista> {
     // Atribui o valor de viagemInicial recebido via construtor à variável de estado
     _viagemAtiva = widget.viagemInicial;
 
+    // Inicializa o cache local com as viagens ativas pré-existentes na sessão
+    _viagensAtivas = _viagemService.viagensAtivas;
+    if (_viagensAtivas.isNotEmpty && _viagemAtiva == null) {
+      _viagemAtiva = _viagensAtivas.first;
+    }
+
     // Assina a stream de atualização da viagem ativa
     // Ouve reativamente qualquer alteração na viagem ativa transmitida pelo serviço
     _subViagemAtiva = _viagemService.viagemAtivaStream.listen((viagem) {
@@ -167,6 +182,21 @@ class _MotoristaState extends State<Motorista> {
       // Fechamento da verificação if mounted
       }
     // Fechamento do listener da stream
+    });
+
+    // Assina a stream de N viagens ativas (Issue #65)
+    _subViagensAtivas = _viagemService.viagensAtivasStream.listen((viagens) {
+      if (mounted) {
+        setState(() {
+          _viagensAtivas = viagens;
+          if (_viagensAtivas.isNotEmpty) {
+            if (_indiceViagemAtual >= _viagensAtivas.length) {
+              _indiceViagemAtual = _viagensAtivas.length - 1;
+            }
+            _viagemAtiva = _viagensAtivas[_indiceViagemAtual];
+          }
+        });
+      }
     });
 
     // Inicia a escuta dos dados do motorista caso o Firebase esteja disponível
@@ -205,9 +235,9 @@ class _MotoristaState extends State<Motorista> {
   @override
   // Método de liberação de recursos, cancelamento de assinaturas e timers
   void dispose() {
-    // Cancela a inscrição na stream de viagem ativa
-    // Cancela a assinatura da stream para evitar vazamentos de memória (memory leaks)
+    // Cancela as inscrições nas streams de viagem ativa e N viagens
     _subViagemAtiva?.cancel();
+    _subViagensAtivas?.cancel();
     // Invoca o descarte da classe pai
     super.dispose();
   // Fechamento do método dispose
@@ -526,17 +556,30 @@ class _MotoristaState extends State<Motorista> {
                 // Componente de cabeçalho da viagem mostrando o título da viagem e controles de navegação
                 MotoristaHeader(
                   // Título dinâmico da viagem baseado no ID da viagem ativa ou fallback
-                  tituloViagem:
-                      // Verifica se há viagem ativa com identificador preenchido
-                      _viagemAtiva != null && _viagemAtiva!.id.isNotEmpty
-                      // Exibe o prefixo 'Viagem' concatenado ao identificador
-                      ? 'Viagem ${_viagemAtiva!.id}'
-                      // Fallback padrão se não houver viagem ativa carregada
-                      : 'Viagem 1',
-                  // Callback para avançar ou retroceder viagem (atualmente nulo / pendência TODO 13)
-                  onAnterior: null,
-                  // Callback para avançar viagem (atualmente nulo / pendência TODO 13)
-                  onProxima: null,
+                  tituloViagem: _viagensAtivas.length > 1
+                      ? 'Viagem ${_indiceViagemAtual + 1} de ${_viagensAtivas.length} (${_viagemAtiva?.cidadeDestino ?? ""})'
+                      : (_viagemAtiva != null && _viagemAtiva!.id.isNotEmpty
+                          ? 'Viagem ${_viagemAtiva!.id}'
+                          : 'Viagem 1'),
+                  // Callback para retroceder viagem na sessão ativa (Issue #65)
+                  onAnterior: _viagensAtivas.length > 1 && _indiceViagemAtual > 0
+                      ? () {
+                          setState(() {
+                            _indiceViagemAtual--;
+                            _viagemAtiva = _viagensAtivas[_indiceViagemAtual];
+                          });
+                        }
+                      : null,
+                  // Callback para avançar viagem na sessão ativa (Issue #65)
+                  onProxima: _viagensAtivas.length > 1 &&
+                          _indiceViagemAtual < _viagensAtivas.length - 1
+                      ? () {
+                          setState(() {
+                            _indiceViagemAtual++;
+                            _viagemAtiva = _viagensAtivas[_indiceViagemAtual];
+                          });
+                        }
+                      : null,
                 // Fechamento do MotoristaHeader
                 ),
                 // Espaçador vertical entre o cabeçalho e os cards de passageiros
@@ -710,19 +753,40 @@ class _MotoristaState extends State<Motorista> {
                           );
                         // Fechamento do bloco condicional de direção
                         }
-                        // Atualiza o status do paciente no Firestore caso tenha sido alterado
-                        // Se o status foi modificado e o banco Firestore estiver disponível
-                        if (novoStatus != statusAtual &&
-                            _isFirebaseDisponivel()) {
-                          // Executa a escrita remota assíncrona no Firestore para persistir a mudança
-                          await FirebaseFirestore.instance
-                              // Coleção de usuários
-                              .collection('usuarios')
-                              // Documento correspondente ao ID do paciente
-                              .doc(paciente.id)
-                              // Atualiza apenas o campo status
-                              .update({'status': novoStatus});
-                        // Fechamento do if de atualização do Firestore
+                        // Atualiza o status do paciente e gera código de acesso único se avançou para embarque (Issue #65)
+                        if (novoStatus != statusAtual) {
+                          // Se o paciente embarcou (status >= 1) e há viagem ativa, gera ou obtém o código de acesso único
+                          if (novoStatus >= 1 && _viagemAtiva != null) {
+                            final codigo =
+                                await _viagemService.gerarOuObterCodigoAcesso(
+                              viagemId: _viagemAtiva!.id,
+                              pacienteId: paciente.id,
+                            );
+                            if (mounted) {
+                              setState(() {
+                                final novosCodigos = Map<String, String>.from(
+                                  _viagemAtiva!.codigosAcesso,
+                                );
+                                novosCodigos[paciente.id] = codigo;
+                                _viagemAtiva = _viagemAtiva!.copyWith(
+                                  codigosAcesso: novosCodigos,
+                                );
+                              });
+                            }
+                          }
+
+                          // Se o banco Firestore estiver disponível
+                          if (_isFirebaseDisponivel()) {
+                            // Executa a escrita remota assíncrona no Firestore para persistir a mudança
+                            await FirebaseFirestore.instance
+                                // Coleção de usuários
+                                .collection('usuarios')
+                                // Documento correspondente ao ID do paciente
+                                .doc(paciente.id)
+                                // Atualiza apenas o campo status
+                                .update({'status': novoStatus});
+                          // Fechamento do if de atualização do Firestore
+                          }
                         }
                         // Retorna false para impedir que o Dismissible remova o widget da lista local
                         return false;
@@ -747,6 +811,9 @@ class _MotoristaState extends State<Motorista> {
                         nomeAcompanhante: paciente.nomeAcompanhante,
                         // Telefone do acompanhante, se houver
                         telAcompanhante: paciente.telAcompanhante,
+                        // Código de acesso temporário gerado no embarque (Issue #65)
+                        codigoAcesso:
+                            _viagemAtiva?.codigosAcesso[paciente.id],
                       // Fechamento do CardPaciente
                       ),
                     // Fechamento do Dismissible
