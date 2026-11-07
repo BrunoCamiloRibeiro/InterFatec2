@@ -46,6 +46,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
+import 'gerenciador_viagens_screen.dart';
 
 // Linha em branco separadora entre imports e a classe da tela
 // ----------------------------------------------------------------------------
@@ -211,8 +212,41 @@ class AdminPlaceholderScreen extends StatelessWidget {
                         textAlign: TextAlign.center,
                       // Fecha o Text explicativo
                       ),
-                      // Espaçamento vertical de 28 pontos
-                      const SizedBox(height: 28),
+                      // Espaçamento vertical de 20 pontos
+                      const SizedBox(height: 20),
+                      // Botão de acesso direto ao Gerenciador de Horários
+                      SizedBox(
+                        width: double.infinity,
+                        height: 48,
+                        child: ElevatedButton.icon(
+                          key: const Key('botaoAcessarGerenciadorHorarios'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF0284C7),
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          icon: const Icon(Icons.schedule),
+                          label: const Text(
+                            'Gerenciador de Horários do Dia',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => GerenciadorViagensScreen(
+                                  authServiceOverride: authService,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 12),
                       // Container dimensionado para o botão de largura total
                       SizedBox(
                         // Ocupa 100% da largura do card

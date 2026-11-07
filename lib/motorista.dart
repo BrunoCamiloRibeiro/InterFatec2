@@ -66,6 +66,7 @@ import 'package:trans_saude/models/paciente_model.dart';
 import 'package:trans_saude/models/viagem_model.dart';
 // Importa o serviço responsável pela gestão de viagens e seus fluxos
 import 'package:trans_saude/services/viagem_service.dart';
+import 'package:trans_saude/services/auth_service.dart';
 
 // Importa o componente visual de card individual de paciente
 import 'components/card_paciente.dart';
@@ -538,6 +539,18 @@ class _MotoristaState extends State<Motorista> {
                   ),
                 // Fechamento do Padding
                 ),
+              // Botão de logout do motorista
+              IconButton(
+                key: const Key('botaoLogoutMotorista'),
+                icon: const Icon(Icons.logout),
+                tooltip: 'Sair da conta',
+                onPressed: () async {
+                  await FirebaseAuthService().logout();
+                  if (context.mounted) {
+                    Navigator.of(context).pushReplacementNamed('/');
+                  }
+                },
+              ),
             // Fechamento da lista actions
             ],
           // Fechamento do AppBar
