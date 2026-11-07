@@ -48,6 +48,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 // Importa o enum de papéis funcionais de usuários
 import 'package:trans_saude/models/user_role.dart';
+// Importa o modelo de paciente para assinaturas de teste
+import 'package:trans_saude/models/paciente_model.dart';
 // Importa a tela principal do motorista
 import 'package:trans_saude/motorista.dart';
 // Importa a tela principal do paciente
@@ -122,6 +124,17 @@ class FakeGateAuthService implements AuthService {
   Future<UserRole> login(String cpf, String senha) async {
     // Retorna o papel configurado ou padrão motorista
     return cachedRoleOverride ?? UserRole.motorista;
+  }
+
+  // Simula o login de paciente com código
+  @override
+  Future<UserRole> loginPacienteComCodigo({
+    required String documento,
+    required String codigoAcesso,
+    String? ipOrigem,
+    List<PacienteModel>? pacientesParaTestes,
+  }) async {
+    return cachedRoleOverride ?? UserRole.paciente;
   }
 
   // Simula a resolução do papel no banco Firestore

@@ -323,6 +323,16 @@ class _FakeAuthService implements AuthService {
   Future<UserRole> resolveUserRole(String uid, {bool forceRefresh = false}) async {
     return currentRole ?? UserRole.paciente;
   }
+
+  @override
+  Future<UserRole> loginPacienteComCodigo({
+    required String documento,
+    required String codigoAcesso,
+    String? ipOrigem,
+    List<PacienteModel>? pacientesParaTestes,
+  }) async {
+    return currentRole ?? UserRole.paciente;
+  }
 }
 
 // Contexto Fake para invocação do builder de rota em testes de unidade puros
