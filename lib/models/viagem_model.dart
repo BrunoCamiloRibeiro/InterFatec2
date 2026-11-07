@@ -259,6 +259,24 @@ class ViagemModel {
   // --------------------------------------------------------------------------
   final List<String> passageirosIds;
 
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: sessaoId
+  // - O que é: Identificador da sessão de veículo do motorista vinculada a esta viagem (Issue #65).
+  // --------------------------------------------------------------------------
+  final String? sessaoId;
+
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: codigosAcesso
+  // - O que é: Dicionário associando pacienteId -> código numérico de 4 a 5 dígitos (Issue #65).
+  // --------------------------------------------------------------------------
+  final Map<String, String> codigosAcesso;
+
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: codigosHash
+  // - O que é: Dicionário associando pacienteId -> hash criptográfico do código (Issue #65).
+  // --------------------------------------------------------------------------
+  final Map<String, String> codigosHash;
+
   // Linha em branco separadora entre atributos e construtor principal
   // ----------------------------------------------------------------------------
   // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
@@ -299,6 +317,12 @@ class ViagemModel {
     this.observacoes,
     // Parâmetro opcional: Lista de IDs dos passageiros agendados, padrão lista vazia
     this.passageirosIds = const [],
+    // Parâmetro opcional: Identificador da sessão de veículo
+    this.sessaoId,
+    // Parâmetro opcional: Códigos de acesso para exibição ao motorista
+    this.codigosAcesso = const {},
+    // Parâmetro opcional: Hashes dos códigos de acesso para autenticação
+    this.codigosHash = const {},
   // Fecha a lista de parâmetros formais nomeados do construtor
   });
 
@@ -346,6 +370,12 @@ class ViagemModel {
       'observacoes': observacoes,
       // Mapeia a lista de passageiros para a chave 'passageirosIds'
       'passageirosIds': passageirosIds,
+      // Mapeia o ID da sessão de veículo para a chave 'sessaoId'
+      'sessaoId': sessaoId,
+      // Mapeia o mapa de códigos de acesso para a chave 'codigosAcesso'
+      'codigosAcesso': codigosAcesso,
+      // Mapeia o mapa de hashes dos códigos para a chave 'codigosHash'
+      'codigosHash': codigosHash,
     // Fecha o dicionário de pares chave/valor
     };
   // Fecha o bloco de instruções do método toMap
@@ -417,6 +447,24 @@ class ViagemModel {
           ? List<String>.from(map['passageirosIds'])
           // Fallback para lista vazia constante
           : const [],
+      // Mapeia sessaoId se presente
+      sessaoId: map['sessaoId']?.toString(),
+      // Mapeia codigosAcesso com conversão segura
+      codigosAcesso: (map['codigosAcesso'] is Map)
+          ? Map<String, String>.from(
+              (map['codigosAcesso'] as Map).map(
+                (k, v) => MapEntry(k.toString(), v.toString()),
+              ),
+            )
+          : const {},
+      // Mapeia codigosHash com conversão segura
+      codigosHash: (map['codigosHash'] is Map)
+          ? Map<String, String>.from(
+              (map['codigosHash'] as Map).map(
+                (k, v) => MapEntry(k.toString(), v.toString()),
+              ),
+            )
+          : const {},
     // Fecha a lista de argumentos passados ao construtor ViagemModel
     );
   // Fecha o bloco de instruções do construtor factory fromMap
@@ -462,6 +510,14 @@ class ViagemModel {
     String? observacoes,
     // Nova lista de passageiros opcional
     List<String>? passageirosIds,
+    // Novo identificador de sessão opcional
+    String? sessaoId,
+    // Flag opcional para desvincular sessão (ex: rollback de migração)
+    bool removerSessaoId = false,
+    // Novos códigos de acesso opcionais
+    Map<String, String>? codigosAcesso,
+    // Novos hashes de códigos de acesso opcionais
+    Map<String, String>? codigosHash,
   // Fecha a lista de parâmetros formais nomeados do copyWith
   }) {
     // ------------------------------------------------------------------------
@@ -498,6 +554,12 @@ class ViagemModel {
       observacoes: observacoes ?? this.observacoes,
       // Preserva a lista de passageiros se não for informada uma nova
       passageirosIds: passageirosIds ?? this.passageirosIds,
+      // Preserva a sessão se não for informada uma nova (ou remove se explicitado)
+      sessaoId: removerSessaoId ? null : (sessaoId ?? this.sessaoId),
+      // Preserva os códigos de acesso se não forem informados novos
+      codigosAcesso: codigosAcesso ?? this.codigosAcesso,
+      // Preserva os hashes dos códigos se não forem informados novos
+      codigosHash: codigosHash ?? this.codigosHash,
     // Fecha a chamada do construtor ViagemModel
     );
   // Fecha o bloco de instruções do método copyWith

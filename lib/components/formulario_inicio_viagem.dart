@@ -45,6 +45,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 // Linha em branco separadora entre pacotes do framework e modelos internos
+// Importa o modelo de dados de sessão de veículo (Issue #65)
+import '../models/sessao_veiculo_model.dart';
 // Importa o modelo de dados de veículos
 import '../models/veiculo_model.dart';
 // Importa o modelo de dados de viagens
@@ -63,6 +65,8 @@ class FormularioInicioViagem extends StatefulWidget {
   // Callback executado ao iniciar a viagem com sucesso
   // Callback notificado quando a viagem é criada com sucesso
   final ValueChanged<ViagemModel>? onViagemIniciada;
+  // Callback executado ao declarar o veículo com sucesso (Issue #65)
+  final ValueChanged<SessaoVeiculoModel>? onVeiculoDeclarado;
 
   // Linha em branco separadora entre atributos
   // Comentário original do autor mantido byte a byte:
@@ -102,6 +106,8 @@ class FormularioInicioViagem extends StatefulWidget {
     super.key,
     // Callback de viagem iniciada
     this.onViagemIniciada,
+    // Callback de veículo declarado (Issue #65)
+    this.onVeiculoDeclarado,
     // Stream de veículos injetável
     this.veiculosStreamOverride,
     // ID do motorista com valor padrão
@@ -305,7 +311,35 @@ class _FormularioInicioViagemState extends State<FormularioInicioViagem> {
     // Linha em branco separadora entre loading e chamada assíncrona
     // Bloco de tentativa para disparar a viagem no serviço
     try {
-      // Comentário original do autor mantido byte a byte:
+      // 1. Declaração do Veículo (Issue #65: Novo Fluxo)
+      // O condutor escolhe o veículo da frota e atesta o odômetro inicial,
+      // registrando a Sessão de Veículo de trabalho.
+      final declaracao = await _viagemService.declararVeiculo(
+        veiculo: _veiculoSelecionado!,
+        kmInicial: kmDigitada,
+        motoristaId: widget.motoristaId,
+        motoristaNome: widget.motoristaNome,
+      );
+
+      // Aborta caso o widget tenha sido desmontado durante a requisição
+      if (!mounted) return;
+
+      if (!declaracao.sucesso) {
+        setState(() {
+          _salvando = false;
+          _erroGeral = declaracao.mensagemErro ?? 'Erro ao declarar veículo.';
+          _veiculoSelecionado = null;
+          _kmController.clear();
+        });
+        return;
+      }
+
+      // Notifica o callback de veículo declarado se fornecido
+      if (widget.onVeiculoDeclarado != null && declaracao.sessao != null) {
+        widget.onVeiculoDeclarado!(declaracao.sessao!);
+      }
+
+      // 2. Comentário original do autor mantido byte a byte:
       // Envia a solicitação de início de viagem para o serviço de viagens
       // Invoca o serviço de viagens para iniciar a rota e persistir no Firestore
       final resultado = await _viagemService.iniciarViagem(
