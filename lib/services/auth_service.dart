@@ -730,9 +730,9 @@ class FirebaseAuthService implements AuthService {
     }
 
     // Fallback remoto no Firestore para viagens com status 'ativa'
-    if (viagensAtivas.isEmpty && customFirestore != null) {
+    if (viagensAtivas.isEmpty) {
       try {
-        final querySnap = await customFirestore!
+        final querySnap = await firestore
             .collection('viagens')
             .where('status', isEqualTo: 'ativa')
             .get();
@@ -746,9 +746,9 @@ class FirebaseAuthService implements AuthService {
     List<PacienteModel> pacientesDisponiveis = [];
     if (pacientesParaTestes != null && pacientesParaTestes.isNotEmpty) {
       pacientesDisponiveis = pacientesParaTestes;
-    } else if (customFirestore != null) {
+    } else {
       try {
-        final snap = await customFirestore!
+        final snap = await firestore
             .collection('usuarios')
             .where('role', isEqualTo: 'paciente')
             .get();
