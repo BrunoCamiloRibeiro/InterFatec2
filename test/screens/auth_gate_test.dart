@@ -242,7 +242,7 @@ void main() {
 
         expect(find.byType(AdminPlaceholderScreen), findsOneWidget);
         expect(
-          find.text('Módulo Administrativo em Construção'),
+          find.text('Gerenciador de Horários'),
           findsOneWidget,
         );
         expect(find.byKey(const Key('botaoLogoutAdmin')), findsOneWidget);
@@ -557,7 +557,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.byKey(const Key('botaoLogoutAdminCorpo')));
+        await tester.tap(find.byKey(const Key('botaoLogoutAdmin')));
         await tester.pumpAndSettle();
 
         expect(fakeAuth.logoutCalls, equals(1));

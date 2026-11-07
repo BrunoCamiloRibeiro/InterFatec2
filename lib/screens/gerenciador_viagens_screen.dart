@@ -34,6 +34,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 
+import '../Outdated/administrativo.dart';
 import '../lista_pessoas.dart';
 import '../models/motorista_model.dart';
 import '../models/paciente_model.dart';
@@ -323,6 +324,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
+      drawer: _construirMenuLateral(context),
       appBar: AppBar(
         backgroundColor: const Color(0xFF0F172A),
         foregroundColor: Colors.white,
@@ -352,7 +354,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
             },
           ),
           IconButton(
-            key: const Key('botaoLogoutAdminAppBar'),
+            key: const Key('botaoLogoutAdmin'),
             icon: const Icon(Icons.logout),
             tooltip: 'Encerrar Sessão',
             onPressed: () async {
@@ -1810,5 +1812,166 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
         );
       }
     }
+  }
+
+  /// Menu lateral deslizante (Drawer) contendo todos os módulos administrativos
+  Widget _construirMenuLateral(BuildContext context) {
+    return Drawer(
+      key: const Key('menuLateralAdmin'),
+      child: Column(
+        children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(20, 50, 20, 20),
+            color: const Color(0xFF0F172A),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                CircleAvatar(
+                  radius: 30,
+                  backgroundColor: const Color(0xFF0284C7).withOpacity(0.25),
+                  child: const Icon(
+                    Icons.admin_panel_settings,
+                    size: 34,
+                    color: Color(0xFF38BDF8),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                const Text(
+                  'TransSaúde Municipal',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0284C7),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Text(
+                    'PAINEL DO ADMINISTRADOR',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              children: [
+                ListTile(
+                  key: const Key('menuItemHorarios'),
+                  leading: const Icon(Icons.schedule, color: Color(0xFF0284C7)),
+                  title: const Text(
+                    'Gerenciador de Horários',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF0284C7),
+                    ),
+                  ),
+                  subtitle: const Text('Escala e grade diária de viagens'),
+                  selected: true,
+                  selectedTileColor: const Color(0xFF0284C7).withOpacity(0.08),
+                  onTap: () {
+                    Navigator.of(context).pop();
+                  },
+                ),
+                ListTile(
+                  key: const Key('menuItemGestaoPessoas'),
+                  leading: const Icon(Icons.people_alt_outlined, color: Color(0xFF334155)),
+                  title: const Text(
+                    'Gestão de Pessoas (CRUD)',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: const Text('Pacientes, Motoristas e Admins'),
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const ListaPessoas()),
+                    );
+                  },
+                ),
+                ListTile(
+                  key: const Key('menuItemGestaoVeiculos'),
+                  leading: const Icon(Icons.directions_car_outlined, color: Color(0xFF334155)),
+                  title: const Text(
+                    'Gestão de Veículos (Frota)',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: const Text('Controle da frota municipal'),
+                  trailing: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEF3C7),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Text(
+                      'PR #33',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Color(0xFF92400E),
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Módulo de Frota em homologação (Pull Request #33 da Audrey).'),
+                        duration: Duration(seconds: 3),
+                      ),
+                    );
+                  },
+                ),
+                const Divider(),
+                ListTile(
+                  key: const Key('menuItemAdminLegado'),
+                  leading: const Icon(Icons.history_edu, color: Color(0xFF64748B)),
+                  title: const Text('Protótipo Legado (Figma)'),
+                  subtitle: const Text('Tela original do cadastro rápido'),
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => Administrativo()),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          ListTile(
+            key: const Key('botaoLogoutAdminCorpo'),
+            leading: const Icon(Icons.logout, color: Color(0xFFDC2626)),
+            title: const Text(
+              'Encerrar Sessão',
+              style: TextStyle(
+                color: Color(0xFFDC2626),
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            onTap: () async {
+              Navigator.of(context).pop();
+              await _authService.logout();
+              if (context.mounted) {
+                Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+              }
+            },
+          ),
+          const SizedBox(height: 12),
+        ],
+      ),
+    );
   }
 }

@@ -167,5 +167,37 @@ void main() {
 
       expect(tester.takeException(), isNull);
     });
+
+    testWidgets('4. Abre menu lateral (Drawer) e acessa itens de navegação', (tester) async {
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final fakeAuth = _FakeAuthService();
+      await tester.pumpWidget(criarWidgetTest(service: viagemService, auth: fakeAuth));
+      await tester.pumpAndSettle();
+
+      // Abre o Drawer através do ScaffoldState
+      final scaffoldState = tester.firstState<ScaffoldState>(find.byType(Scaffold));
+      scaffoldState.openDrawer();
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('menuLateralAdmin')), findsOneWidget);
+      expect(find.text('TransSaúde Municipal'), findsOneWidget);
+      expect(find.text('PAINEL DO ADMINISTRADOR'), findsOneWidget);
+      expect(find.byKey(const Key('menuItemHorarios')), findsOneWidget);
+      expect(find.byKey(const Key('menuItemGestaoPessoas')), findsOneWidget);
+      expect(find.byKey(const Key('menuItemGestaoVeiculos')), findsOneWidget);
+      expect(find.byKey(const Key('botaoLogoutAdminCorpo')), findsOneWidget);
+
+      // Clica em Gestão de Pessoas
+      await tester.tap(find.byKey(const Key('menuItemGestaoPessoas')));
+      await tester.pumpAndSettle();
+
+      // Verifica que navegou para a tela de Gestão de Pessoas
+      expect(find.text('Gestão de Pessoas'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
   });
 }
