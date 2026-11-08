@@ -379,3 +379,53 @@ Branch de trabalho: `17-formulário-de-viagem`
 - **Estado:** Aberta (`open`)
 - **Mesclabilidade:** Sem conflitos (`Mergeable: True`)
 - **Conteúdo:** Título padronizado, descrição detalhada das 4 camadas, tabela de prints dos estados visuais, provas dos 21 testes automatizados e checklist de exclusão da branch após merge conforme `CONTRIBUTING.md`.
+
+
+---
+
+## 10. Implementação da Geração de Relatório PDF - Roteiro de Viagem TFD (Issue #16 / US03)
+
+### 10.1 Escopo e Objetivo
+- Implementação da geração do documento PDF oficial "Roteiro da Viagem - Ficha de Atendimento TFD" da Unidade Básica de Saúde de Poloni na branch `16-gerar-o-pdf`.
+- Layout construído com fidelidade milimétrica em relação ao modelo real escaneado da UBS (`CamScanner_11-10-2026_21.52.pdf`), respeitando dimensões ISO A4 (595.28 x 841.89 pt = 210 x 297 mm), fontes TrueType embarcadas (`LiberationSans-Regular.ttf` e `LiberationSans-Bold.ttf`), grid posicionado com `pw.Stack` e quebra de página dinâmica por cálculo de capacidade vertical útil.
+- Acionamento integrado no encerramento da viagem (`FormularioEncerramento` / `FooterPacientes` / `Motorista`) via `Printing.layoutPdf`.
+
+### 10.2 Arquivos Adicionados e Modificados
+1. **`lib/services/relatorio_pdf_service.dart`**:
+   - Serviço central de geração do PDF com comentários detalhados e linha a linha de cada função, parâmetro e bloco de layout.
+   - Constantes milimétricas medidas: margens (42.0 pt / 14.8 mm), altura de bloco de paciente (50.7 pt / 17.9 mm), cabeçalho P1 (124.0 pt) vs continuação (105.0 pt), rodapé de emissão (35.0 pt) e bloco de resumo (95.0 pt).
+   - Paginação dinâmica (`_calcularPaginacao`): deriva matematicamente a quantidade de pacientes por folha com base no espaço disponível e na presença do bloco de resumo, suportando 0, 1, 11, 12, 22 ou N pacientes sem sobreposição de textos.
+   - Regras de layout:
+     - Cabeçalho institucional repetido em todas as páginas para rastreabilidade de vias soltas.
+     - Subtítulo "Relação de Passageiros" e carimbo "Emitido em DD/MM/AAAA HH:mm:ss" restritos à Página 1.
+     - Bloco "Resumo" (Total de Pacientes, Total de Acompanhantes, Total Geral, Retorno, Km Saída, Km Retorno, Km Rodado e Assinatura do Motorista) restrito à última página.
+     - Regra aritmética do Total Geral: `pacientes.length + acompanhantes.length`.
+     - Tratamento de textos longos com `maxLines: 1` e `TextOverflow.clip`.
+2. **`lib/components/formulario_encerramento.dart`**:
+   - Atualizado para `StatefulWidget` com controladores (`_retornoController`, `_kmRetornoController`, `_kmRodadoController`).
+   - Disparo assíncrono de `Printing.layoutPdf` chamando `RelatorioPdfService.gerarRoteiroViagemPdf`.
+3. **`lib/components/footer_pacientes.dart` e `lib/motorista.dart`**:
+   - Encaminhamento dos dados da viagem ativa (`_viagemAtiva`) e passageiros (`pacientes`) para o formulário de encerramento.
+4. **`pubspec.yaml` e `assets/fonts/`**:
+   - Registro e inclusão dos binários das fontes `LiberationSans-Regular.ttf` e `LiberationSans-Bold.ttf`.
+5. **`docs/especificacao_roteiro_viagem_pdf.md`**:
+   - Tabela de especificação milimétrica contendo coordenadas (x, y, largura, fonte, tamanho, peso, cor, alinhamento) de cada elemento do documento.
+6. **`test/relatorio_pdf_test.dart`**:
+   - Suíte com 7 testes automatizados cobrindo todos os cenários mandatórios: 0 pacientes (resumo zerado em 1 página), 1 paciente, 11 pacientes (página 1 cheia com resumo na página 2), 12 pacientes, 22 pacientes (continuação), destino longo sem sobreposição, e teste golden via `pdftotext -layout` validando integridade estrutural e de dados (100% fictícios).
+7. **`docs/prints/`**:
+   - Capturas do funcionamento e testes:
+     - `pdf_gerado_pagina_1.png` e `pdf_gerado_pagina_2.png`: Renderizações em 150 DPI do PDF gerado.
+     - `pdf_gerado_painel_completo.png`: Painel comparativo das páginas geradas.
+     - `overlay_page1.png` e `overlay_page2.png`: Sobreposição semitransparente (50/50) com o modelo escaneado.
+     - `diff_page1.png` e `diff_page2.png`: Mapa de diferenças visuais absolutas (ImageMagick RMSE).
+     - `teste_relatorio_pdf_execucao.png`: Registro visual da execução e aprovação dos testes no terminal.
+
+### 10.3 Métricas de Fidelidade Visual e Qualidade
+- **SSIM Mascarado (scikit-image):**
+  - Página 1: `0.8317` (fidelidade estrutural e tipográfica confirmada)
+  - Página 2: `0.9005`
+- **RMSE Diferença Visual (ImageMagick):**
+  - Página 1: `0.1833`
+  - Página 2: `0.1603`
+- **Análise Estática (`flutter analyze`):** `No issues found!` (0 erros, 0 warnings).
+- **Testes Automatizados (`flutter test`):** 28 de 28 testes aprovados com sucesso.

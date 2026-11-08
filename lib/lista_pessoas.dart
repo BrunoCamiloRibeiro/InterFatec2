@@ -1,3 +1,55 @@
+// ============================================================================
+// ARQUIVO: lib/lista_pessoas.dart
+// ----------------------------------------------------------------------------
+// O QUE FAZ:
+// Implementa a tela completa de Gestão de Pessoas do sistema TransSaúde
+// (StatefulWidget "ListaPessoas") e o ViewModel polimórfico "PessoaItem"
+// (criados na Issue #34). Centraliza a listagem unificada, filtragem por abas
+// de perfis (Todos, Pacientes, Motoristas, Administradores com contadores em
+// tempo real), busca reativa por Nome ou CPF, e fluxo de exclusão lógica
+// (inativação no Firestore com 'ativo = false') com confirmação dialógica para
+// conformidade com normas de governança, LGPD e auditoria pública.
+//
+// PAPEL NA ARQUITETURA (CAMADA):
+// Camada de Apresentação / View e ViewModel de Interface (lib/lista_pessoas.dart).
+//
+// ONDE É USADO (REFERÊNCIAS NO REPOSITÓRIO):
+// - lib/main.dart: registrado como rota nomeada '/pessoas' no MaterialApp.
+// - test/lista_pessoas_test.dart: suíte completa de testes de widget e integração.
+//
+// DE ONDE RECEBE DADOS:
+// - Cloud Firestore: coleção "usuarios" (escuta snapshots em tempo real de todos os perfis).
+// - Modelos consumidos e normalizados:
+//   - lib/models/paciente_model.dart (PacienteModel)
+//   - lib/models/motorista_model.dart (MotoristaModel)
+//   - lib/models/admin_model.dart (AdminModel)
+// - Componente de exibição reutilizado:
+//   - lib/components/card_identificacao_paciente.dart (CardIdentificacaoPaciente)
+// - Parâmetros opcionais via construtor para testes:
+//   - mockPacientes, mockMotoristas, mockAdmins, streamOverride.
+//
+// O QUE EXPORTA / EXPÕE:
+// - class PessoaItem: ViewModel polimórfico de representação unificada na UI.
+// - class ListaPessoas extends StatefulWidget: Tela interativa de gestão de pessoas.
+// - class _ListaPessoasState: Estado e controladores da tela.
+//
+// ORIGEM HISTÓRICA:
+// Criado pela equipe de desenvolvimento no escopo da Issue #34 (commit 472aa0a).
+//
+// DEPENDÊNCIAS EXTERNAS E EFEITOS COLATERAIS:
+// - dart:async: StreamSubscription para assinatura reativa.
+// - package:cloud_firestore: leitura contínua e atualização remota (update 'ativo': false).
+// - package:firebase_core: checagem de inicialização da infraestrutura Firebase.
+// - package:flutter/material.dart: componentes de UI Material Design.
+// - Efeitos colaterais: atualiza documentos no Firestore marcando 'ativo: false'
+//   e mantém conexão de stream de rede ativa.
+//
+// INCONSISTÊNCIAS / OBSERVAÇÕES TÉCNICAS:
+// - O FloatingActionButton ('Novo') possui callback vazio com TODO indicando
+//   que a navegação para o formulário de cadastro de pessoas será criada futuramente.
+// - O callback onEditar do CardIdentificacaoPaciente está atualmente vazio (() {}).
+// ============================================================================
+// Importa utilitários assíncronos fundamentais do Dart como StreamSubscription
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -775,9 +827,12 @@ class _ListaPessoasState extends State<ListaPessoas> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // Fundo branco padronizado com o tema de motorista.dart e paciente.dart
-      backgroundColor: Colors.white,
+      // Fundo padronizado com o tema do sistema
+      backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
+        backgroundColor: const Color(0xFF0F172A),
+        foregroundColor: Colors.white,
+        elevation: 2,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () {

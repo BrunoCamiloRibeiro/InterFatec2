@@ -1,3 +1,39 @@
+// ============================================================================
+// ARQUIVO: test/lista_pessoas_test.dart
+// ----------------------------------------------------------------------------
+// O QUE FAZ:
+// Suíte de testes de widgets e comportamento para a tela de Gestão de Pessoas
+// (lib/lista_pessoas.dart - Issue #34). Testa:
+// - Renderização inicial da tela com dados padrão sem colisão de chaves.
+// - Exibição de cabeçalho, barra de busca e abas horizontais com contadores.
+// - Filtragem pelas abas "Todos", "Pacientes", "Motoristas" e "Administradores".
+// - Pesquisa reativa textual por Nome e por CPF.
+// - Exibição do estado vazio com mensagem amigável quando nenhum registro combina.
+// - Disparo do diálogo modal de inativação (exclusão lógica) com justificativa
+//   de governança e atualização imediata da lista visual em memória.
+//
+// PAPEL NA ARQUITETURA (CAMADA):
+// Camada de Testes Automatizados de Interface / Widgets (test/).
+//
+// ONDE É USADO:
+// Executado pelo executor oficial de testes do Flutter (`flutter test`).
+//
+// DE ONDE RECEBE DADOS:
+// - Mocks de PacienteModel, MotoristaModel e AdminModel criados no arquivo de teste.
+//
+// O QUE EXPORTA / EXPÕE:
+// - void main(): Ponto de entrada da suíte de testes.
+//
+// ORIGEM HISTÓRICA:
+// Criado no commit 472aa0a (feat: criar tela de gestao de pessoas com busca
+// e filtros por perfil - Issue #34).
+//
+// DEPENDÊNCIAS EXTERNAS E EFEITOS COLATERAIS:
+// - package:flutter/material.dart
+// - package:flutter_test/flutter_test.dart
+// - Sem efeitos colaterais externos.
+// ============================================================================
+// Importa a biblioteca de componentes visuais Material Design do Flutter
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:trans_saude/lista_pessoas.dart';
