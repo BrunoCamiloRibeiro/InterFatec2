@@ -62,6 +62,8 @@ import 'package:flutter/material.dart';
 import 'package:trans_saude/models/motorista_model.dart';
 // Importa o modelo de dados que representa um paciente no sistema
 import 'package:trans_saude/models/paciente_model.dart';
+// Importa o modelo de dados que representa um veículo da frota no sistema
+import 'package:trans_saude/models/veiculo_model.dart';
 // Importa o modelo de dados que encapsula as informações de uma viagem
 import 'package:trans_saude/models/viagem_model.dart';
 // Importa o serviço responsável pela gestão de viagens e seus fluxos
@@ -130,6 +132,20 @@ class _MotoristaState extends State<Motorista> {
   // Inscrição para escutar a lista com todas as N viagens ativas (Issue #65)
   StreamSubscription<List<ViagemModel>>? _subViagensAtivas;
 
+  // Inscrições para escutar a frota de veículos e viagens diretamente do Firestore
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _subVeiculosFirestore;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _subViagensFirestore;
+
+  // Cache local da frota de veículos carregada do Firebase para resolução de capacidade
+  List<VeiculoModel> _veiculosFrota = [];
+
+  // Capacidade e placa de fallback lidas do documento do motorista na coleção 'usuarios'
+  int _capacidadeMotoristaDoc = 0;
+  String _placaMotoristaDoc = '';
+
+  // Controle para evitar disparos simultâneos de geração de códigos na mesma viagem
+  final Set<String> _pacientesGerandoCodigo = {};
+
   // Lista com as N viagens ativas sob a sessão do motorista (Issue #65)
   List<ViagemModel> _viagensAtivas = [];
 
@@ -188,6 +204,8 @@ class _MotoristaState extends State<Motorista> {
     if (_viagemAtiva == null && _viagemService.viagemAtiva != null) {
       _viagemAtiva = _viagemService.viagemAtiva;
     }
+    _veiculosFrota = List<VeiculoModel>.from(_viagemService.todosVeiculos);
+    _capacidadeVeiculo = _resolverCapacidadeVeiculo();
     _atualizarTransmissaoGpsMotorista();
 
     // Assina a stream de atualização da viagem ativa
@@ -199,6 +217,7 @@ class _MotoristaState extends State<Motorista> {
         setState(() {
           // Atualiza a viagem ativa com o novo objeto emitido pela stream
           _viagemAtiva = viagem;
+          _capacidadeVeiculo = _resolverCapacidadeVeiculo();
         // Fechamento da função de callback de setState
         });
         _atualizarTransmissaoGpsMotorista();
@@ -220,6 +239,7 @@ class _MotoristaState extends State<Motorista> {
           } else {
             _viagemAtiva = null;
           }
+          _capacidadeVeiculo = _resolverCapacidadeVeiculo();
         });
         _atualizarTransmissaoGpsMotorista();
       }
@@ -228,8 +248,9 @@ class _MotoristaState extends State<Motorista> {
     // Inicia a escuta dos dados do motorista caso o Firebase esteja disponível
     // Inicia o stream Firestore para carregar a capacidade do veículo se o Firebase estiver ativo
     if (_isFirebaseDisponivel()) {
-      // Dispara a consulta contínua aos dados do motorista no Firestore
+      // Dispara a consulta contínua aos dados do motorista e da frota no Firestore
       _ouvirDadosMotorista();
+      _ouvirVeiculosEViagensFirestore();
     // Fechamento da condicional de verificação do Firebase
     }
   // Fechamento do método initState
@@ -250,6 +271,7 @@ class _MotoristaState extends State<Motorista> {
       if (args is ViagemModel) {
         // Atribui a viagem recebida via rota à variável de estado
         _viagemAtiva = args;
+        _capacidadeVeiculo = _resolverCapacidadeVeiculo();
       // Fechamento do if de verificação de tipo de argumento
       }
     // Fechamento da verificação se _viagemAtiva é nula
@@ -282,12 +304,183 @@ class _MotoristaState extends State<Motorista> {
   // Método de liberação de recursos, cancelamento de assinaturas e timers
   void dispose() {
     LocalizacaoMotoristaService().pararTransmissaoGpsMotorista();
-    // Cancela as inscrições nas streams de viagem ativa e N viagens
+    // Cancela as inscrições nas streams de viagem ativa, N viagens e Firestore
     _subViagemAtiva?.cancel();
     _subViagensAtivas?.cancel();
+    _subVeiculosFirestore?.cancel();
+    _subViagensFirestore?.cancel();
     // Invoca o descarte da classe pai
     super.dispose();
   // Fechamento do método dispose
+  }
+
+  // Normaliza placa removendo hífen/espaços para comparação consistente
+  String _normalizarPlaca(String placa) {
+    return placa.replaceAll(RegExp(r'[^A-Za-z0-9]'), '').toUpperCase();
+  }
+
+  // Resolve a capacidade total de lugares puxando prioritariamente do veículo na coleção 'veiculos' do Firebase
+  int _resolverCapacidadeVeiculo() {
+    final listaVeiculos = _veiculosFrota.isNotEmpty
+        ? _veiculosFrota
+        : _viagemService.todosVeiculos;
+
+    // 1. Busca pelo veículo vinculado à viagem ativa (por ID ou por placa)
+    if (_viagemAtiva != null && listaVeiculos.isNotEmpty) {
+      final vid = _viagemAtiva!.veiculoId.trim();
+      final vplaca = _normalizarPlaca(_viagemAtiva!.veiculoPlaca);
+      for (final v in listaVeiculos) {
+        if ((vid.isNotEmpty && v.id == vid) ||
+            (vplaca.isNotEmpty && _normalizarPlaca(v.placa) == vplaca)) {
+          if (v.capacidade > 0) return v.capacidade;
+        }
+      }
+    }
+
+    // 2. Busca pelo veículo atualmente em uso pelo motorista autenticado
+    final uidAtual = _motoristaId ?? FirebaseAuthService().currentUserId;
+    if (uidAtual != null && uidAtual.isNotEmpty && listaVeiculos.isNotEmpty) {
+      for (final v in listaVeiculos) {
+        if (v.motoristaAtualId == uidAtual && v.capacidade > 0) {
+          return v.capacidade;
+        }
+      }
+    }
+
+    // 3. Busca pela placa associada ao cadastro do motorista na coleção 'usuarios'
+    if (_placaMotoristaDoc.isNotEmpty && listaVeiculos.isNotEmpty) {
+      final placaDoc = _normalizarPlaca(_placaMotoristaDoc);
+      for (final v in listaVeiculos) {
+        if (_normalizarPlaca(v.placa) == placaDoc && v.capacidade > 0) {
+          return v.capacidade;
+        }
+      }
+    }
+
+    // 4. Fallback para o campo capacidadeVeiculo do documento do motorista, ou primeiro veículo ativo da frota
+    if (_capacidadeMotoristaDoc > 0) {
+      return _capacidadeMotoristaDoc;
+    }
+    if (listaVeiculos.isNotEmpty) {
+      final emUso = listaVeiculos.where((v) => v.emUso && v.capacidade > 0).firstOrNull;
+      if (emUso != null) return emUso.capacidade;
+      if (listaVeiculos.first.capacidade > 0) return listaVeiculos.first.capacidade;
+    }
+    return 7;
+  }
+
+  // Escuta em tempo real as coleções 'veiculos' e 'viagens' do Firestore
+  void _ouvirVeiculosEViagensFirestore() {
+    _subVeiculosFirestore = FirebaseFirestore.instance
+        .collection('veiculos')
+        .snapshots()
+        .listen((snapshot) {
+          if (!mounted) return;
+          final frota = snapshot.docs
+              .map((d) => VeiculoModel.fromMap(d.data(), docId: d.id))
+              .toList();
+          setState(() {
+            _veiculosFrota = frota;
+            _capacidadeVeiculo = _resolverCapacidadeVeiculo();
+          });
+        });
+
+    _subViagensFirestore = FirebaseFirestore.instance
+        .collection('viagens')
+        .snapshots()
+        .listen((snapshot) {
+          if (!mounted || snapshot.docs.isEmpty) return;
+          final todas = snapshot.docs
+              .map((d) => ViagemModel.fromMap(d.data(), docId: d.id))
+              .toList();
+
+          // Localiza horários agendados pelo administrador ou viagens ativas deste motorista no Firestore
+          final uid = _motoristaId ?? FirebaseAuthService().currentUserId;
+          final candidatasMotorista = todas.where((v) {
+            if (v.isCancelada || v.isConcluida) return false;
+            if (!v.isAtiva && !v.isPlanejada) return false;
+            if (uid != null &&
+                uid.isNotEmpty &&
+                uid != 'motorista_atual' &&
+                v.motoristaId == uid) {
+              return true;
+            }
+            if (_viagemAtiva != null &&
+                _viagemAtiva!.veiculoId.isNotEmpty &&
+                v.veiculoId == _viagemAtiva!.veiculoId &&
+                (v.passageiros.isNotEmpty || v.id.startsWith('horario_'))) {
+              return true;
+            }
+            return false;
+          }).toList()
+            ..sort((a, b) {
+              final aTemPass = a.passageiros.isNotEmpty ? 1 : 0;
+              final bTemPass = b.passageiros.isNotEmpty ? 1 : 0;
+              if (aTemPass != bTemPass) return bTemPass.compareTo(aTemPass);
+              return b.dataHoraInicio.compareTo(a.dataHoraInicio);
+            });
+
+          // Se houver horário agendado com passageiros para o motorista e a viagem atual estiver vazia/ausente, prioriza o horário agendado
+          if (candidatasMotorista.isNotEmpty &&
+              (_viagemAtiva == null ||
+                  (_viagemAtiva!.passageiros.isEmpty &&
+                      candidatasMotorista.first.passageiros.isNotEmpty))) {
+            final escolhida = candidatasMotorista.first.copyWith(status: 'ativa');
+            setState(() {
+              _viagensAtivas = candidatasMotorista
+                  .map((c) => c.id == escolhida.id ? escolhida : c)
+                  .toList();
+              _viagemAtiva = escolhida;
+              _capacidadeVeiculo = _resolverCapacidadeVeiculo();
+            });
+            _atualizarTransmissaoGpsMotorista();
+            return;
+          }
+
+          // Se já houver uma viagem ativa selecionada, sincroniza seus códigos e passageiros em tempo real
+          if (_viagemAtiva != null) {
+            final atualizada = todas.where((v) => v.id == _viagemAtiva!.id).firstOrNull;
+            if (atualizada != null && !atualizada.isCancelada && !atualizada.isConcluida) {
+              setState(() {
+                _viagemAtiva = atualizada;
+                _capacidadeVeiculo = _resolverCapacidadeVeiculo();
+              });
+              return;
+            }
+          }
+        });
+  }
+
+  // Garante que todos os pacientes listados na viagem ativa possuam código de acesso gerado e salvo no Firebase
+  void _garantirCodigosPacientesNaViagemAtiva(List<PacienteModel> pacientes) {
+    final viagem = _viagemAtiva;
+    if (viagem == null || viagem.id.isEmpty || pacientes.isEmpty) return;
+
+    for (final p in pacientes) {
+      if (p.id.isEmpty) continue;
+      final codigoExistente = viagem.codigosAcesso[p.id]?.trim() ?? '';
+      final chaveControle = '${viagem.id}_${p.id}';
+      if (codigoExistente.isEmpty && !_pacientesGerandoCodigo.contains(chaveControle)) {
+        _pacientesGerandoCodigo.add(chaveControle);
+        Future.microtask(() async {
+          try {
+            final codigo = await _viagemService.gerarOuObterCodigoAcesso(
+              viagemId: viagem.id,
+              pacienteId: p.id,
+            );
+            if (mounted && _viagemAtiva != null && _viagemAtiva!.id == viagem.id) {
+              setState(() {
+                final novosCodigos = Map<String, String>.from(_viagemAtiva!.codigosAcesso);
+                novosCodigos[p.id] = codigo;
+                _viagemAtiva = _viagemAtiva!.copyWith(codigosAcesso: novosCodigos);
+              });
+            }
+          } finally {
+            _pacientesGerandoCodigo.remove(chaveControle);
+          }
+        });
+      }
+    }
   }
 
   // Consulta os dados do motorista na coleção 'usuarios' do Firestore
@@ -321,9 +514,11 @@ class _MotoristaState extends State<Motorista> {
             );
             // Atualiza o estado da interface com a capacidade do veículo obtida
             setState(() {
-              // Atribui a capacidade numérica de assentos do veículo
-              _capacidadeVeiculo = motorista.capacidadeVeiculo;
+              _capacidadeMotoristaDoc = motorista.capacidadeVeiculo;
+              _placaMotoristaDoc = motorista.veiculoPlaca;
               _motoristaId = motorista.id.isNotEmpty ? motorista.id : docSelecionado.id;
+              // Atribui a capacidade numérica de assentos do veículo resolvida da frota
+              _capacidadeVeiculo = _resolverCapacidadeVeiculo();
             // Fechamento da função de callback de setState
             });
           // Fechamento do bloco if
@@ -343,7 +538,80 @@ class _MotoristaState extends State<Motorista> {
     // Fechamento da condicional de stream injetada
     }
 
-    // Se a viagem ativa possuir passageiros cadastrados (ex: definidos pelo admin no Gerenciador)
+    // Se o serviço do Firebase estiver ativo e inicializado no app
+    if (_isFirebaseDisponivel()) {
+      // Realiza a consulta contínua na coleção 'usuarios' do Firestore
+      return FirebaseFirestore.instance
+          // Coleção onde os perfis estão armazenados
+          .collection('usuarios')
+          // Filtra apenas os usuários com papel de paciente
+          .where('role', isEqualTo: 'paciente')
+          // Ouve as emissões em tempo real de documentos
+          .snapshots()
+          // Mapeia o snapshot de documentos para uma lista tipada de PacienteModel
+          .map((snapshot) {
+            // Filtra documentos ativos e desconsidera registros excluídos logicamente (Issue #34)
+            final pacientesNoBanco = snapshot.docs.where((d) {
+              final dados = d.data();
+              final ativo = dados['ativo'];
+              final status = dados['status']?.toString().toLowerCase().trim();
+              final situacao = dados['situacao']?.toString().toLowerCase().trim();
+              return ativo != false &&
+                  ativo != 'false' &&
+                  status != 'inativo' &&
+                  situacao != 'inativo' &&
+                  status != 'excluido' &&
+                  situacao != 'excluido';
+            }).map((doc) {
+              return PacienteModel.fromMap(doc.data(), docId: doc.id);
+            }).toList();
+
+            // Se a viagem ativa possuir passageiros específicos do Horário, mescla com o estado em tempo real do banco
+            if (_viagemAtiva != null && _viagemAtiva!.passageiros.isNotEmpty) {
+              final mapaBanco = {for (final p in pacientesNoBanco) p.id: p};
+              return _viagemAtiva!.passageiros.map<PacienteModel>((pv) {
+                final pRemoto = mapaBanco[pv.pacienteId];
+                return PacienteModel(
+                  id: pv.pacienteId,
+                  nome: pv.pacienteNome.isNotEmpty ? pv.pacienteNome : (pRemoto?.nome ?? ''),
+                  cpf: (pv.pacienteCpf != null && pv.pacienteCpf!.isNotEmpty)
+                      ? pv.pacienteCpf!
+                      : (pRemoto?.cpf ?? ''),
+                  telefone: (pRemoto != null && pRemoto.telefone.isNotEmpty)
+                      ? pRemoto.telefone
+                      : (pv.acompanhanteTelefone ?? ''),
+                  enderecoPaciente: pv.localOrigem.isNotEmpty
+                      ? pv.localOrigem
+                      : (pRemoto?.enderecoPaciente ?? ''),
+                  localSaida: pv.localOrigem.isNotEmpty
+                      ? pv.localOrigem
+                      : (pRemoto?.localSaida ?? ''),
+                  localConsulta: pv.localDestino.isNotEmpty
+                      ? pv.localDestino
+                      : (pRemoto?.localConsulta ?? ''),
+                  nomeAcompanhante: (pv.acompanhanteNome != null && pv.acompanhanteNome!.isNotEmpty)
+                      ? pv.acompanhanteNome
+                      : pRemoto?.nomeAcompanhante,
+                  cpfAcompanhante: pRemoto?.cpfAcompanhante,
+                  telAcompanhante: (pv.acompanhanteTelefone != null && pv.acompanhanteTelefone!.isNotEmpty)
+                      ? pv.acompanhanteTelefone
+                      : pRemoto?.telAcompanhante,
+                  rg: pRemoto?.rg,
+                  cnh: pRemoto?.cnh,
+                  status: pRemoto?.status ?? pv.statusEmbarque,
+                  prontoRetorno: pRemoto?.prontoRetorno ?? false,
+                  janelaReversao: pRemoto?.janelaReversao,
+                );
+              }).toList();
+            }
+
+            return pacientesNoBanco;
+          // Fechamento do mapeamento
+          });
+    // Fechamento da condicional de verificação do Firebase
+    }
+
+    // Se a viagem ativa possuir passageiros cadastrados em ambiente sem Firebase (testes unitários)
     if (_viagemAtiva != null && _viagemAtiva!.passageiros.isNotEmpty) {
       return Stream.value(
         _viagemAtiva!.passageiros.map<PacienteModel>((pv) => PacienteModel(
@@ -359,39 +627,6 @@ class _MotoristaState extends State<Motorista> {
           status: pv.statusEmbarque,
         )).toList(),
       );
-    }
-
-    // Se o serviço do Firebase estiver ativo e inicializado no app
-    if (_isFirebaseDisponivel()) {
-      // Realiza a consulta contínua na coleção 'usuarios' do Firestore
-      return FirebaseFirestore.instance
-          // Coleção onde os perfis estão armazenados
-          .collection('usuarios')
-          // Filtra apenas os usuários com papel de paciente
-          .where('role', isEqualTo: 'paciente')
-          // Ouve as emissões em tempo real de documentos
-          .snapshots()
-          // Mapeia o snapshot de documentos para uma lista tipada de PacienteModel
-          .map((snapshot) {
-            // Filtra documentos ativos e desconsidera registros excluídos logicamente (Issue #34)
-            return snapshot.docs.where((d) {
-              final dados = d.data();
-              final ativo = dados['ativo'];
-              final status = dados['status']?.toString().toLowerCase().trim();
-              final situacao = dados['situacao']?.toString().toLowerCase().trim();
-              return ativo != false &&
-                  ativo != 'false' &&
-                  status != 'inativo' &&
-                  situacao != 'inativo' &&
-                  status != 'excluido' &&
-                  situacao != 'excluido';
-            }).map((doc) {
-              return PacienteModel.fromMap(doc.data(), docId: doc.id);
-            // Converte a sequência mapeada em uma lista do Dart
-            }).toList();
-          // Fechamento do mapeamento
-          });
-    // Fechamento da condicional de verificação do Firebase
     }
 
     // Retorna lista vazia quando o Firebase não está inicializado e não há streamOverride
@@ -446,6 +681,7 @@ class _MotoristaState extends State<Motorista> {
                 onViagemIniciada: (novaViagem) {
                   setState(() {
                     _viagemAtiva = novaViagem;
+                    _capacidadeVeiculo = _resolverCapacidadeVeiculo();
                   });
                 },
               ),
@@ -487,6 +723,8 @@ class _MotoristaState extends State<Motorista> {
 
         // Obtém os pacientes emitidos pela Stream ou uma lista vazia caso nulo
         final pacientes = snapshot.data ?? [];
+        // Garante emissão de códigos de acesso para todos os pacientes presentes na viagem ativa
+        _garantirCodigosPacientesNaViagemAtiva(pacientes);
         // Calcula os lugares ocupados (pacientes com status == 1 "Embarcou")
         // Variável acumuladora de assentos ocupados por pacientes e acompanhantes
         int preenchidos = 0;
@@ -628,6 +866,7 @@ class _MotoristaState extends State<Motorista> {
                           setState(() {
                             _indiceViagemAtual--;
                             _viagemAtiva = _viagensAtivas[_indiceViagemAtual];
+                            _capacidadeVeiculo = _resolverCapacidadeVeiculo();
                           });
                         }
                       : null,
@@ -638,6 +877,7 @@ class _MotoristaState extends State<Motorista> {
                           setState(() {
                             _indiceViagemAtual++;
                             _viagemAtiva = _viagensAtivas[_indiceViagemAtual];
+                            _capacidadeVeiculo = _resolverCapacidadeVeiculo();
                           });
                         }
                       : null,

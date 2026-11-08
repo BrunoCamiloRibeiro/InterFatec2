@@ -957,19 +957,7 @@ class FirebaseAuthService implements AuthService {
       );
     }
 
-    // 3. Validação do formato do documento: se for CPF (11 dígitos), valida dígitos verificadores
-    if (docLimpo.length == 11 && !CodigoAcessoService.validarCpf(docLimpo)) {
-      CodigoAcessoService.registrarTentativaFalha(
-        docLimpo,
-        ip: ipOrigem,
-      );
-      throw const AuthException(
-        'Credenciais inválidas ou viagem não localizada.',
-        code: 'invalid-credentials',
-      );
-    }
-
-    // 4. Validação estrita do código de acesso: deve ter exatamente entre 4 e 5 dígitos numéricos
+    // 3. Validação estrita do código de acesso: deve ter exatamente entre 4 e 5 dígitos numéricos
     final codigoSanitizado = codigoAcesso.trim();
     if (!RegExp(r'^\d{4,5}$').hasMatch(codigoSanitizado)) {
       CodigoAcessoService.registrarTentativaFalha(
@@ -982,7 +970,7 @@ class FirebaseAuthService implements AuthService {
       );
     }
 
-    // 5. Varredura de viagens ativas para validação do hash com salt por viagem
+    // 4. Varredura de viagens ativas e planejadas para validação do código/hash
     final viagemService = ViagemService();
     final viagensAtivas = <ViagemModel>[];
     if (viagemService.viagensAtivas.isNotEmpty) {
@@ -990,22 +978,36 @@ class FirebaseAuthService implements AuthService {
     } else if (viagemService.viagemAtiva != null) {
       viagensAtivas.add(viagemService.viagemAtiva!);
     }
+    for (final tv in viagemService.todasViagens) {
+      if ((tv.isAtiva || tv.isPlanejada) &&
+          !tv.isCancelada &&
+          !tv.isConcluida &&
+          !viagensAtivas.any((v) => v.id == tv.id)) {
+        viagensAtivas.add(tv);
+      }
+    }
 
-    // Busca remota no Firestore para viagens com status 'ativa' (multi-dispositivo e homologação)
+    // Busca remota no Firestore para viagens ativas ou planejadas (multi-dispositivo e homologação)
     try {
       final querySnap = await firestore
           .collection('viagens')
-          .where('status', isEqualTo: 'ativa')
           .get();
       for (final doc in querySnap.docs) {
+        final vRemota = ViagemModel.fromMap(doc.data(), docId: doc.id);
+        if ((!vRemota.isAtiva && !vRemota.isPlanejada) ||
+            vRemota.isCancelada ||
+            vRemota.isConcluida) {
+          continue;
+        }
         final docIndex = viagensAtivas.indexWhere((v) => v.id == doc.id);
         if (docIndex == -1) {
-          viagensAtivas.add(ViagemModel.fromMap(doc.data(), docId: doc.id));
+          viagensAtivas.add(vRemota);
         } else {
-          // Se na memória local os códigos estiverem vazios e no Firestore preenchidos, sincroniza
-          if (viagensAtivas[docIndex].codigosHash.isEmpty) {
-            viagensAtivas[docIndex] =
-                ViagemModel.fromMap(doc.data(), docId: doc.id);
+          // Sincroniza se o Firestore possuir códigos/hashes mais completos ou editados manualmente
+          if (viagensAtivas[docIndex].codigosHash.isEmpty ||
+              viagensAtivas[docIndex].codigosAcesso.isEmpty ||
+              vRemota.codigosAcesso.isNotEmpty) {
+            viagensAtivas[docIndex] = vRemota;
           }
         }
       }
@@ -1027,10 +1029,11 @@ class FirebaseAuthService implements AuthService {
       } catch (_) {}
     }
 
-    // 6. Itera sobre as viagens ativas procurando a correspondência
+    // 5. Itera sobre as viagens procurando correspondência por hash ou código em claro
     for (final viagem in viagensAtivas) {
-      // Se a viagem não possui mapa de hashes, não há credenciais ativas
-      if (viagem.codigosHash.isEmpty) continue;
+      if (viagem.isCancelada || viagem.isConcluida) continue;
+      // Se a viagem não possui nem hashes nem códigos de acesso, prossegue
+      if (viagem.codigosHash.isEmpty && viagem.codigosAcesso.isEmpty) continue;
 
       // Calcula o hash da tentativa usando o ID da viagem como salt criptográfico
       final hashTentativa = CodigoAcessoService.calcularHash(
@@ -1042,24 +1045,40 @@ class FirebaseAuthService implements AuthService {
         // Aplica a ordem estrita de resolução do identificador
         final resolucao =
             CodigoAcessoService.resolverIdentificadorLogin(paciente);
-        if (resolucao.tipo == 'ignorado' ||
-            resolucao.documentoNormalizado == null) {
-          // Log interno para auditoria sem dados sensíveis
+        String? docRes = resolucao.documentoNormalizado;
+
+        // Fallback para pacientes cadastrados cujo CPF de 11 dígitos foi digitado manualmente
+        // no formulário administrativo sem dígito verificador Mod-11 estrito (desde que não seja sequência repetida)
+        if ((resolucao.tipo == 'ignorado' || docRes == null) &&
+            docLimpo.isNotEmpty &&
+            !RegExp(r'^(\d)\1{10}$').hasMatch(docLimpo)) {
+          final cpfPacLimpo = CodigoAcessoService.normalizarDigitos(paciente.cpf);
+          final cpfAcompLimpo = CodigoAcessoService.normalizarDigitos(paciente.cpfAcompanhante ?? '');
+          if (cpfPacLimpo.isNotEmpty && cpfPacLimpo == docLimpo) {
+            docRes = cpfPacLimpo;
+          } else if (cpfAcompLimpo.isNotEmpty && cpfAcompLimpo == docLimpo) {
+            docRes = cpfAcompLimpo;
+          }
+        }
+
+        if (docRes == null || docRes.isEmpty) {
           continue;
         }
 
         // Verifica se o identificador digitado coincide com o documento resolvido
-        final docRes = resolucao.documentoNormalizado!;
         final matchDocumento = docRes == docLimpo ||
             (docLimpo.isNotEmpty &&
                 CodigoAcessoService.normalizarDigitos(docRes) == docLimpo) ||
             docRes.trim().toUpperCase() == documento.trim().toUpperCase();
 
         if (matchDocumento) {
-          // Verifica se o hash calculado coincide com o hash gravado na viagem
+          // Verifica se o código em claro ou o hash calculado coincidem com os registros da viagem
+          final codigoClaro = viagem.codigosAcesso[paciente.id]?.trim();
+          final codigoClaroValido =
+              codigoClaro != null && codigoClaro.isNotEmpty && codigoClaro == codigoSanitizado;
           final hashRegistrado = viagem.codigosHash[paciente.id];
           final hashValido = hashRegistrado != null && hashRegistrado == hashTentativa;
-          if (hashValido) {
+          if (codigoClaroValido || hashValido) {
             // Sucesso! Registra na proteção contra força bruta
             CodigoAcessoService.registrarSucesso(
               docLimpo,
@@ -1069,6 +1088,28 @@ class FirebaseAuthService implements AuthService {
             // Vincula o papel de paciente no cache estático de RBAC
             _pacienteLogadoId = paciente.id;
             _roleCache[paciente.id] = UserRole.paciente;
+            return UserRole.paciente;
+          }
+        }
+      }
+
+      // Verifica também os passageiros embutidos diretamente na viagem (caso não listado na consulta anterior)
+      for (final pv in viagem.passageiros) {
+        final cpfPv = CodigoAcessoService.normalizarDigitos(pv.pacienteCpf ?? '');
+        final matchPv = docLimpo.isNotEmpty && cpfPv.isNotEmpty && cpfPv == docLimpo;
+        if (matchPv) {
+          final codigoClaro = viagem.codigosAcesso[pv.pacienteId]?.trim();
+          final codigoClaroValido =
+              codigoClaro != null && codigoClaro.isNotEmpty && codigoClaro == codigoSanitizado;
+          final hashRegistrado = viagem.codigosHash[pv.pacienteId];
+          final hashValido = hashRegistrado != null && hashRegistrado == hashTentativa;
+          if (codigoClaroValido || hashValido) {
+            CodigoAcessoService.registrarSucesso(
+              docLimpo,
+              ip: ipOrigem,
+            );
+            _pacienteLogadoId = pv.pacienteId;
+            _roleCache[pv.pacienteId] = UserRole.paciente;
             return UserRole.paciente;
           }
         }

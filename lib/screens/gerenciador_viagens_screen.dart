@@ -1,4 +1,4 @@
-﻿// ============================================================================
+// ============================================================================
 // CABEÇALHO DE DOCUMENTAÇÃO DE ARQUIVO
 // ============================================================================
 // Arquivo: lib/screens/gerenciador_viagens_screen.dart
@@ -981,7 +981,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                 ),
               )
             else
-              ...viagem.passageiros.map((p) => _construirItemPassageiro(p)),
+              ...viagem.passageiros.map((p) => _construirItemPassageiro(viagem, p)),
           ],
         ),
       ),
@@ -989,9 +989,10 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
   );
 }
 
-  Widget _construirItemPassageiro(PassageiroViagemModel passageiro) {
+  Widget _construirItemPassageiro(ViagemModel viagem, PassageiroViagemModel passageiro) {
     final temAcompanhante = passageiro.acompanhanteNome != null &&
         passageiro.acompanhanteNome!.trim().isNotEmpty;
+    final codigoAcesso = viagem.codigosAcesso[passageiro.pacienteId]?.trim();
 
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
@@ -1027,13 +1028,51 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  passageiro.pacienteNome,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF0F172A),
-                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        passageiro.pacienteNome,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF0F172A),
+                        ),
+                      ),
+                    ),
+                    if (codigoAcesso != null && codigoAcesso.isNotEmpty) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1E293B),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: const Color(0xFF3B82F6), width: 1),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.key,
+                              size: 12,
+                              color: Color(0xFF60A5FA),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Código: $codigoAcesso',
+                              key: ValueKey('codigo_acesso_admin_${passageiro.pacienteId}'),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 11,
+                                letterSpacing: 0.8,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
                 if (temAcompanhante)
                   Padding(

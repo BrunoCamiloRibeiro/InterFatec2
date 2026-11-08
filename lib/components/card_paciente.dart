@@ -210,10 +210,9 @@ class CardPaciente extends StatelessWidget {
                     // Fecha o widget Expanded do nome
                     ),
                     // Badge do Código de Acesso (Issue #65)
-                    // Exibido ao lado do nome do paciente apenas após o embarque (status >= 1)
+                    // Exibido ao lado do nome do paciente quando há código de acesso na viagem
                     if (codigoAcesso != null &&
-                        codigoAcesso!.isNotEmpty &&
-                        status >= 1) ...[
+                        codigoAcesso!.isNotEmpty) ...[
                       const SizedBox(width: 6),
                       Tooltip(
                         message: 'Código de acesso temporário do passageiro',

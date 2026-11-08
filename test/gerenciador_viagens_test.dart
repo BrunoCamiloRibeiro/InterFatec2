@@ -17,10 +17,13 @@
 // ============================================================================
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:trans_saude/models/paciente_model.dart';
 import 'package:trans_saude/models/passageiro_viagem_model.dart';
 import 'package:trans_saude/models/user_role.dart';
 import 'package:trans_saude/models/veiculo_model.dart';
 import 'package:trans_saude/models/viagem_model.dart';
+import 'package:trans_saude/services/auth_service.dart';
+import 'package:trans_saude/services/codigo_acesso_service.dart';
 import 'package:trans_saude/services/validacao_viagem.dart';
 import 'package:trans_saude/services/viagem_service.dart';
 
@@ -84,9 +87,57 @@ void main() {
       expect(res.viagem!.cidadeDestino, equals('BARRETOS'));
       expect(res.viagem!.passageiros.length, equals(1));
       expect(res.viagem!.totalAssentosOcupados, equals(1));
+      expect(res.viagem!.codigosAcesso['pac_1'], isNotNull);
+      expect(RegExp(r'^\d{4,5}$').hasMatch(res.viagem!.codigosAcesso['pac_1']!), isTrue);
+      expect(res.viagem!.codigosHash['pac_1'], isNotNull);
 
       final viagensDoDia = viagemService.obterViagensPorData(dataTeste);
       expect(viagensDoDia.length, equals(1));
+
+      // Verifica que o paciente consegue autenticar tanto com o código gerado na viagem planejada
+      // quanto com um código manual definido em codigosAcesso sem codigosHash
+      CodigoAcessoService.resetarRateLimitParaTestes();
+      final auth = FirebaseAuthService();
+      final roleGerado = await auth.loginPacienteComCodigo(
+        documento: '529.982.247-25',
+        codigoAcesso: res.viagem!.codigosAcesso['pac_1']!,
+        pacientesParaTestes: [
+          PacienteModel(
+            id: 'pac_1',
+            nome: 'João Silva',
+            cpf: '529.982.247-25',
+            telefone: '(17) 99123-4567',
+            enderecoPaciente: 'Rua Central, 10',
+            localConsulta: 'Hospital de Amor',
+          ),
+        ],
+      );
+      expect(roleGerado, equals(UserRole.paciente));
+
+      // Simula edição manual de codigosAcesso no banco com codigosHash vazio
+      viagemService.resetParaTestes(
+        todasViagensIniciais: [
+          res.viagem!.copyWith(
+            codigosAcesso: const {'pac_1': '12345'},
+            codigosHash: const {},
+          ),
+        ],
+      );
+      final roleManual = await auth.loginPacienteComCodigo(
+        documento: '529.982.247-25',
+        codigoAcesso: '12345',
+        pacientesParaTestes: [
+          PacienteModel(
+            id: 'pac_1',
+            nome: 'João Silva',
+            cpf: '529.982.247-25',
+            telefone: '(17) 99123-4567',
+            enderecoPaciente: 'Rua Central, 10',
+            localConsulta: 'Hospital de Amor',
+          ),
+        ],
+      );
+      expect(roleManual, equals(UserRole.paciente));
     });
 
     test('2. Permissões RBAC: Somente admin cria, edita ou cancela horários', () async {
