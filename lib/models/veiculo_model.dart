@@ -1,317 +1,305 @@
-// ============================================================================
-// CABEÇALHO DE DOCUMENTAÇÃO DE ARQUIVO
-// ============================================================================
-// Arquivo: lib/models/veiculo_model.dart
-// Camada: Domínio / Modelos de Dados (Models)
-//
-// O QUE ESTE ARQUIVO FAZ:
-// Modela e encapsula as características físicas, cadastrais e o estado de uso
-// de um Veículo da frota municipal de saúde, fornecendo imutabilidade,
-// serialização (toMap), desserialização (fromMap), clonagem (copyWith) e
-// sobrescrita de igualdade por valor (operator == e hashCode).
-//
-// PARA QUE SERVE NO PROJETO:
-// É o elemento central para o controle de concorrência e início de viagens
-// da issue #17: impede que um mesmo veículo seja selecionado simultaneamente
-// por dois motoristas ('emUso'), valida a capacidade de passageiros e armazena
-// a quilometragem atual do hodômetro para cálculo de distâncias percorridas.
-//
-// ONDE É USADO NO PROJETO:
-// - lib/services/viagem_service.dart (reserva atômica de veículo, escuta de frotas)
-// - lib/components/formulario_inicio_viagem.dart (dropdown de seleção de veículos livres)
-// - test/formulario_inicio_viagem_test.dart (testes de concorrência e seleção de frota)
-//
-// DE ONDE RECEBE DADOS:
-// Documentos NoSQL da coleção 'veiculos' do Firebase Firestore.
-//
-// O QUE EXPORTA / EXPÕE:
-// - class VeiculoModel: classe de modelo imutável
-// - Atributos: id, placa, modelo, capacidade, quilometragemAtual, emUso, motoristaAtualId
-// - Construtor constante VeiculoModel(...)
-// - Map<String, dynamic> toMap(): serialização para Firestore
-// - factory VeiculoModel.fromMap(Map, {docId}): desserialização com fallbacks
-// - VeiculoModel copyWith(...): clonagem imutável com campos alterados
-// - operator == e hashCode: comparação estrutural por identidade e placa
-//
-// ORIGEM HISTÓRICA:
-// Criado no commit aa02e80 pela equipe como base da issue #17 (controle de
-// concorrência e início de viagem). Não veio de template automático.
-//
-// DEPENDÊNCIAS EXTERNAS E EFEITOS COLATERAIS:
-// Depende exclusivamente dos tipos padrão do Dart SDK.
-// Objeto imutável e puro: não executa rede, persistência em disco ou I/O direto.
-// ============================================================================
+import 'package:flutter/material.dart';
 
-// Linha em branco separadora entre o cabeçalho descritivo do arquivo e o código da entidade
-// ----------------------------------------------------------------------------
-// COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
-// Modelo de dados para representar um veículo da frota municipal de saúde.
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-// COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
-// Armazena identificação, modelo, placa, capacidade e a quilometragem atual/última registrada.
-// ----------------------------------------------------------------------------
-// DECLARAÇÃO DA CLASSE DE DOMÍNIO: VeiculoModel
-// - O que a instrução faz: Declara formalmente a classe imutável representativa de um automóvel municipal.
-// - O que é o elemento: Entidade de domínio / Data Transfer Object (DTO) imutável com construtor 'const'.
-// - Papel no sistema: Modela vans, ambulâncias, carros leves e micro-ônibus utilizados para TFD.
-// - Conexões no sistema: Consumida por 'ViagemService' para controle de concorrência e reserva.
-// - Efeitos colaterais: Nenhum. É uma declaração de tipo puro sem alocação ou mutação de estado.
-// ----------------------------------------------------------------------------
-class VeiculoModel {
-  // --------------------------------------------------------------------------
-  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
-  // Identificador único do documento do veículo
-  // --------------------------------------------------------------------------
-  // ATRIBUTO DE INSTÂNCIA: id
-  // - O que é: Campo imutável ('final') do tipo primitivo 'String'.
-  // - Papel: Identificador primário (Document ID) no Cloud Firestore para transações atômicas de reserva.
-  // --------------------------------------------------------------------------
-  final String id;
+/// Enumeração fortemente tipada para o Status do Veículo com cores e estilos pré-computados
+/// para evitar cálculos pesados de [Color.lerp] e alocações de cor em tempo de renderização.
+enum StatusVeiculo {
+  disponivel(
+    valor: 'disponivel',
+    label: 'Disponível',
+    corBase: Colors.green,
+    corFundo: Color(0x334CAF50), // Colors.green com alpha 0.2 pré-computado
+    corDestaque: Color(0xFF1B5E20), // Color.lerp(Colors.green, Colors.black, 0.5)
+  ),
+  emViagem(
+    valor: 'emViagem',
+    label: 'Em Viagem',
+    corBase: Colors.blue,
+    corFundo: Color(0x332196F3), // Colors.blue com alpha 0.2 pré-computado
+    corDestaque: Color(0xFF0D47A1), // Color.lerp(Colors.blue, Colors.black, 0.5)
+  ),
+  emManutencao(
+    valor: 'emManutencao',
+    label: 'Em Manutenção',
+    corBase: Colors.orange,
+    corFundo: Color(0x33FF9800), // Colors.orange com alpha 0.2 pré-computado
+    corDestaque: Color(0xFFE65100), // Color.lerp(Colors.orange, Colors.black, 0.5)
+  ),
+  inativo(
+    valor: 'inativo',
+    label: 'Inativo',
+    corBase: Colors.grey,
+    corFundo: Color(0x339E9E9E), // Colors.grey com alpha 0.2 pré-computado
+    corDestaque: Color(0xFF424242), // Color.lerp(Colors.grey, Colors.black, 0.5)
+  );
 
-  // --------------------------------------------------------------------------
-  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
-  // Placa de identificação do veículo
-  // --------------------------------------------------------------------------
-  // ATRIBUTO DE INSTÂNCIA: placa
-  // - O que é: Campo imutável ('final') do tipo primitivo 'String'.
-  // - Papel: Placa oficial de trânsito (padrão Mercosul ou cinza) impressa na ficha de viagem TFD.
-  // --------------------------------------------------------------------------
-  final String placa;
+  final String valor;
+  final String label;
+  final Color corBase;
+  final Color corFundo;
+  final Color corDestaque;
 
-  // --------------------------------------------------------------------------
-  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
-  // Nome e especificação de modelo do veículo
-  // --------------------------------------------------------------------------
-  // ATRIBUTO DE INSTÂNCIA: modelo
-  // - O que é: Campo imutável ('final') do tipo primitivo 'String'.
-  // - Papel: Descrição de marca e modelo comercial (ex.: 'Chevrolet Spin', 'Renault Master').
-  // --------------------------------------------------------------------------
-  final String modelo;
-
-  // --------------------------------------------------------------------------
-  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
-  // Capacidade total de passageiros suportada
-  // --------------------------------------------------------------------------
-  // ATRIBUTO DE INSTÂNCIA: capacidade
-  // - O que é: Campo imutável ('final') do tipo primitivo número inteiro ('int').
-  // - Papel: Quantidade máxima de passageiros (pacientes + acompanhantes) autorizados no veículo.
-  // --------------------------------------------------------------------------
-  final int capacidade;
-
-  // --------------------------------------------------------------------------
-  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
-  // Quilometragem atual ou última registrada do veículo
-  // --------------------------------------------------------------------------
-  // ATRIBUTO DE INSTÂNCIA: quilometragemAtual
-  // - O que é: Campo imutável ('final') do tipo primitivo número inteiro ('int').
-  // - Papel: Leitura atual do hodômetro do veículo para validação de quilometragem de saída.
-  // --------------------------------------------------------------------------
-  final int quilometragemAtual;
-
-  // --------------------------------------------------------------------------
-  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
-  // Indicador se o veículo está associado a uma viagem ativa
-  // --------------------------------------------------------------------------
-  // ATRIBUTO DE INSTÂNCIA: emUso
-  // - O que é: Campo imutável ('final') do tipo primitivo booleano ('bool').
-  // - Papel: Bandeira de concorrência; 'true' indica veículo em trânsito, impedindo nova alocação.
-  // --------------------------------------------------------------------------
-  final bool emUso;
-
-  // --------------------------------------------------------------------------
-  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
-  // Identificador do motorista atualmente associado ao veículo
-  // --------------------------------------------------------------------------
-  // ATRIBUTO DE INSTÂNCIA: motoristaAtualId
-  // - O que é: Campo imutável opcional/anulável ('String?').
-  // - Papel: ID do motorista que reservou o veículo durante o ciclo ativo da viagem.
-  // --------------------------------------------------------------------------
-  final String? motoristaAtualId;
-
-  // Linha em branco separadora entre declarações de atributos e o construtor da classe
-  // ----------------------------------------------------------------------------
-  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
-  // Construtor com os parâmetros de inicialização do veículo
-  // ----------------------------------------------------------------------------
-  // CONSTRUTOR CONSTANTE: VeiculoModel
-  // - O que faz: Inicializa todos os atributos de uma nova instância imutável do veículo.
-  // - Modificador 'const': Permite criação canônica na memória pelo runtime do Dart.
-  // ----------------------------------------------------------------------------
-  const VeiculoModel({
-    // Parâmetro obrigatório: ID do documento
-    required this.id,
-    // Parâmetro obrigatório: Placa de trânsito
-    required this.placa,
-    // Parâmetro obrigatório: Marca e modelo
-    required this.modelo,
-    // Parâmetro opcional: Capacidade máxima de passageiros, padrão 4
-    this.capacidade = 4,
-    // Parâmetro obrigatório: Quilometragem atual do hodômetro
-    required this.quilometragemAtual,
-    // Parâmetro opcional: Status de uso do veículo, padrão falso (livre)
-    this.emUso = false,
-    // Parâmetro opcional: ID do condutor atual se em viagem
-    this.motoristaAtualId,
-  // Fecha a lista de parâmetros formais nomeados do construtor
+  const StatusVeiculo({
+    required this.valor,
+    required this.label,
+    required this.corBase,
+    required this.corFundo,
+    required this.corDestaque,
   });
 
-  // Linha em branco separadora entre o construtor e o método de serialização
-  // ----------------------------------------------------------------------------
-  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
-  // Converte a instância para um Map de pares chave e valor
-  // ----------------------------------------------------------------------------
-  // MÉTODO DE SERIALIZAÇÃO: toMap
-  // - O que faz: Converte o objeto VeiculoModel em uma estrutura do tipo Map<String, dynamic>.
-  // - Retorno: Map pronto para ser gravado na coleção 'veiculos' do Cloud Firestore.
-  // ----------------------------------------------------------------------------
-  Map<String, dynamic> toMap() {
-    // ------------------------------------------------------------------------
-    // Retorna a estrutura em Map com os pares chave/valor correspondentes:
-    // ------------------------------------------------------------------------
-    return {
-      // Mapeia a placa oficial para a chave 'placa'
-      'placa': placa,
-      // Mapeia a descrição do modelo para a chave 'modelo'
-      'modelo': modelo,
-      // Mapeia a capacidade máxima para a chave 'capacidade'
-      'capacidade': capacidade,
-      // Mapeia a quilometragem atual para a chave 'quilometragemAtual'
-      'quilometragemAtual': quilometragemAtual,
-      // Mapeia a situação de uso concorrente para a chave 'emUso'
-      'emUso': emUso,
-      // Mapeia o condutor responsável para a chave 'motoristaAtualId'
-      'motoristaAtualId': motoristaAtualId,
-    // Fecha o dicionário de pares chave/valor
-    };
-  // Fecha o bloco de instruções do método toMap
+  static StatusVeiculo fromString(String? valor) {
+    switch (valor?.toLowerCase()) {
+      case 'disponivel':
+        return StatusVeiculo.disponivel;
+      case 'emmanutencao':
+      case 'manutencao':
+        return StatusVeiculo.emManutencao;
+      case 'emviagem':
+      case 'emuso':
+        return StatusVeiculo.emViagem;
+      case 'inativo':
+        return StatusVeiculo.inativo;
+      default:
+        return StatusVeiculo.disponivel;
+    }
   }
+}
 
-  // Linha em branco separadora entre toMap e o construtor factory
-  // ----------------------------------------------------------------------------
-  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
-  // Cria uma instância de VeiculoModel a partir de um Map de dados
-  // ----------------------------------------------------------------------------
-  // CONSTRUTOR FACTORY (FÁBRICA DE DESSERIALIZAÇÃO): VeiculoModel.fromMap
-  // - O que faz: Reconstrói uma instância tipada de VeiculoModel a partir de dados NoSQL do Firestore.
-  // - Parâmetros: 'map' (dados brutos) e 'docId' opcional (identificador único do documento).
-  // ----------------------------------------------------------------------------
-  factory VeiculoModel.fromMap(Map<String, dynamic> map, {String? docId}) {
-    // ------------------------------------------------------------------------
-    // Instancia e retorna o VeiculoModel aplicando conversões e fallbacks defensivos:
-    // ------------------------------------------------------------------------
-    return VeiculoModel(
-      // Atribui 'docId', 'map["id"]' ou string vazia como identificador
-      id: docId ?? map['id'] ?? '',
-      // Atribui 'placa' ou string vazia como fallback
-      placa: map['placa'] ?? '',
-      // Atribui 'modelo' ou string vazia como fallback
-      modelo: map['modelo'] ?? '',
-      // Converte 'capacidade' de forma segura com fallback padrão para 4 lugares
-      capacidade: (map['capacidade'] is num)
-          // Se for número, converte diretamente para inteiro
-          ? (map['capacidade'] as num).toInt()
-          // Padrão de 4 lugares caso ausente ou inválido
-          : 4,
-      // Converte 'quilometragemAtual' de forma segura com fallback padrão para 0 km
-      quilometragemAtual: (map['quilometragemAtual'] is num)
-          // Se for número, converte diretamente para inteiro
-          ? (map['quilometragemAtual'] as num).toInt()
-          // Padrão de 0 km caso ausente ou inválido
-          : 0,
-      // Atribui 'emUso' com fallback padrão para falso
-      emUso: map['emUso'] ?? false,
-      // Atribui o identificador do motorista condutor atual
-      motoristaAtualId: map['motoristaAtualId'],
-    // Fecha a lista de argumentos passados ao construtor VeiculoModel
-    );
-  // Fecha o bloco de instruções do construtor factory fromMap
+/// Enumeração para os tipos de veículo com ícones e rótulos
+enum TipoVeiculo {
+  van(
+    valor: 'van',
+    label: 'Van',
+    icone: Icons.airport_shuttle_outlined,
+  ),
+  ambulancia(
+    valor: 'ambulancia',
+    label: 'Ambulância',
+    icone: Icons.emergency_outlined,
+  ),
+  onibus(
+    valor: 'onibus',
+    label: 'Ônibus',
+    icone: Icons.directions_bus_outlined,
+  ),
+  carro(
+    valor: 'carro',
+    label: 'Carro',
+    icone: Icons.directions_car_outlined,
+  );
+
+  final String valor;
+  final String label;
+  final IconData icone;
+
+  const TipoVeiculo({
+    required this.valor,
+    required this.label,
+    required this.icone,
+  });
+
+  static TipoVeiculo fromString(String? valor) {
+    switch (valor?.toLowerCase()) {
+      case 'van':
+        return TipoVeiculo.van;
+      case 'ambulancia':
+        return TipoVeiculo.ambulancia;
+      case 'onibus':
+      case 'microonibus':
+        return TipoVeiculo.onibus;
+      default:
+        return TipoVeiculo.carro;
+    }
   }
+}
 
-  // Linha em branco separadora entre fromMap e o método copyWith
-  // ----------------------------------------------------------------------------
-  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
-  // Cria uma nova instância de VeiculoModel copiando os campos existentes e substituindo os informados
-  // ----------------------------------------------------------------------------
-  // MÉTODO DE CLONAGEM IMUTÁVEL: copyWith
-  // - O que faz: Gera uma cópia idêntica da instância atual permitindo sobrescrever seletivamente campos.
-  // - Papel: Essencial para arquiteturas de estado imutável no Flutter/Dart.
-  // ----------------------------------------------------------------------------
-  VeiculoModel copyWith({
-    // Novo identificador opcional
-    String? id,
-    // Nova placa de trânsito opcional
-    String? placa,
-    // Novo modelo comercial opcional
-    String? modelo,
-    // Nova capacidade de lotação opcional
+/// Modelo de dados unificado do Veículo, compatível com a gestão de frotas (CRUD)
+/// e o fluxo de viagens operacionais do transporte municipal de saúde.
+class VeiculoModel {
+  final String id;
+  final String placa;
+  final TipoVeiculo tipo;
+  final String marca;
+  final String modelo;
+  final int ano;
+  final int qtdAssentos;
+  final StatusVeiculo status;
+  final int quilometragemAtual;
+  final String? motoristaResponsavelId;
+  final String? ultimoMotoristaId;
+  final bool possuiAC;
+  final bool possuiPreferencial;
+  final String? observacoes;
+  final String? criadoEm;
+  final String? atualizadoEm;
+  final String? atualizadoPor;
+
+  const VeiculoModel({
+    required this.id,
+    required this.placa,
+    this.tipo = TipoVeiculo.carro,
+    this.marca = '',
+    this.modelo = '',
+    int? ano,
+    int? qtdAssentos,
     int? capacidade,
-    // Nova quilometragem do hodômetro opcional
-    int? quilometragemAtual,
-    // Novo status de uso concorrente opcional
+    StatusVeiculo? status,
     bool? emUso,
-    // Novo motorista condutor opcional
+    this.quilometragemAtual = 0,
+    this.motoristaResponsavelId,
+    this.ultimoMotoristaId,
     String? motoristaAtualId,
-  // Fecha a lista de parâmetros formais nomeados do copyWith
+    this.possuiAC = false,
+    this.possuiPreferencial = false,
+    this.observacoes,
+    this.criadoEm,
+    this.atualizadoEm,
+    this.atualizadoPor,
+  })  : ano = ano ?? 2024,
+        qtdAssentos = qtdAssentos ?? capacidade ?? 4,
+        status = status ??
+            (emUso == true
+                ? StatusVeiculo.emViagem
+                : StatusVeiculo.disponivel);
+
+  /// Alias de capacidade para compatibilidade com o serviço de viagens
+  int get capacidade => qtdAssentos;
+
+  /// Alias de status de viagem concorrente para o serviço de viagens
+  bool get emUso => status == StatusVeiculo.emViagem;
+
+  /// Alias do motorista atual condutor do veículo
+  String? get motoristaAtualId => ultimoMotoristaId ?? motoristaResponsavelId;
+
+  /// Alias da última quilometragem do hodômetro registrada
+  int get ultimaKmRegistrada => quilometragemAtual;
+
+  VeiculoModel copyWith({
+    String? id,
+    String? placa,
+    TipoVeiculo? tipo,
+    String? marca,
+    String? modelo,
+    int? ano,
+    int? qtdAssentos,
+    int? capacidade,
+    StatusVeiculo? status,
+    bool? emUso,
+    int? quilometragemAtual,
+    String? motoristaResponsavelId,
+    String? ultimoMotoristaId,
+    String? motoristaAtualId,
+    bool? possuiAC,
+    bool? possuiPreferencial,
+    String? observacoes,
+    String? criadoEm,
+    String? atualizadoEm,
+    String? atualizadoPor,
   }) {
-    // ------------------------------------------------------------------------
-    // Retorna uma nova instância com os campos mesclados (novo valor ?? valor atual):
-    // ------------------------------------------------------------------------
     return VeiculoModel(
-      // Preserva o ID atual se o novo não for fornecido
       id: id ?? this.id,
-      // Preserva a placa atual se a nova não for fornecida
       placa: placa ?? this.placa,
-      // Preserva o modelo atual se o novo não for fornecido
+      tipo: tipo ?? this.tipo,
+      marca: marca ?? this.marca,
       modelo: modelo ?? this.modelo,
-      // Preserva a capacidade atual se a nova não for fornecida
-      capacidade: capacidade ?? this.capacidade,
-      // Preserva a quilometragem atual se a nova não for fornecida
+      ano: ano ?? this.ano,
+      qtdAssentos: qtdAssentos ?? capacidade ?? this.qtdAssentos,
+      status: status ??
+          (emUso != null
+              ? (emUso ? StatusVeiculo.emViagem : StatusVeiculo.disponivel)
+              : this.status),
       quilometragemAtual: quilometragemAtual ?? this.quilometragemAtual,
-      // Preserva o status emUso atual se o novo não for fornecido
-      emUso: emUso ?? this.emUso,
-      // Preserva o motorista atual se o novo não for fornecido
-      motoristaAtualId: motoristaAtualId ?? this.motoristaAtualId,
-    // Fecha a chamada do construtor VeiculoModel
+      motoristaResponsavelId:
+          motoristaResponsavelId ?? this.motoristaResponsavelId,
+      ultimoMotoristaId:
+          ultimoMotoristaId ?? motoristaAtualId ?? this.ultimoMotoristaId,
+      possuiAC: possuiAC ?? this.possuiAC,
+      possuiPreferencial: possuiPreferencial ?? this.possuiPreferencial,
+      observacoes: observacoes ?? this.observacoes,
+      criadoEm: criadoEm ?? this.criadoEm,
+      atualizadoEm: atualizadoEm ?? this.atualizadoEm,
+      atualizadoPor: atualizadoPor ?? this.atualizadoPor,
     );
-  // Fecha o bloco de instruções do método copyWith
   }
 
-  // Linha em branco separadora entre copyWith e a sobrescrita do operador de igualdade
-  // ----------------------------------------------------------------------------
-  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
-  // Compara se dois objetos VeiculoModel possuem o mesmo identificador e mesma placa
-  // ----------------------------------------------------------------------------
-  // SOBRESCRITA DO OPERADOR DE IGUALDADE: operator ==
-  // - O que faz: Define a igualdade semântica estrutural entre instâncias de VeiculoModel.
-  // - Critérios: Identidade de referência ou coincidência de tipo, 'id' e 'placa'.
-  // ----------------------------------------------------------------------------
+  factory VeiculoModel.fromMap(Map<String, dynamic> map, {String? docId}) {
+    final rawAssentos = map['qtdAssentos'] ?? map['capacidade'];
+    final int assentos = (rawAssentos is num)
+        ? rawAssentos.toInt()
+        : (int.tryParse(rawAssentos?.toString() ?? '') ?? 4);
+
+    final rawKm = map['quilometragemAtual'] ?? map['ultimaKmRegistrada'];
+    final int km = (rawKm is num)
+        ? rawKm.toInt()
+        : (int.tryParse(rawKm?.toString() ?? '') ?? 0);
+
+    final rawAno = map['ano'];
+    final int anoInt = (rawAno is num)
+        ? rawAno.toInt()
+        : (int.tryParse(rawAno?.toString() ?? '') ?? DateTime.now().year);
+
+    final rawStatus = map['status']?.toString();
+    final bool rawEmUso = map['emUso'] == true || map['emUso'] == 'true';
+    final StatusVeiculo statusCalculado = rawStatus != null
+        ? StatusVeiculo.fromString(rawStatus)
+        : (rawEmUso ? StatusVeiculo.emViagem : StatusVeiculo.disponivel);
+
+    return VeiculoModel(
+      id: (docId ?? map['id'] ?? DateTime.now().millisecondsSinceEpoch.toString()).toString(),
+      placa: (map['placa'] ?? 'SEM-PLACA').toString(),
+      tipo: TipoVeiculo.fromString(map['tipo']?.toString()),
+      marca: (map['marca'] ?? '').toString(),
+      modelo: (map['modelo'] ?? '').toString(),
+      ano: anoInt,
+      qtdAssentos: assentos,
+      status: statusCalculado,
+      quilometragemAtual: km,
+      motoristaResponsavelId: map['motoristaResponsavelId']?.toString(),
+      ultimoMotoristaId:
+          (map['ultimoMotoristaId'] ?? map['motoristaAtualId'])?.toString(),
+      possuiAC: map['possuiAC'] == true || map['possuiAC'] == 'true',
+      possuiPreferencial:
+          map['possuiPreferencial'] == true || map['possuiPreferencial'] == 'true',
+      observacoes: map['observacoes']?.toString(),
+      criadoEm: map['criadoEm']?.toString(),
+      atualizadoEm: map['atualizadoEm']?.toString(),
+      atualizadoPor: map['atualizadoPor']?.toString(),
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'placa': placa,
+      'tipo': tipo.valor,
+      'marca': marca,
+      'modelo': modelo,
+      'ano': ano,
+      'qtdAssentos': qtdAssentos,
+      'capacidade': qtdAssentos,
+      'status': status.valor,
+      'emUso': emUso,
+      'quilometragemAtual': quilometragemAtual,
+      'ultimaKmRegistrada': quilometragemAtual,
+      'motoristaResponsavelId': motoristaResponsavelId,
+      'ultimoMotoristaId': ultimoMotoristaId,
+      'motoristaAtualId': motoristaAtualId,
+      'possuiAC': possuiAC,
+      'possuiPreferencial': possuiPreferencial,
+      'observacoes': observacoes,
+      'criadoEm': criadoEm,
+      'atualizadoEm': atualizadoEm,
+      'atualizadoPor': atualizadoPor,
+    };
+  }
+
   @override
-  // Implementação da verificação de igualdade semântica
   bool operator ==(Object other) =>
-      // Checa identidade de referência direta na memória (mesmo ponteiro)
       identical(this, other) ||
-      // Checa se o outro objeto é do mesmo tipo VeiculoModel
       other is VeiculoModel &&
-          // Compara os tipos em tempo de execução
           runtimeType == other.runtimeType &&
-          // Compara os identificadores de documento
           id == other.id &&
-          // Compara as placas oficiais dos veículos
           placa == other.placa;
 
-  // Linha em branco separadora entre operator == e o getter hashCode
-  // ----------------------------------------------------------------------------
-  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
-  // Retorna o valor de hash code gerado a partir do id e da placa
-  // ----------------------------------------------------------------------------
-  // SOBRESCRITA DO GETTER: hashCode
-  // - O que faz: Gera o hash code do objeto a partir do XOR bitwise ('^') dos hashes de 'id' e 'placa'.
-  // - Papel: Garante consistência com o 'operator ==' para uso correto em Maps e Sets.
-  // ----------------------------------------------------------------------------
   @override
-  // Retorna a operação XOR entre os códigos hash das propriedades identificadoras
   int get hashCode => id.hashCode ^ placa.hashCode;
-
-// Fecha a declaração do corpo da classe VeiculoModel
 }

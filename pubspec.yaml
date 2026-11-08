@@ -132,6 +132,8 @@ flutter:
   assets:
       # Arquivo JSON com dados simulados de pacientes
       - assets/data/dados_pacientes.json
+      # Arquivo JSON com catálogo e frota de veículos
+      - assets/data/dados_veiculos.json
       # Fonte TrueType Liberation Sans Regular para geração de PDF
       - assets/fonts/LiberationSans-Regular.ttf
       # Fonte TrueType Liberation Sans Bold para geração de PDF

@@ -9,9 +9,9 @@
 // a inicialização dos bindings do framework Flutter (WidgetsFlutterBinding),
 // inicializa o Firebase Core com as opções da plataforma em execução
 // (DefaultFirebaseOptions.currentPlatform) e instancia o widget raiz MyApp
-// que configura o MaterialApp: título, desativação da faixa de debug, rota
-// inicial reativa '/', guarda de rotas protegidas por perfil (RouteGuard) e
-// tabela de rotas estáticas (login, formulários de teste, gestão de pessoas e legado).
+// que configura o MaterialApp: título, tema visual, rota inicial reativa '/',
+// guarda de rotas protegidas por perfil (RouteGuard) e tabela de rotas estáticas
+// (login, gestão de frotas e veículos, gestão de pessoas, previews e painéis).
 //
 // PARA QUE SERVE NO PROJETO:
 // Orquestra a inicialização de todo o ecossistema do app, vinculando os serviços
@@ -31,7 +31,7 @@
 //
 // ORIGEM HISTÓRICA:
 // Criado no commit inicial do scaffold (59a63c4) e mantido pela equipe em
-// evolução contínua (issues #17, #28, #34; PRs #58, #59, #60).
+// evolução contínua (issues #17, #19, #28, #33, #34, #65; PRs #58, #59, #60, #63, #66, #67).
 //
 // DEPENDÊNCIAS EXTERNAS E EFEITOS COLATERAIS:
 // Depende de 'package:firebase_core/firebase_core.dart' e 'package:flutter/material.dart'.
@@ -48,13 +48,15 @@ import 'package:flutter/material.dart';
 import 'Outdated/administrativo.dart';
 // Importa a tela de registro legada arquivada
 import 'Outdated/register.dart';
+// Importa a tela de gestão de veículos
+import 'lista_veiculos.dart';
 // Importa o formulário de início de viagem e tela hospedeira
 import 'components/formulario_inicio_viagem.dart';
 // Importa as opções de configuração do Firebase por plataforma
 import 'firebase_options.dart';
 // Importa a tela de gestão de pessoas
 import 'lista_pessoas.dart';
-// Importa a tela oficial do paciente (Issue 18 e 19)
+// Importa a tela oficial do paciente (Issue #18 e #19)
 import 'paciente.dart';
 // Importa a tela oficial do motorista
 import 'motorista.dart';
@@ -133,29 +135,20 @@ class MyApp extends StatelessWidget {
       // Comentário original do autor mantido byte a byte:
       // Rota inicial controlada pelo AuthGate reativo
       // Rota inicial raiz apontando para o AuthGate
-      initialRoute: '/paciente',
+      initialRoute: '/',
       // Comentário original do autor mantido byte a byte:
       // Guarda de rotas com validação de perfil (RBAC) para rotas protegidas
       // Manipulador dinâmico de rotas para autorização por papel
-      onGenerateRoute: (settings) {
-        if (settings.name == '/motorista') {
-          return MaterialPageRoute(
-            settings: settings,
-            builder: (_) => const Motorista(),
-          );
-        }
-        return RouteGuard.onGenerateRoute(settings);
-      },
+      onGenerateRoute: RouteGuard.onGenerateRoute,
       // Tabela de rotas estáticas nomeadas da aplicação
       routes: {
         // Comentário original do autor mantido byte a byte:
         // Gate principal com máquina de estados de autenticação
         // Rota raiz direcionada ao AuthGate
-        // Rota inicial apontada diretamente para a tela do paciente
-        '/': (context) => const Paciente(pacienteId: 'paciente_novo_issue19'),
+        '/': (context) => const AuthGate(),
         // Gate principal com maquina de estados de autenticacao
         '/auth-gate': (context) => const AuthGate(),
-        // Rota direta para a tela do paciente
+        // Rota direta para a tela do paciente (Issue #19)
         '/paciente': (context) => const Paciente(pacienteId: 'paciente_novo_issue19'),
         // Rota direta para a tela do motorista
         '/motorista': (context) => const Motorista(),
@@ -218,6 +211,9 @@ class MyApp extends StatelessWidget {
         // Gestão de Pessoas (Issue #34)
         // Rota para o painel de listagem de pessoas
         '/lista-pessoas': (context) => const ListaPessoas(),
+        // Rota para a tela de gestão de veículos (Issue #33)
+        '/veiculos': (context) => const Veiculos(),
+        '/lista-veiculos': (context) => const Veiculos(),
         // Comentário original do autor mantido byte a byte:
         // Telas antigas arquivadas em Outdated (mantidas com prefixo para consulta dos devs)
         // Rota para a tela administrativa antiga arquivada
