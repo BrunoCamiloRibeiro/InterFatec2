@@ -39,7 +39,14 @@ class _VeiculosState extends State<Veiculos> {
 
   Future<List<dynamic>> _inicializar() async {
     await _controller.carregarVeiculos();
-    _veiculos = _controller.todosVeiculos.map((v) => v.toMap()).toList();
+    final carregados = _controller.todosVeiculos.map((v) => v.toMap()).toList();
+    if (mounted) {
+      setState(() {
+        _veiculos = carregados;
+      });
+    } else {
+      _veiculos = carregados;
+    }
     return _veiculos;
   }
 
@@ -480,9 +487,17 @@ class _VeiculosState extends State<Veiculos> {
       ),
 
       // RODAPÉ COM RESUMO DA FROTA
-      bottomNavigationBar: FooterVeiculos(
-        veiculosDisponiveis: _veiculos.where((v) => v['status'] == 'disponivel').length,
-        veiculosTotais: _veiculos.length,
+      bottomNavigationBar: Builder(
+        builder: (context) {
+          final listaRodape = _veiculos.isNotEmpty
+              ? _veiculos
+              : _controller.todosVeiculos.map((v) => v.toMap()).toList();
+          return FooterVeiculos(
+            veiculosDisponiveis:
+                listaRodape.where((v) => v['status'] == 'disponivel').length,
+            veiculosTotais: listaRodape.length,
+          );
+        },
       ),
     );
   }

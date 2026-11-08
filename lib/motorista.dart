@@ -163,8 +163,9 @@ class _MotoristaState extends State<Motorista> {
   // Serviço central de sincronização atômica e máquina de estados de transição
   late final PacienteSyncService _syncService;
 
-  // Identificador do motorista autenticado ou associado aos dados da viagem
+  // Identificador e nome do motorista autenticado ou associado aos dados da viagem
   String? _motoristaId;
+  String _motoristaNome = '';
 
   // Verifica se existem instâncias ativas do Firebase inicializadas
   // Método auxiliar que checa se o Firebase foi inicializado sem lançar exceções não tratadas
@@ -281,14 +282,16 @@ class _MotoristaState extends State<Motorista> {
 
   void _atualizarTransmissaoGpsMotorista() {
     final v = _viagemAtiva;
-    if (v != null && v.isAtiva) {
+    if (v != null && (v.isAtiva || v.isPlanejada) && !v.isCancelada && !v.isConcluida) {
+      final idMot = (v.motoristaId.isNotEmpty && v.motoristaId != 'motorista_atual')
+          ? v.motoristaId
+          : (_motoristaId ?? FirebaseAuthService().currentUserId ?? 'motorista_atual');
+      final nomeMot = (v.motoristaNome.isNotEmpty && v.motoristaNome != 'Motorista da Saúde')
+          ? v.motoristaNome
+          : (_motoristaNome.isNotEmpty ? _motoristaNome : 'Motorista Municipal');
       LocalizacaoMotoristaService().iniciarTransmissaoGpsMotorista(
-        motoristaId: v.motoristaId.isNotEmpty
-            ? v.motoristaId
-            : (FirebaseAuthService().currentUserId ?? 'motorista_atual'),
-        motoristaNome: v.motoristaNome.isNotEmpty
-            ? v.motoristaNome
-            : 'Motorista Municipal',
+        motoristaId: idMot,
+        motoristaNome: nomeMot,
         veiculoPlaca: v.veiculoPlaca,
         veiculoModelo: v.veiculoModelo,
         cidadeDestino: v.cidadeDestino,
@@ -442,9 +445,10 @@ class _MotoristaState extends State<Motorista> {
             final atualizada = todas.where((v) => v.id == _viagemAtiva!.id).firstOrNull;
             if (atualizada != null && !atualizada.isCancelada && !atualizada.isConcluida) {
               setState(() {
-                _viagemAtiva = atualizada;
+                _viagemAtiva = atualizada.copyWith(status: 'ativa');
                 _capacidadeVeiculo = _resolverCapacidadeVeiculo();
               });
+              _atualizarTransmissaoGpsMotorista();
               return;
             }
           }
@@ -517,10 +521,14 @@ class _MotoristaState extends State<Motorista> {
               _capacidadeMotoristaDoc = motorista.capacidadeVeiculo;
               _placaMotoristaDoc = motorista.veiculoPlaca;
               _motoristaId = motorista.id.isNotEmpty ? motorista.id : docSelecionado.id;
+              if (motorista.nome.trim().isNotEmpty) {
+                _motoristaNome = motorista.nome.trim();
+              }
               // Atribui a capacidade numérica de assentos do veículo resolvida da frota
               _capacidadeVeiculo = _resolverCapacidadeVeiculo();
             // Fechamento da função de callback de setState
             });
+            _atualizarTransmissaoGpsMotorista();
           // Fechamento do bloco if
           }
         // Fechamento da função ouvinte listen
@@ -677,12 +685,14 @@ class _MotoristaState extends State<Motorista> {
             child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
               child: FormularioInicioViagem(
-                motoristaId: FirebaseAuthService().currentUserId ?? 'motorista_atual',
+                motoristaId: _motoristaId ?? FirebaseAuthService().currentUserId ?? 'motorista_atual',
+                motoristaNome: _motoristaNome.isNotEmpty ? _motoristaNome : 'Motorista da Saúde',
                 onViagemIniciada: (novaViagem) {
                   setState(() {
                     _viagemAtiva = novaViagem;
                     _capacidadeVeiculo = _resolverCapacidadeVeiculo();
                   });
+                  _atualizarTransmissaoGpsMotorista();
                 },
               ),
             ),

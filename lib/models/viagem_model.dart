@@ -289,6 +289,15 @@ class ViagemModel {
   /// Lista detalhada de passageiros com acompanhantes, ordens e destinos
   final List<PassageiroViagemModel> passageiros;
 
+  /// Última latitude real transmitida pelo GPS do motorista
+  final double? ultimaLatitude;
+
+  /// Última longitude real transmitida pelo GPS do motorista
+  final double? ultimaLongitude;
+
+  /// Timestamp da última atualização de GPS do motorista
+  final DateTime? ultimaAtualizacaoLocalizacao;
+
   // Linha em branco separadora entre atributos e construtor principal
   // ----------------------------------------------------------------------------
   // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
@@ -341,6 +350,10 @@ class ViagemModel {
     this.dataViagem,
     // Parâmetro opcional: Lista de passageiros
     this.passageiros = const [],
+    // Parâmetros opcionais de geolocalização real do motorista
+    this.ultimaLatitude,
+    this.ultimaLongitude,
+    this.ultimaAtualizacaoLocalizacao,
   // Fecha a lista de parâmetros formais nomeados do construtor
   });
 
@@ -418,6 +431,11 @@ class ViagemModel {
       if (nomeHorario != null) 'horario': nomeHorario,
       'dataViagem': (dataViagem ?? dataHoraInicio).toIso8601String(),
       'passageiros': passageiros.map((p) => p.toMap()).toList(),
+      if (ultimaLatitude != null) 'ultimaLatitude': ultimaLatitude,
+      if (ultimaLongitude != null) 'ultimaLongitude': ultimaLongitude,
+      if (ultimaAtualizacaoLocalizacao != null)
+        'ultimaAtualizacaoLocalizacao':
+            ultimaAtualizacaoLocalizacao!.toIso8601String(),
     };
   }
 
@@ -526,6 +544,15 @@ class ViagemModel {
                       ))
                   .toList()
               : const [],
+      ultimaLatitude: (map['ultimaLatitude'] is num)
+          ? (map['ultimaLatitude'] as num).toDouble()
+          : double.tryParse(map['ultimaLatitude']?.toString() ?? ''),
+      ultimaLongitude: (map['ultimaLongitude'] is num)
+          ? (map['ultimaLongitude'] as num).toDouble()
+          : double.tryParse(map['ultimaLongitude']?.toString() ?? ''),
+      ultimaAtualizacaoLocalizacao: map['ultimaAtualizacaoLocalizacao'] != null
+          ? DateTime.tryParse(map['ultimaAtualizacaoLocalizacao'].toString())
+          : null,
     // Fecha a lista de argumentos passados ao construtor ViagemModel
     );
   // Fecha o bloco de instruções do construtor factory fromMap
@@ -585,6 +612,9 @@ class ViagemModel {
     DateTime? dataViagem,
     // Nova lista detalhada de passageiros opcional
     List<PassageiroViagemModel>? passageiros,
+    double? ultimaLatitude,
+    double? ultimaLongitude,
+    DateTime? ultimaAtualizacaoLocalizacao,
   // Fecha a lista de parâmetros formais nomeados do copyWith
   }) {
     // ------------------------------------------------------------------------
@@ -639,6 +669,10 @@ class ViagemModel {
       dataViagem: dataViagem ?? this.dataViagem,
       // Preserva passageiros
       passageiros: novosPassageiros,
+      ultimaLatitude: ultimaLatitude ?? this.ultimaLatitude,
+      ultimaLongitude: ultimaLongitude ?? this.ultimaLongitude,
+      ultimaAtualizacaoLocalizacao:
+          ultimaAtualizacaoLocalizacao ?? this.ultimaAtualizacaoLocalizacao,
     // Fecha a chamada do construtor ViagemModel
     );
   // Fecha o bloco de instruções do método copyWith

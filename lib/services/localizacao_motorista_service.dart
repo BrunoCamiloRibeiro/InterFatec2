@@ -86,21 +86,69 @@ class LocalizacaoMotoristaService {
       debugPrint('ViagemService stream listener error: $e');
     }
 
-    // 2. Se o Firebase estiver ativo, escuta viagens ativas remotas
+    // 2. Se o Firebase estiver ativo, escuta viagens e motoristas remotos
     if (_isFirebaseDisponivel()) {
       try {
         FirebaseFirestore.instance
             .collection('viagens')
-            .where('status', isEqualTo: 'ativa')
             .snapshots()
             .listen((snapshot) {
           final viagens = snapshot.docs
               .map((doc) => ViagemModel.fromMap(doc.data(), docId: doc.id))
               .toList();
           _sincronizarComViagens(viagens);
-        });
+        }, onError: (_) {});
 
-        // Escuta coleção dedicada de localizações de motoristas, se alimentada
+        // Escuta documentos de motoristas na coleção 'usuarios' que possuam coordenadas GPS ativas
+        FirebaseFirestore.instance
+            .collection('usuarios')
+            .where('role', isEqualTo: 'motorista')
+            .snapshots()
+            .listen((snapshot) {
+          bool alterou = false;
+          for (final doc in snapshot.docs) {
+            final dados = doc.data();
+            final emViagem = dados['emViagem'] == true;
+            final latRaw = dados['latitude'];
+            final lngRaw = dados['longitude'];
+            final double? lat = (latRaw is num)
+                ? latRaw.toDouble()
+                : double.tryParse(latRaw?.toString() ?? '');
+            final double? lng = (lngRaw is num)
+                ? lngRaw.toDouble()
+                : double.tryParse(lngRaw?.toString() ?? '');
+
+            if (emViagem && lat != null && lng != null) {
+              final nome = (dados['nome'] ?? '').toString().trim();
+              final placa = (dados['veiculoPlaca'] ?? '').toString().trim();
+              final modelo = (dados['veiculoModelo'] ?? '').toString().trim();
+              final destino = (dados['cidadeDestino'] ?? '').toString().trim();
+              _motoristasAtivosMemoria[doc.id] = LocalizacaoMotoristaModel(
+                id: 'loc_${doc.id}',
+                motoristaId: doc.id,
+                motoristaNome: nome.isNotEmpty ? nome : 'Motorista',
+                veiculoPlaca: placa,
+                veiculoModelo: modelo,
+                cidadeDestino: destino,
+                latitude: lat,
+                longitude: lng,
+                ultimaAtualizacao: DateTime.now(),
+                emViagem: true,
+                viagemId: dados['viagemAtivaId']?.toString(),
+              );
+              alterou = true;
+            } else if (dados['emViagem'] == false &&
+                _motoristasAtivosMemoria.containsKey(doc.id)) {
+              _motoristasAtivosMemoria.remove(doc.id);
+              alterou = true;
+            }
+          }
+          if (alterou) {
+            _motoristasAtivosController.add(motoristasAtivos);
+          }
+        }, onError: (_) {});
+
+        // Escuta coleção dedicada de localizações de motoristas, se disponível
         FirebaseFirestore.instance
             .collection('localizacoes_motoristas')
             .where('emViagem', isEqualTo: true)
@@ -111,7 +159,7 @@ class LocalizacaoMotoristaService {
             _motoristasAtivosMemoria[loc.motoristaId] = loc;
           }
           _motoristasAtivosController.add(motoristasAtivos);
-        });
+        }, onError: (_) {});
       } catch (e) {
         debugPrint('Firestore location listeners error: $e');
       }
@@ -119,78 +167,64 @@ class LocalizacaoMotoristaService {
   }
 
   void _sincronizarComViagens(List<ViagemModel> viagens) {
-    final viagensAtivas = viagens.where((v) => v.isAtiva).toList();
-    if (viagensAtivas.isEmpty) {
-      return;
+    bool alterou = false;
+
+    // Remove motoristas cujas viagens foram encerradas ou canceladas
+    for (final v in viagens) {
+      if (v.isCancelada || v.isConcluida) {
+        final idsParaRemover = _motoristasAtivosMemoria.entries
+            .where((e) => e.value.viagemId == v.id)
+            .map((e) => e.key)
+            .toList();
+        for (final id in idsParaRemover) {
+          _motoristasAtivosMemoria.remove(id);
+          alterou = true;
+        }
+      }
     }
 
-    // Para cada viagem ativa, assegura que o condutor está registrado na lista
-    for (final viagem in viagensAtivas) {
+    // Sincroniza apenas viagens ativas ou planejadas que já possuam coordenadas GPS reais
+    final viagensValidas = viagens
+        .where((v) =>
+            (v.isAtiva || v.isPlanejada) &&
+            !v.isCancelada &&
+            !v.isConcluida &&
+            v.ultimaLatitude != null &&
+            v.ultimaLongitude != null)
+        .toList();
+
+    for (final viagem in viagensValidas) {
       final motoristaId = viagem.motoristaId.isNotEmpty
           ? viagem.motoristaId
           : 'mot_${viagem.id}';
 
-      final coords = _obterCoordenadasEstimadasPorDestino(viagem.cidadeDestino);
+      if (motoristaId == 'motorista_atual') continue;
 
-      final existente = _motoristasAtivosMemoria[motoristaId];
-      if (existente != null) {
-        _motoristasAtivosMemoria[motoristaId] = existente.copyWith(
-          cidadeDestino: viagem.cidadeDestino,
-          veiculoPlaca: viagem.veiculoPlaca,
-          veiculoModelo: viagem.veiculoModelo,
-          viagemId: viagem.id,
-          emViagem: true,
-          ultimaAtualizacao: DateTime.now(),
-        );
-      } else {
-        _motoristasAtivosMemoria[motoristaId] = LocalizacaoMotoristaModel(
-          id: 'loc_$motoristaId',
-          motoristaId: motoristaId,
-          motoristaNome: viagem.motoristaNome.isNotEmpty
-              ? viagem.motoristaNome
-              : 'Motorista Municipal',
-          veiculoPlaca: viagem.veiculoPlaca.isNotEmpty
-              ? viagem.veiculoPlaca
-              : 'MUNICIPAL',
-          veiculoModelo: viagem.veiculoModelo.isNotEmpty
-              ? viagem.veiculoModelo
-              : 'Veículo da Saúde',
-          cidadeDestino: viagem.cidadeDestino.isNotEmpty
-              ? viagem.cidadeDestino
-              : 'Em Trânsito',
-          latitude: coords.latitude,
-          longitude: coords.longitude,
-          ultimaAtualizacao: DateTime.now(),
-          emViagem: true,
-          viagemId: viagem.id,
-        );
-      }
+      _motoristasAtivosMemoria[motoristaId] = LocalizacaoMotoristaModel(
+        id: 'loc_$motoristaId',
+        motoristaId: motoristaId,
+        motoristaNome: viagem.motoristaNome.isNotEmpty
+            ? viagem.motoristaNome
+            : 'Motorista',
+        veiculoPlaca: viagem.veiculoPlaca,
+        veiculoModelo: viagem.veiculoModelo,
+        cidadeDestino: viagem.cidadeDestino,
+        latitude: viagem.ultimaLatitude!,
+        longitude: viagem.ultimaLongitude!,
+        ultimaAtualizacao:
+            viagem.ultimaAtualizacaoLocalizacao ?? DateTime.now(),
+        emViagem: true,
+        viagemId: viagem.id,
+      );
+      alterou = true;
     }
 
-    _motoristasAtivosController.add(motoristasAtivos);
-  }
-
-  /// Retorna coordenadas geográficas realistas no trajeto regional
-  ({double latitude, double longitude}) _obterCoordenadasEstimadasPorDestino(
-      String destino) {
-    final normalizado = destino.toUpperCase();
-    if (normalizado.contains('BARRETOS')) {
-      // Coordenada intermediária entre Poloni e Barretos (rodovias da região)
-      return (latitude: -20.6120, longitude: -48.9100);
-    } else if (normalizado.contains('RIO PRETO') || normalizado.contains('SJRP')) {
-      // Coordenada intermediária próxima a Mirassol / Rio Preto
-      return (latitude: -20.7800, longitude: -49.5200);
-    } else if (normalizado.contains('CATANDUVA')) {
-      return (latitude: -21.0500, longitude: -49.1200);
-    } else if (normalizado.contains('VOTUPORANGA')) {
-      return (latitude: -20.5500, longitude: -49.9200);
-    } else {
-      // Coordenadas próximas à sede municipal de Poloni
-      return (latitude: -20.7389, longitude: -49.8217);
+    if (alterou) {
+      _motoristasAtivosController.add(motoristasAtivos);
     }
   }
 
-  /// Atualiza ativamente a posição de um motorista (GPS ou broadcast)
+  /// Atualiza ativamente a posição real de um motorista (GPS ou broadcast)
   Future<void> atualizarLocalizacaoMotorista({
     required String motoristaId,
     required String motoristaNome,
@@ -220,12 +254,8 @@ class LocalizacaoMotoristaService {
     _motoristasAtivosController.add(motoristasAtivos);
 
     if (_isFirebaseDisponivel()) {
+      // 1. Atualiza na coleção 'viagens' (documento da viagem ativa ou viagens do motorista)
       try {
-        await FirebaseFirestore.instance
-            .collection('localizacoes_motoristas')
-            .doc(motoristaId)
-            .set(registro.toMap(), SetOptions(merge: true));
-
         if (viagemId != null && viagemId.isNotEmpty) {
           await FirebaseFirestore.instance
               .collection('viagens')
@@ -233,11 +263,84 @@ class LocalizacaoMotoristaService {
               .set({
             'ultimaLatitude': latitude,
             'ultimaLongitude': longitude,
-            'ultimaAtualizacaoLocalizacao': Timestamp.fromDate(agora),
+            'ultimaAtualizacaoLocalizacao': agora.toIso8601String(),
+            'status': 'ativa',
           }, SetOptions(merge: true));
+        } else {
+          final snap = await FirebaseFirestore.instance
+              .collection('viagens')
+              .where('motoristaId', isEqualTo: motoristaId)
+              .get();
+          for (final doc in snap.docs) {
+            final st = (doc.data()['status'] ?? '').toString();
+            if (st == 'ativa' || st == 'planejada') {
+              await doc.reference.set({
+                'ultimaLatitude': latitude,
+                'ultimaLongitude': longitude,
+                'ultimaAtualizacaoLocalizacao': agora.toIso8601String(),
+                'status': 'ativa',
+              }, SetOptions(merge: true));
+            }
+          }
         }
       } catch (e) {
-        debugPrint('Erro ao persistir localização remota do motorista: $e');
+        debugPrint('Erro ao persistir localização na viagem: $e');
+      }
+
+      // 2. Atualiza no documento do motorista na coleção 'usuarios'
+      if (motoristaId.isNotEmpty && motoristaId != 'motorista_atual') {
+        try {
+          await FirebaseFirestore.instance
+              .collection('usuarios')
+              .doc(motoristaId)
+              .set({
+            'latitude': latitude,
+            'longitude': longitude,
+            'ultimaAtualizacaoLocalizacao': agora.toIso8601String(),
+            'emViagem': true,
+            if (veiculoPlaca.isNotEmpty) 'veiculoPlaca': veiculoPlaca,
+            if (veiculoModelo.isNotEmpty) 'veiculoModelo': veiculoModelo,
+            if (cidadeDestino.isNotEmpty) 'cidadeDestino': cidadeDestino,
+            if (viagemId != null && viagemId.isNotEmpty)
+              'viagemAtivaId': viagemId,
+          }, SetOptions(merge: true));
+        } catch (_) {}
+      }
+
+      // 3. Tenta atualizar na coleção dedicada 'localizacoes_motoristas' de forma isolada
+      try {
+        await FirebaseFirestore.instance
+            .collection('localizacoes_motoristas')
+            .doc(motoristaId)
+            .set(registro.toMap(), SetOptions(merge: true));
+      } catch (_) {}
+    }
+  }
+
+  /// Se houver viagem ativa/planejada sem coordenadas GPS registradas, vincula a posição GPS real capturada no aparelho
+  Future<void> garantirLocalizacaoViagemAtivaComGpsDispositivo(
+    double latitude,
+    double longitude,
+  ) async {
+    final viagens = ViagemService().todasViagens.where((v) =>
+        (v.isAtiva || v.isPlanejada) &&
+        !v.isCancelada &&
+        !v.isConcluida &&
+        v.motoristaId.isNotEmpty &&
+        v.motoristaId != 'motorista_atual');
+
+    for (final v in viagens) {
+      if (!_motoristasAtivosMemoria.containsKey(v.motoristaId)) {
+        await atualizarLocalizacaoMotorista(
+          motoristaId: v.motoristaId,
+          motoristaNome: v.motoristaNome.isNotEmpty ? v.motoristaNome : 'Motorista',
+          veiculoPlaca: v.veiculoPlaca,
+          veiculoModelo: v.veiculoModelo,
+          cidadeDestino: v.cidadeDestino,
+          latitude: latitude,
+          longitude: longitude,
+          viagemId: v.id,
+        );
       }
     }
   }
@@ -250,6 +353,12 @@ class LocalizacaoMotoristaService {
     if (_isFirebaseDisponivel()) {
       try {
         FirebaseFirestore.instance
+            .collection('usuarios')
+            .doc(motoristaId)
+            .set({'emViagem': false}, SetOptions(merge: true));
+      } catch (_) {}
+      try {
+        FirebaseFirestore.instance
             .collection('localizacoes_motoristas')
             .doc(motoristaId)
             .set({'emViagem': false}, SetOptions(merge: true));
@@ -258,6 +367,7 @@ class LocalizacaoMotoristaService {
   }
 
   StreamSubscription<Position>? _gpsStreamSubscription;
+  Timer? _gpsPeriodicTimer;
 
   /// Solicita explicitamente a permissão de geolocalização do dispositivo (Android e Web)
   Future<LocationPermission> solicitarPermissaoLocalizacao() async {
@@ -285,15 +395,30 @@ class LocalizacaoMotoristaService {
           permissao == LocationPermission.deniedForever) {
         return null;
       }
-      return await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 5),
-        ),
-      );
+      try {
+        return await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            timeLimit: Duration(seconds: 12),
+          ),
+        );
+      } catch (_) {
+        final ultima = await Geolocator.getLastKnownPosition();
+        if (ultima != null) return ultima;
+        return await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.medium,
+            timeLimit: Duration(seconds: 8),
+          ),
+        );
+      }
     } catch (e) {
       debugPrint('Erro ao obter posição do dispositivo: $e');
-      return null;
+      try {
+        return await Geolocator.getLastKnownPosition();
+      } catch (_) {
+        return null;
+      }
     }
   }
 
@@ -326,7 +451,7 @@ class LocalizacaoMotoristaService {
       _gpsStreamSubscription = Geolocator.getPositionStream(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
-          distanceFilter: 15,
+          distanceFilter: 5,
         ),
       ).listen((pos) {
         atualizarLocalizacaoMotorista(
@@ -340,6 +465,24 @@ class LocalizacaoMotoristaService {
           viagemId: viagemId,
         );
       });
+
+      // Atualiza periodicamente mesmo quando o veículo está parado no semáforo/embarque
+      _gpsPeriodicTimer?.cancel();
+      _gpsPeriodicTimer = Timer.periodic(const Duration(seconds: 15), (_) async {
+        final pos = await obterPosicaoDispositivoAtual();
+        if (pos != null) {
+          await atualizarLocalizacaoMotorista(
+            motoristaId: motoristaId,
+            motoristaNome: motoristaNome,
+            veiculoPlaca: veiculoPlaca,
+            veiculoModelo: veiculoModelo,
+            cidadeDestino: cidadeDestino,
+            latitude: pos.latitude,
+            longitude: pos.longitude,
+            viagemId: viagemId,
+          );
+        }
+      });
       return true;
     } catch (e) {
       debugPrint('Erro ao iniciar transmissão GPS do motorista: $e');
@@ -351,6 +494,8 @@ class LocalizacaoMotoristaService {
   void pararTransmissaoGpsMotorista() {
     _gpsStreamSubscription?.cancel();
     _gpsStreamSubscription = null;
+    _gpsPeriodicTimer?.cancel();
+    _gpsPeriodicTimer = null;
   }
 
   /// Tenta capturar a posição do GPS do dispositivo de forma resiliente

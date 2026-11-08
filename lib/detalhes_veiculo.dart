@@ -122,43 +122,64 @@ class _DetalhesVeiculoState extends State<DetalhesVeiculo> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Icon(Icons.calendar_today_outlined, color: Colors.grey[700], size: 20),
-                          const SizedBox(width: 10),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Data de Cadastro',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Color.lerp(Colors.grey, Colors.black, 0.5),
+                          Expanded(
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Icon(Icons.calendar_today_outlined, color: Colors.grey[700], size: 20),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Data de Cadastro',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Color.lerp(Colors.grey, Colors.black, 0.5),
+                                        ),
+                                      ),
+                                      Text(
+                                        criadoEm,
+                                        style: const TextStyle(fontSize: 13),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                              Text(
-                                criadoEm,
-                                style: const TextStyle(fontSize: 14),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                          const SizedBox(width: 24),
-                          Icon(Icons.update_outlined, color: Colors.grey[700], size: 20),
-                          const SizedBox(width: 10),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Última Atualização',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Color.lerp(Colors.grey, Colors.black, 0.5),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Icon(Icons.update_outlined, color: Colors.grey[700], size: 20),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Última Atualização',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Color.lerp(Colors.grey, Colors.black, 0.5),
+                                        ),
+                                      ),
+                                      Text(
+                                        atualizadoEm,
+                                        style: const TextStyle(fontSize: 13),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                              Text(
-                                atualizadoEm,
-                                style: const TextStyle(fontSize: 14),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ],
                       ),
