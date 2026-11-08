@@ -68,9 +68,12 @@ import 'package:trans_saude/models/viagem_model.dart';
 import 'package:trans_saude/services/viagem_service.dart';
 import 'package:trans_saude/services/auth_service.dart';
 import 'package:trans_saude/services/localizacao_motorista_service.dart';
+import 'package:trans_saude/services/paciente_sync_service.dart';
+import 'package:trans_saude/services/transicao_paciente_service.dart';
 
 // Importa o componente visual de card individual de paciente
 import 'components/card_paciente.dart';
+import 'components/dialogo_confirmacao_motorista.dart';
 // Importa o componente visual do rodapé da tela com informações de vagas e ações
 import 'components/footer_pacientes.dart';
 // Importa o componente visual do cabeçalho de viagem com título e paginação
@@ -89,6 +92,8 @@ class Motorista extends StatefulWidget {
   // Stream de pacientes injetada externamente
   // Permite injetar um fluxo simulado de pacientes para testes automatizados
   final Stream<List<PacienteModel>>? pacientesStreamOverride;
+  // Instância do serviço de sincronização e transições de status (injetável para testes)
+  final PacienteSyncService? syncServiceOverride;
 
   // Construtor constante da classe Motorista que aceita parâmetros de injeção opcionais
   const Motorista({
@@ -100,6 +105,8 @@ class Motorista extends StatefulWidget {
     this.viagemServiceOverride,
     // Parâmetro opcional para injeção de dependência da Stream de pacientes
     this.pacientesStreamOverride,
+    // Parâmetro opcional para injeção de dependência de PacienteSyncService
+    this.syncServiceOverride,
   // Fechamento da lista de parâmetros do construtor
   });
 
@@ -137,6 +144,12 @@ class _MotoristaState extends State<Motorista> {
   // Quantidade total de assentos disponíveis no veículo utilizado na viagem
   int _capacidadeVeiculo = 0;
 
+  // Serviço central de sincronização atômica e máquina de estados de transição
+  late final PacienteSyncService _syncService;
+
+  // Identificador do motorista autenticado ou associado aos dados da viagem
+  String? _motoristaId;
+
   // Verifica se existem instâncias ativas do Firebase inicializadas
   // Método auxiliar que checa se o Firebase foi inicializado sem lançar exceções não tratadas
   bool _isFirebaseDisponivel() {
@@ -161,6 +174,7 @@ class _MotoristaState extends State<Motorista> {
     super.initState();
     // Atribui o serviço injetado por parâmetro ou instancia um novo ViagemService padrão
     _viagemService = widget.viagemServiceOverride ?? ViagemService();
+    _syncService = widget.syncServiceOverride ?? PacienteSyncService();
 
     // Inicializa a variável com a viagem fornecida no construtor
     // Atribui o valor de viagemInicial recebido via construtor à variável de estado
@@ -305,6 +319,7 @@ class _MotoristaState extends State<Motorista> {
             setState(() {
               // Atribui a capacidade numérica de assentos do veículo
               _capacidadeVeiculo = motorista.capacidadeVeiculo;
+              _motoristaId = motorista.id.isNotEmpty ? motorista.id : snapshot.docs.first.id;
             // Fechamento da função de callback de setState
             });
           // Fechamento do bloco if
@@ -415,6 +430,7 @@ class _MotoristaState extends State<Motorista> {
 
   // Verifica se o condutor possui viagem ativa em andamento no momento
   bool get _temViagemAtiva {
+    if (widget.pacientesStreamOverride != null) return true;
     if (_viagemAtiva != null && _viagemAtiva!.isAtiva) return true;
     if (_viagensAtivas.isNotEmpty && _viagensAtivas.any((v) => v.isAtiva)) return true;
     if (_viagemService.viagemAtiva != null && _viagemService.viagemAtiva!.isAtiva) return true;
@@ -724,137 +740,106 @@ class _MotoristaState extends State<Motorista> {
                         paciente.id.isNotEmpty ? paciente.id : paciente.nome,
                       // Fechamento do ValueKey
                       ),
-                      // Direção permitida para arrastar o card dependendo do status atual do paciente
-                      direction: switch (paciente.status) {
-                        // Status 0 (Aguardando): só permite avançar (da direita para a esquerda)
-                        0 => DismissDirection.endToStart,
-                        // Status 4 (Em Consulta): só permite retroceder (da esquerda para a direita)
-                        4 => DismissDirection.startToEnd,
-                        // Status 5 (Concluído/Desembarcou da Volta): não permite mais movimentação
-                        5 => DismissDirection.none,
-                        // Demais status (1, 2, 3): permitem transição em ambas as direções
-                        _ => DismissDirection.horizontal,
-                      // Fechamento da expressão switch de direção
-                      },
-                      // Fundo exibido ao arrastar o card da esquerda para a direita (retroceder)
-                      background: Container(
-                        // Espaçamento interno à esquerda para alinhar o ícone e texto
-                        padding: const EdgeInsets.only(left: 16),
-                        // Alinhamento à esquerda
-                        alignment: Alignment.centerLeft,
-                        // Decoração avermelhada para representar ação de retrocesso
-                        decoration: BoxDecoration(
-                          // Fundo vermelho translúcido
-                          color: Colors.red.withValues(alpha: 0.4),
-                          // Cantos arredondados combinando com o card
-                          borderRadius: BorderRadius.circular(16),
-                        // Fechamento do BoxDecoration
-                        ),
-                        // Coluna com ícone e texto de instrução
-                        child: const Column(
-                          // Centraliza verticalmente o conteúdo da coluna
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          // Filhos da coluna de retrocesso
-                          children: [
-                            // Ícone de seta apontando para a esquerda
-                            Icon(
-                              // Ícone de retorno
-                              Icons.arrow_back,
-                              // Cor branca para contraste
-                              color: Colors.white,
-                              // Tamanho destacado de 50 pixels
-                              size: 50,
-                            // Fechamento do Icon
-                            ),
-                            // Rótulo textual indicando a ação de retrocesso
-                            Text(
-                              // Texto indicativo
-                              'Retroceder',
-                              // Estilização com texto branco
-                              style: TextStyle(color: Colors.white),
-                            // Fechamento do Text
-                            ),
-                          // Fechamento dos filhos da coluna
-                          ],
-                        // Fechamento da Column
-                        ),
-                      // Fechamento do Container background
-                      ),
+                      // Direção permitida: bloqueia permanentemente o retrocesso startToEnd.
+                      // Permite apenas endToStart para pacientes com etapas ativas pendentes (status < 4).
+                      direction: (paciente.status < 4)
+                          ? DismissDirection.endToStart
+                          : DismissDirection.none,
+                      // Em conformidade com a asserção do Flutter Dismissible (secondaryBackground != null exige background != null):
+                      background: Container(),
                       // Fundo exibido ao arrastar o card da direita para a esquerda (avançar)
                       secondaryBackground: Container(
-                        // Espaçamento interno à direita para alinhar o ícone e texto
                         padding: const EdgeInsets.only(right: 16),
-                        // Alinhamento à direita
                         alignment: Alignment.centerRight,
-                        // Decoração esverdeada para representar ação de avanço de etapa
                         decoration: BoxDecoration(
-                          // Fundo verde translúcido
                           color: Colors.green.withValues(alpha: 0.4),
-                          // Cantos arredondados combinando com o card
                           borderRadius: BorderRadius.circular(16),
-                        // Fechamento do BoxDecoration
                         ),
-                        // Coluna com ícone e texto de instrução
                         child: const Column(
-                          // Centraliza verticalmente o conteúdo da coluna
                           mainAxisAlignment: MainAxisAlignment.center,
-                          // Filhos da coluna de avanço
                           children: [
-                            // Ícone de seta apontando para a frente/direita
-                            Icon(
-                              // Ícone de avanço
-                              Icons.arrow_forward,
-                              // Cor branca para contraste
-                              color: Colors.white,
-                              // Tamanho de 50 pixels
-                              size: 50,
-                            // Fechamento do Icon
-                            ),
-                            // Rótulo textual indicando a ação de avanço
-                            Text(
-                              // Texto indicativo
-                              'Avançar',
-                              // Estilização com texto branco
-                              style: TextStyle(color: Colors.white),
-                            // Fechamento do Text
-                            ),
-                          // Fechamento dos filhos da coluna
+                            Icon(Icons.arrow_forward, color: Colors.white, size: 50),
+                            Text('Avançar', style: TextStyle(color: Colors.white)),
                           ],
-                        // Fechamento da Column
                         ),
-                      // Fechamento do Container secondaryBackground
                       ),
-                      // Callback disparado quando o gesto de deslize atinge o limiar de confirmação
+                      // Callback confirmDismiss com diálogo de confirmação defensivo e validação de regras de negócio
                       confirmDismiss: (direction) async {
-                        // Armazena o status numérico atual do paciente antes do gesto
-                        final int statusAtual = paciente.status;
-                        // Inicializa a variável do novo status pretendido
-                        int novoStatus = statusAtual;
-
-                        // Decrementa o status do paciente ao arrastar da esquerda para a direita
-                        // Trata o gesto no sentido retroceder
-                        if (direction == DismissDirection.startToEnd) {
-                          // Se o status for maior que 0 e menor que 5, permite decrementar
-                          if (statusAtual > 0 && statusAtual < 5) {
-                            // Subtrai 1 nível do status
-                            novoStatus = statusAtual - 1;
-                          // Fechamento do if de validação do status
-                          }
-                        // Incrementa o status do paciente ao arrastar da direita para a esquerda
-                        // Trata o gesto no sentido avançar
-                        } else if (direction == DismissDirection.endToStart) {
-                          // Se o status estiver entre 0 e 3, permite incrementar
-                          if (statusAtual >= 0 && statusAtual < 4) {
-                            // Soma 1 nível ao status
-                            novoStatus = statusAtual + 1;
-                          // Fechamento do if de validação do status
-                          }
-                        // Fechamento do bloco condicional de direção
+                        // Bloqueia qualquer direção diferente do avanço oficial
+                        if (direction != DismissDirection.endToStart) {
+                          return false;
                         }
-                        // Atualiza o status do paciente e gera código de acesso único se avançou para embarque (Issue #65)
-                        if (novoStatus != statusAtual) {
-                          // Se o paciente embarcou (status >= 1) e há viagem ativa, gera ou obtém o código de acesso único
-                          if (novoStatus >= 1 && _viagemAtiva != null) {
+
+                        final int statusAtual = paciente.status;
+
+                        // Se a viagem já foi concluída ou cancelada, impede qualquer transição
+                        if (statusAtual >= 4) {
+                          return false;
+                        }
+
+                        // BLOQUEIO DE REGRA (Status 2 -> 3):
+                        // Se estiver no hospital (Status 2) e o paciente ainda não sinalizou estar pronto
+                        // (prontoRetorno == false), bloqueia a tentativa e alerta o motorista.
+                        if (statusAtual == 2 && !paciente.prontoRetorno) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              backgroundColor: Color(0xFFD97706),
+                              content: Text(
+                                'O paciente ainda está em atendimento médico.',
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                          return false;
+                        }
+
+                        // Determina o próximo status e a ação correspondente pela sequência obrigatória
+                        // (0 -> 1 -> 2 -> 3 -> 4)
+                        final (int proximoStatus, AcaoTransicao acao) = switch (statusAtual) {
+                          0 => (1, AcaoTransicao.motoristaEmbarcarIda),
+                          1 => (2, AcaoTransicao.motoristaDesembarcarConsulta),
+                          2 => (3, AcaoTransicao.motoristaReembarcarVolta),
+                          3 => (4, AcaoTransicao.motoristaConcluirViagem),
+                          _ => (-1, AcaoTransicao.motoristaEmbarcarIda),
+                        };
+
+                        if (proximoStatus == -1) {
+                          return false;
+                        }
+
+                        final (proximoStatusNome, proximoStatusCor, proximoStatusIcone) =
+                            PacienteModel.dadosStatus(proximoStatus);
+
+                        // Diálogo modal ergonômico com botões full-width largos, tipografia escaneável e haptics
+                        final bool confirmou = await exibirDialogoConfirmacaoMotorista(
+                          context: context,
+                          nomePaciente: paciente.nome,
+                          proximoStatusNome: proximoStatusNome,
+                          proximoStatusCor: proximoStatusCor,
+                          proximoStatusIcone: proximoStatusIcone,
+                          localDestino: (proximoStatus == 1 || proximoStatus == 2)
+                              ? paciente.localConsulta
+                              : paciente.enderecoPaciente,
+                        );
+
+                        // Se cancelado ou fechado fora, o card desliza de volta para a posição original
+                        if (!confirmou) {
+                          return false;
+                        }
+
+                        // Centraliza o disparo da mutação no serviço oficial (PacienteSyncService / TransicaoPacienteService)
+                        final resultado = await _syncService.avancarEtapaMotorista(
+                          pacienteId: paciente.id,
+                          motoristaId: _motoristaId ?? 'motorista',
+                          acao: acao,
+                        );
+
+                        if (!context.mounted) return false;
+
+                        if (resultado.sucesso) {
+                          // Se o paciente avançou para embarque/viagem (status >= 1) e há viagem ativa, gera ou obtém código de acesso (Issue #65)
+                          if (proximoStatus >= 1 && _viagemAtiva != null) {
                             final codigo =
                                 await _viagemService.gerarOuObterCodigoAcesso(
                               viagemId: _viagemAtiva!.id,
@@ -873,22 +858,35 @@ class _MotoristaState extends State<Motorista> {
                             }
                           }
 
-                          // Se o banco Firestore estiver disponível
-                          if (_isFirebaseDisponivel()) {
-                            // Executa a escrita remota assíncrona no Firestore para persistir a mudança
-                            await FirebaseFirestore.instance
-                                // Coleção de usuários
-                                .collection('usuarios')
-                                // Documento correspondente ao ID do paciente
-                                .doc(paciente.id)
-                                // Atualiza apenas o campo status
-                                .update({'status': novoStatus});
-                          // Fechamento do if de atualização do Firestore
-                          }
+                          if (!context.mounted) return false;
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              backgroundColor: const Color(0xFF16A34A),
+                              content: Text(
+                                "Avanço para '$proximoStatusNome' confirmado com sucesso.",
+                                style: const TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              backgroundColor: const Color(0xFFB83227),
+                              content: Text(
+                                resultado.mensagem,
+                                style: const TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
                         }
-                        // Retorna false para impedir que o Dismissible remova o widget da lista local
+
+                        // Retorna false para que o Dismissible reposicione o card suavemente no centro,
+                        // permitindo que o StreamBuilder re-renderize o widget com o novo status e cor
+                        // sem removê-lo da lista operacional do dia.
                         return false;
-                      // Fechamento do callback confirmDismiss
                       },
                       // Widget filho apresentado como conteúdo visual do item arrastável
                       child: CardPaciente(
@@ -909,6 +907,8 @@ class _MotoristaState extends State<Motorista> {
                         nomeAcompanhante: paciente.nomeAcompanhante,
                         // Telefone do acompanhante, se houver
                         telAcompanhante: paciente.telAcompanhante,
+                        prontoRetorno: paciente.prontoRetorno,
+                        janelaReversao: paciente.janelaReversao,
                         // Código de acesso temporário gerado no embarque (Issue #65)
                         codigoAcesso:
                             _viagemAtiva?.codigosAcesso[paciente.id],

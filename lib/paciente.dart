@@ -65,9 +65,10 @@ import 'components/card_tracking_paciente.dart';
 // Importa o modelo de localização dos motoristas em trânsito
 import 'models/localizacao_motorista_model.dart';
 // Importa o modelo de dados representativo da entidade Paciente
+import 'components/banner_reversao_paciente.dart';
 import 'models/paciente_model.dart';
-// Importa o serviço de autenticação para logout
 import 'services/auth_service.dart';
+import 'services/paciente_sync_service.dart';
 
 // Tela principal do Módulo do Paciente (Issue #18)
 // Centraliza a identificação, dados da consulta agendada, tracking e botões de ação
@@ -79,6 +80,7 @@ class Paciente extends StatefulWidget {
   // Stream customizada de paciente injetada externamente (útil para testes unitários)
   // Fluxo reativo injetável para testes automatizados sem dependência de backend real
   final Stream<PacienteModel?>? pacienteStreamOverride;
+  final PacienteSyncService? syncServiceOverride;
   // Stream customizada de motoristas ativos em trânsito para testes unitários
   final Stream<List<LocalizacaoMotoristaModel>>? motoristasStreamOverride;
 
@@ -87,6 +89,7 @@ class Paciente extends StatefulWidget {
     super.key,
     this.pacienteId,
     this.pacienteStreamOverride,
+    this.syncServiceOverride,
     this.motoristasStreamOverride,
   });
 
@@ -99,6 +102,186 @@ class Paciente extends StatefulWidget {
 
 // Classe de estado privada que gerencia o ciclo de vida e a construção da UI do paciente
 class _PacienteState extends State<Paciente> {
+  late final PacienteSyncService _syncService;
+  late Stream<PacienteModel?> _pacienteStream;
+  bool _processandoAcao = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _syncService = widget.syncServiceOverride ?? PacienteSyncService();
+    _pacienteStream = _carregarPaciente();
+  }
+
+  @override
+  void didUpdateWidget(covariant Paciente oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.pacienteId != widget.pacienteId ||
+        oldWidget.pacienteStreamOverride != widget.pacienteStreamOverride) {
+      _pacienteStream = _carregarPaciente();
+    }
+  }
+
+  Future<void> _solicitarCancelamentoComConfirmacao(PacienteModel paciente) async {
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Tem certeza dessa ação?'),
+        content: const Text(
+          'Deseja realmente informar que foi embora ou pegou carona? '
+          'Você terá até 5 minutos para desfazer esta ação antes da consolidação.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFB83227),
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Confirmar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmar != true || !mounted) return;
+
+    setState(() => _processandoAcao = true);
+    try {
+      final key = '${paciente.id}_cancel_${DateTime.now().millisecondsSinceEpoch}';
+      final res = await _syncService.solicitarCancelamento(
+        pacienteId: paciente.id,
+        atorId: paciente.id,
+        atorRole: 'paciente',
+        idempotencyKey: key,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(res.mensagem),
+          backgroundColor: res.sucesso ? const Color(0xFFB83227) : Colors.black87,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Falha ao processar: $e'),
+          backgroundColor: const Color(0xFFDC2626),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _processandoAcao = false);
+      }
+    }
+  }
+
+  Future<void> _sinalizarProntoComConfirmacao(PacienteModel paciente) async {
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Tem certeza dessa ação?'),
+        content: const Text(
+          'Deseja avisar ao motorista que sua consulta médica terminou e você está pronto para o retorno? '
+          'Você terá até 1 minuto para desfazer este aviso.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF0F172A),
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Confirmar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmar != true || !mounted) return;
+
+    setState(() => _processandoAcao = true);
+    try {
+      final key = '${paciente.id}_pronto_${DateTime.now().millisecondsSinceEpoch}';
+      final res = await _syncService.sinalizarPronto(
+        pacienteId: paciente.id,
+        atorId: paciente.id,
+        atorRole: 'paciente',
+        idempotencyKey: key,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(res.mensagem),
+          backgroundColor: res.sucesso ? const Color(0xFF16A34A) : Colors.black87,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Falha ao processar: $e'),
+          backgroundColor: const Color(0xFFDC2626),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _processandoAcao = false);
+      }
+    }
+  }
+
+  Future<void> _executarDesfazer(PacienteModel paciente) async {
+    final janela = paciente.janelaReversao;
+    if (janela == null) return;
+
+    setState(() => _processandoAcao = true);
+    try {
+      final key = '${paciente.id}_undo_${DateTime.now().millisecondsSinceEpoch}';
+      final res = (janela.acao == 'cancelamento_carona')
+          ? await _syncService.desfazerCancelamento(
+              pacienteId: paciente.id,
+              atorId: paciente.id,
+              atorRole: 'paciente',
+              idempotencyKey: key,
+            )
+          : await _syncService.desfazerPronto(
+              pacienteId: paciente.id,
+              atorId: paciente.id,
+              atorRole: 'paciente',
+              idempotencyKey: key,
+            );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(res.mensagem),
+          backgroundColor: res.sucesso ? const Color(0xFF2563EB) : Colors.black87,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Falha ao desfazer: $e'),
+          backgroundColor: const Color(0xFFDC2626),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _processandoAcao = false);
+      }
+    }
+  }
   // Verifica se o Firebase foi inicializado
   // Checa a disponibilidade do Firebase para decidir entre backend real ou fallback mockado
   bool _isFirebaseDisponivel() {
@@ -128,50 +311,17 @@ class _PacienteState extends State<Paciente> {
 
     // Se o serviço do Firebase estiver ativo e operacional
     if (_isFirebaseDisponivel()) {
-      // Caso o ID tenha sido fornecido, escuta direto o documento dele
-      // Verifica se o identificador do paciente foi informado
-      if (widget.pacienteId != null) {
-        // Acessa o documento específico do paciente na coleção 'usuarios'
-        return FirebaseFirestore.instance
-            // Coleção de usuários
-            .collection('usuarios')
-            // Referência direta ao documento do paciente informado
-            .doc(widget.pacienteId)
-            // Emite snapshots a cada alteração no documento
-            .snapshots()
-            // Converte o snapshot recebido em uma instância de PacienteModel ou nulo
-            .map((doc) {
-              // Se o documento não existir ou os dados forem nulos, retorna nulo
-              if (!doc.exists || doc.data() == null) return null;
-              // Converte o mapa de dados do documento para o modelo PacienteModel
-              return PacienteModel.fromMap(doc.data()!, docId: doc.id);
-            // Fechamento do map
-            });
-      // Fechamento da verificação se pacienteId não é nulo
-      }
-
-      // Senão, pega o primeiro paciente cadastrado para desenvolvimento
-      // Fallback para ambiente de desenvolvimento: escuta o primeiro paciente cadastrado
+      final docIdAlvo = widget.pacienteId ?? 'paciente_novo_issue19';
       return FirebaseFirestore.instance
-          // Coleção de usuários
           .collection('usuarios')
-          // Filtra documentos onde o perfil seja 'paciente'
-          .where('role', isEqualTo: 'paciente')
-          // Limita a consulta a um único documento
-          .limit(1)
-          // Ouve alterações no documento em tempo real
+          .doc(docIdAlvo)
           .snapshots()
-          // Transforma o snapshot da coleção em PacienteModel
-          .map((snapshot) {
-            // Se nenhum paciente foi localizado na coleção, retorna nulo
-            if (snapshot.docs.isEmpty) return null;
-            // Obtém o primeiro documento do resultado
-            final doc = snapshot.docs.first;
-            // Converte os dados brutos do Firestore em PacienteModel
-            return PacienteModel.fromMap(doc.data(), docId: doc.id);
-          // Fechamento do map
+          .map((doc) {
+            if (doc.exists && doc.data() != null) {
+              return PacienteModel.fromMap(doc.data()!, docId: doc.id);
+            }
+            return null;
           });
-    // Fechamento do if de Firebase disponível
     }
 
     // Mock de fallback com dados realistas caso execute offline ou sem Firebase
@@ -215,7 +365,7 @@ class _PacienteState extends State<Paciente> {
     // Construtor reativo baseado na Stream de dados do paciente
     return StreamBuilder<PacienteModel?>(
       // Conecta o construtor à stream de dados do paciente
-      stream: _carregarPaciente(),
+      stream: _pacienteStream,
       // Construtor da interface baseado no snapshot da stream
       builder: (context, snapshot) {
         // Estado de carregamento inicial
@@ -262,6 +412,52 @@ class _PacienteState extends State<Paciente> {
         // Fechamento do if de paciente nulo
         }
 
+        // Avaliação de timer ativo e regras de habilitação dos botões de ação:
+        // A janela de reversão só é válida se estiver ativa no tempo E consistente com o estado atual:
+        // - 'cancelamento_carona' só tem sentido se o paciente estiver em status 5 (Cancelado).
+        // - 'pronto_retorno' só tem sentido se o paciente estiver em status 2 (Desembarcou) com prontoRetorno == true.
+        final bool isJanelaValida = paciente.janelaReversao != null &&
+            paciente.janelaReversao!.estaAtiva() &&
+            ((paciente.janelaReversao!.acao == 'cancelamento_carona' && paciente.status == 5) ||
+             (paciente.janelaReversao!.acao == 'pronto_retorno' && paciente.status == 2 && paciente.prontoRetorno));
+
+        final bool temTimerAtivo = isJanelaValida;
+
+        // Quando o paciente se encontra dentro da van (Status 1: Embarcou para Ida ou
+        // Status 3: Reembarcou para Volta), ambos os botões devem ficar cinzas e
+        // inacessíveis, pois ele já está a bordo do veículo em trânsito.
+        // O botão "Fui embora" só pode ser acionado quando NÃO está na van (Status 0 ou 2).
+        final bool fuiEmboraHabilitado = !temTimerAtivo &&
+            !_processandoAcao &&
+            (paciente.status == 0 || paciente.status == 2);
+
+        // O botão "Estou Pronto" só pode ser acionado quando desembarcou na consulta (Status 2)
+        // e ainda não avisou o motorista. Nos demais status (0, 1, 3, 4, 5) fica cinza e inacessível.
+        final bool estouProntoHabilitado = !temTimerAtivo &&
+            !_processandoAcao &&
+            !paciente.prontoRetorno &&
+            paciente.status == 2;
+
+        // Rótulo de apoio explicativo para estados desabilitados (acessibilidade / blindagem cognitiva):
+        String? mensagemApoio;
+        if (temTimerAtivo) {
+          if (paciente.janelaReversao?.acao == 'cancelamento_carona') {
+            mensagemApoio = 'Cancelamento em andamento. Você pode desfazer no banner acima.';
+          } else {
+            mensagemApoio = 'Prontidão sinalizada. Você pode desfazer no banner acima.';
+          }
+        } else if (paciente.status == 1) {
+          mensagemApoio = 'Você está a bordo da van a caminho da consulta médica.';
+        } else if (paciente.status == 3) {
+          mensagemApoio = 'Você está a bordo da van retornando para sua residência.';
+        } else if (paciente.status == 2 && paciente.prontoRetorno) {
+          mensagemApoio = 'Motorista já avisado. Aguarde o veículo no ponto de encontro.';
+        } else if (paciente.status == 4) {
+          mensagemApoio = 'Transporte concluído com sucesso. Tenha um ótimo dia!';
+        } else if (paciente.status == 5) {
+          mensagemApoio = 'Agendamento cancelado.';
+        }
+
         // Renderiza a estrutura completa da tela quando os dados do paciente estão disponíveis
         return Scaffold(
           // Fundo padronizado com as demais telas do aplicativo
@@ -302,6 +498,20 @@ class _PacienteState extends State<Paciente> {
               ),
             ),
             actions: [
+              TextButton.icon(
+                key: const Key('botao_abrir_visao_motorista'),
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.white,
+                ),
+                icon: const Icon(Icons.drive_eta, size: 20, color: Colors.white),
+                label: const Text(
+                  'Visão Motorista',
+                  style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+                ),
+                onPressed: () {
+                  Navigator.of(context).pushNamed('/motorista');
+                },
+              ),
               IconButton(
                 key: const Key('botaoLogoutPaciente'),
                 icon: const Icon(Icons.logout),
@@ -314,6 +524,7 @@ class _PacienteState extends State<Paciente> {
                   }
                 },
               ),
+              const SizedBox(width: 8),
             ],
           // Fechamento do AppBar
           ),
@@ -362,149 +573,147 @@ class _PacienteState extends State<Paciente> {
                   // Espaçamento vertical entre os cards
                   const SizedBox(height: 16),
 
+                  // BANNER DE REVERSÃO / UNDO (Issue #19)
+                  if (temTimerAtivo && paciente.janelaReversao != null)
+                    BannerReversaoPaciente(
+                      janela: paciente.janelaReversao!,
+                      carregando: _processandoAcao,
+                      onDesfazer: () => _executarDesfazer(paciente),
+                    ),
+
                   // 3. BOTÕES DE AÇÃO: Primário ("Estou Pronto") e Secundário ("Fui embora")
-                  // Linha horizontal contendo os botões de ação do paciente
+                  // Enquanto houver timer ativo (janela de reversão de carona ou pronto), os botões
+                  // permanecem visíveis, porém inacessíveis com estilo cinza (disabled).
+                  // Ao desfazer a ação, ou se a janela não estiver ativa, os botões voltam a ser clicáveis.
+                  // Altura de 54dp e FittedBox garantem resiliência a escalas de 150% a 200%.
                   Row(
-                    // Filhos dispostos lado a lado
                     children: [
                       // Botão Secundário: Fui embora (Carona)
-                      // Primeiro botão ocupando metade proporcional da linha
                       Expanded(
-                        // Caixa com altura fixa para toque confortável
                         child: SizedBox(
-                          // Altura de 52 pixels
-                          height: 52,
-                          // Botão com borda avermelhada para cancelamento / carona
+                          height: 54,
                           child: OutlinedButton.icon(
-                            // Estilização do botão delineado
+                            key: const Key('botao_fui_embora'),
                             style: OutlinedButton.styleFrom(
-                              // Borda vermelha personalizada
-                              side: const BorderSide(
-                                // Cor vermelha escura
-                                color: Color(0xFFB83227),
-                                // Espessura da borda
+                              side: BorderSide(
+                                color: fuiEmboraHabilitado
+                                    ? const Color(0xFFB83227)
+                                    : Colors.grey.shade400,
                                 width: 1.5,
-                              // Fechamento do BorderSide
                               ),
-                              // Cantos arredondados
                               shape: RoundedRectangleBorder(
-                                // Raio de arredondamento de 12 pixels
                                 borderRadius: BorderRadius.circular(12),
-                              // Fechamento do RoundedRectangleBorder
                               ),
-                              // Cor de fundo do botão com tom esbranquiçado sutil
-                              backgroundColor: const Color(0xFFFFFDF8),
-                            // Fechamento do OutlinedButton.styleFrom
+                              backgroundColor: fuiEmboraHabilitado
+                                  ? const Color(0xFFFFFDF8)
+                                  : const Color(0xFFF1F5F9),
                             ),
-                            // Ícone de cancelamento
-                            icon: const Icon(
-                              // Ícone de X circunscrito
+                            icon: Icon(
                               Icons.cancel_outlined,
-                              // Cor vermelha do ícone
-                              color: Color(0xFFB83227),
-                              // Tamanho do ícone
+                              color: fuiEmboraHabilitado
+                                  ? const Color(0xFFB83227)
+                                  : Colors.grey.shade400,
                               size: 18,
-                            // Fechamento do Icon
                             ),
-                            // Rótulo de texto do botão
-                            label: const Text(
-                              // Texto exibido no botão
-                              'Fui embora',
-                              // Estilização tipográfica do texto
-                              style: TextStyle(
-                                // Cor vermelha correspondente
-                                color: Color(0xFFB83227),
-                                // Peso em negrito
-                                fontWeight: FontWeight.bold,
-                                // Tamanho da fonte
-                                fontSize: 13,
-                              // Fechamento do TextStyle
+                            label: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                'Fui embora',
+                                style: TextStyle(
+                                  color: fuiEmboraHabilitado
+                                      ? const Color(0xFFB83227)
+                                      : Colors.grey.shade400,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                ),
                               ),
-                            // Fechamento do Text
                             ),
-                            // Ação ao pressionar o botão
-                            onPressed: () {
-                              // TODO: Implementar backend do botão Fui embora / Carona (Issue #19)
-                              // Ação de aviso de carona/desistência a ser implementada na Issue 19
-                            // Fechamento do callback onPressed
-                            },
-                          // Fechamento do OutlinedButton.icon
+                            onPressed: fuiEmboraHabilitado
+                                ? () => _solicitarCancelamentoComConfirmacao(paciente)
+                                : null,
                           ),
-                        // Fechamento do SizedBox
                         ),
-                      // Fechamento do Expanded do botão secundário
                       ),
-                      // Espaçamento horizontal entre os dois botões
                       const SizedBox(width: 12),
 
                       // Botão Primário: Estou Pronto
-                      // Segundo botão ocupando metade proporcional da linha
                       Expanded(
-                        // Caixa com altura fixa para toque confortável
                         child: SizedBox(
-                          // Altura de 52 pixels
-                          height: 52,
-                          // Botão com fundo preenchido escuro
+                          height: 54,
                           child: ElevatedButton.icon(
-                            // Estilização do botão elevado
+                            key: const Key('botao_estou_pronto'),
                             style: ElevatedButton.styleFrom(
-                              // Fundo escuro azulado elegante
-                              backgroundColor: const Color(0xFF0F172A),
-                              // Cor de primeiro plano (texto e ícones)
+                              backgroundColor: estouProntoHabilitado
+                                  ? const Color(0xFF0F172A)
+                                  : Colors.grey.shade400,
                               foregroundColor: Colors.white,
-                              // Cantos arredondados
+                              disabledBackgroundColor: Colors.grey.shade400,
+                              disabledForegroundColor: Colors.white70,
                               shape: RoundedRectangleBorder(
-                                // Raio de arredondamento de 12 pixels
                                 borderRadius: BorderRadius.circular(12),
-                              // Fechamento do RoundedRectangleBorder
                               ),
-                              // Elevação sutil de sombra
-                              elevation: 2,
-                            // Fechamento do ElevatedButton.styleFrom
+                              elevation: estouProntoHabilitado ? 2 : 0,
                             ),
-                            // Ícone de confirmação com check circunscrito
                             icon: const Icon(
-                              // Ícone de check
                               Icons.check_circle_outline,
-                              // Tamanho de 18 pixels
                               size: 18,
-                              // Cor branca para contraste
                               color: Colors.white,
-                            // Fechamento do Icon
                             ),
-                            // Rótulo textual do botão
-                            label: const Text(
-                              // Texto indicativo
-                              'Estou Pronto',
-                              // Estilização tipográfica em negrito
-                              style: TextStyle(
-                                // Peso em negrito
-                                fontWeight: FontWeight.bold,
-                                // Tamanho da fonte
-                                fontSize: 13,
-                              // Fechamento do TextStyle
+                            label: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                paciente.prontoRetorno ? 'Pronto (Avisado)' : 'Estou Pronto',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                ),
                               ),
-                            // Fechamento do Text
                             ),
-                            // Ação ao pressionar o botão
-                            onPressed: () {
-                              // TODO: Implementar backend do botão Estou Pronto (Issue #19)
-                              // Ação de confirmação de prontidão a ser implementada na Issue 19
-                            // Fechamento do callback onPressed
-                            },
-                          // Fechamento do ElevatedButton.icon
+                            onPressed: estouProntoHabilitado
+                                ? () => _sinalizarProntoComConfirmacao(paciente)
+                                : null,
                           ),
-                        // Fechamento do SizedBox
                         ),
-                      // Fechamento do Expanded do botão primário
                       ),
-                    // Fechamento da lista children da Row
                     ],
-                  // Fechamento da Row
                   ),
-                  // Espaçamento vertical entre os botões e o card de rastreamento
-                  const SizedBox(height: 16),
 
+                  // Rótulo de apoio para estados inativos (elimina sensação de app travado e reduz ansiedade)
+                  if (mensagemApoio != null) ...[
+                    const SizedBox(height: 10),
+                    Container(
+                      key: const Key('mensagem_apoio_botoes_inativos'),
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.info_outline, size: 16, color: Color(0xFF64748B)),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                mensagemApoio,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF475569),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
                   // 4. COMPONENTE: Card com Mapa de Rastreamento dos Motoristas Ativos
                   // Exibe a localização em tempo real de todos os motoristas em trânsito
                   CardTrackingPaciente(

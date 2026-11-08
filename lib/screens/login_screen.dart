@@ -223,6 +223,8 @@ class _LoginScreenState extends State<LoginScreen> {
       // Se o usuário for administrador, redireciona para a tela do administrador
       } else if (role == UserRole.admin) {
         Navigator.pushReplacementNamed(context, '/administrativo');
+      } else if (role == UserRole.paciente) {
+        Navigator.pushReplacementNamed(context, '/paciente');
       // Fecha a checagem de perfil após login
       }
     // Captura erros de domínio AuthException
