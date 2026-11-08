@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:trans_saude/models/veiculo_model.dart';
 import 'package:trans_saude/models/viagem_model.dart';
@@ -7,7 +7,18 @@ import 'package:trans_saude/services/viagem_service.dart';
 
 void main() {
   setUp(() {
-    ViagemService().resetParaTestes();
+    ViagemService().resetParaTestes(
+      veiculosIniciais: const [
+        VeiculoModel(
+          id: 'v1',
+          placa: 'ABC-1D23',
+          modelo: 'Chevrolet Spin 1.8 LTZ',
+          capacidade: 7,
+          quilometragemAtual: 85420,
+          emUso: false,
+        ),
+      ],
+    );
   });
 
   tearDown(() {

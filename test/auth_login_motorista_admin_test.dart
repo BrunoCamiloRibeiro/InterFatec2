@@ -1,4 +1,4 @@
-// ============================================================================
+﻿// ============================================================================
 // ARQUIVO: test/auth_login_motorista_admin_test.dart
 // ----------------------------------------------------------------------------
 // Testes unitários e de integração da FASE 2:
@@ -15,9 +15,13 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:trans_saude/models/paciente_model.dart';
 import 'package:trans_saude/models/user_role.dart';
+import 'package:trans_saude/models/viagem_model.dart';
 import 'package:trans_saude/routes/route_guard.dart';
 import 'package:trans_saude/services/auth_service.dart';
+import 'package:trans_saude/services/codigo_acesso_service.dart';
+import 'package:trans_saude/services/viagem_service.dart';
 
 // Simulação de User do Firebase
 class _FakeUser implements User {
@@ -86,8 +90,44 @@ class _FakeFirebaseAuth implements FirebaseAuth {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  final pacienteTeste = PacienteModel(
+    id: 'nhkT53OclKj552MmiMN5',
+    nome: 'Sebastião Ferreira de Souza',
+    cpf: '571.098.984-31',
+    enderecoPaciente: 'Rua Sete de Setembro, 340 - Centro',
+    telefone: '(14) 99765-4321',
+    localConsulta: 'Hospital das Clínicas de Botucatu - Unesp',
+    localSaida: 'Residência',
+    status: 1,
+  );
+
   setUp(() {
     FirebaseAuthService.resetarRateLimitParaTestes();
+    CodigoAcessoService.resetarRateLimitParaTestes();
+    ViagemService().resetParaTestes(
+      viagensAtivasIniciais: [
+        ViagemModel(
+          id: 'viagem_teste_auth',
+          motoristaId: 'mot_teste',
+          motoristaNome: 'Motorista Teste',
+          veiculoId: 'v1',
+          veiculoPlaca: 'BRA-2E19',
+          veiculoModelo: 'Spin',
+          kmInicial: 50000,
+          cidadeDestino: 'São José do Rio Preto',
+          dataHoraInicio: DateTime(2026, 11, 7, 16),
+          status: 'ativa',
+          passageirosIds: const ['nhkT53OclKj552MmiMN5'],
+          codigosAcesso: const {'nhkT53OclKj552MmiMN5': '7890'},
+          codigosHash: {
+            'nhkT53OclKj552MmiMN5': CodigoAcessoService.calcularHash(
+              '7890',
+              'viagem_teste_auth',
+            ),
+          },
+        ),
+      ],
+    );
   });
 
   group('Fase 2 - Correção do Login de Motorista e Administrador', () {
@@ -112,6 +152,7 @@ void main() {
       await authService.loginPacienteComCodigo(
         documento: '571.098.984-31',
         codigoAcesso: '7890',
+        pacientesParaTestes: [pacienteTeste],
       );
       expect(authService.currentUserId, equals('nhkT53OclKj552MmiMN5'));
       expect(authService.getCachedRole(authService.currentUserId!), equals(UserRole.paciente));
@@ -158,6 +199,7 @@ void main() {
       await authService.loginPacienteComCodigo(
         documento: '571.098.984-31',
         codigoAcesso: '7890',
+        pacientesParaTestes: [pacienteTeste],
       );
 
       // Admin entra
@@ -186,6 +228,7 @@ void main() {
       final role = await authService.loginPacienteComCodigo(
         documento: '571.098.984-31',
         codigoAcesso: '7890',
+        pacientesParaTestes: [pacienteTeste],
       );
 
       expect(role, equals(UserRole.paciente));

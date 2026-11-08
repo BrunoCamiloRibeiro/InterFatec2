@@ -1,4 +1,4 @@
-// ============================================================================
+﻿// ============================================================================
 // ARQUIVO: test/lista_pessoas_test.dart
 // ----------------------------------------------------------------------------
 // O QUE FAZ:
@@ -109,14 +109,14 @@ void main() {
         // Arranjo: Viewport expandida para visualização de cards múltiplos
         configurarViewportLongo(tester);
 
-        // Ação: Renderiza com a lista padrão sem sobrecargas
-        await tester.pumpWidget(const MaterialApp(home: ListaPessoas()));
+        // Ação: Renderiza com a lista de teste injetada
+        await tester.pumpWidget(criarTelaTeste());
 
         // Verificação: Nenhuma exceção de concorrência ou colisão de chaves
         expect(tester.takeException(), isNull);
         expect(find.text('Gestão de Pessoas'), findsOneWidget);
-        expect(find.text('Maria Silva Santos'), findsOneWidget);
-        expect(find.text('João de Deus Pereira'), findsOneWidget);
+        expect(find.text('Carlos Drummond'), findsOneWidget);
+        expect(find.text('Machado de Assis'), findsOneWidget);
       },
     );
 
