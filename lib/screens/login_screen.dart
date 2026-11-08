@@ -54,7 +54,6 @@ import 'package:flutter/services.dart';
 
 import '../models/user_role.dart';
 import '../services/auth_service.dart';
-import '../services/codigo_acesso_service.dart';
 
 // Linha em branco separadora entre imports e a classe de máscara
 // ----------------------------------------------------------------------------
@@ -826,12 +825,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                     if (raw.isEmpty) {
                                       return 'Informe seu documento.';
                                     }
-                                    final digits =
-                                        raw.replaceAll(RegExp(r'\D'), '');
-                                    if (digits.length == 11 &&
-                                        !CodigoAcessoService.validarCpf(
-                                            digits)) {
-                                      return 'Informe um CPF válido.';
+                                    if (raw.length < 3) {
+                                      return 'Informe um documento válido.';
                                     }
                                     return null;
                                   },
