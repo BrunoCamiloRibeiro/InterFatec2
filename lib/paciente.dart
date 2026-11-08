@@ -60,11 +60,14 @@ import 'package:flutter/material.dart';
 import 'components/card_dados_consulta.dart';
 // Importa o componente visual de identificação do paciente com avatar e status
 import 'components/card_identificacao_paciente.dart';
-// Importa o componente de espaço reservado para mapa e rastreamento da viagem
+// Importa o componente de mapa e rastreamento da viagem em tempo real
 import 'components/card_tracking_paciente.dart';
+// Importa o modelo de localização dos motoristas em trânsito
+import 'models/localizacao_motorista_model.dart';
 // Importa o modelo de dados representativo da entidade Paciente
 import 'components/banner_reversao_paciente.dart';
 import 'models/paciente_model.dart';
+import 'services/auth_service.dart';
 import 'services/paciente_sync_service.dart';
 
 // Tela principal do Módulo do Paciente (Issue #18)
@@ -78,6 +81,8 @@ class Paciente extends StatefulWidget {
   // Fluxo reativo injetável para testes automatizados sem dependência de backend real
   final Stream<PacienteModel?>? pacienteStreamOverride;
   final PacienteSyncService? syncServiceOverride;
+  // Stream customizada de motoristas ativos em trânsito para testes unitários
+  final Stream<List<LocalizacaoMotoristaModel>>? motoristasStreamOverride;
 
   // Construtor constante da classe Paciente que aceita propriedades opcionais de injeção
   const Paciente({
@@ -85,6 +90,7 @@ class Paciente extends StatefulWidget {
     this.pacienteId,
     this.pacienteStreamOverride,
     this.syncServiceOverride,
+    this.motoristasStreamOverride,
   });
 
   // Sobrescrita que cria o estado mutável associado a este widget
@@ -454,14 +460,18 @@ class _PacienteState extends State<Paciente> {
 
         // Renderiza a estrutura completa da tela quando os dados do paciente estão disponíveis
         return Scaffold(
-          // Fundo branco padronizado com as demais telas do aplicativo
-          backgroundColor: Colors.white,
-          // Barra de navegação superior da tela
+          // Fundo padronizado com as demais telas do aplicativo
+          backgroundColor: const Color(0xFFF8FAFC),
+          // Barra de navegação superior da tela com identidade visual consistente
           appBar: AppBar(
+            backgroundColor: const Color(0xFF0F172A),
+            foregroundColor: Colors.white,
+            elevation: 2,
             // Botão de navegação na extremidade esquerda
             leading: IconButton(
               // Ícone com seta de retrocesso
               icon: const Icon(Icons.arrow_back),
+              color: Colors.white,
               // Ação disparada ao clicar no botão de voltar
               onPressed: () {
                 // Se puder desempilhar rota atual, volta para a tela anterior
@@ -479,20 +489,39 @@ class _PacienteState extends State<Paciente> {
             // Fechamento do IconButton
             ),
             // Título central da barra de navegação
-            title: const Text('Painel do Paciente'),
+            title: const Text(
+              'Painel do Paciente',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
             actions: [
               TextButton.icon(
                 key: const Key('botao_abrir_visao_motorista'),
                 style: TextButton.styleFrom(
-                  foregroundColor: const Color(0xFF0F172A),
+                  foregroundColor: Colors.white,
                 ),
-                icon: const Icon(Icons.drive_eta, size: 20),
+                icon: const Icon(Icons.drive_eta, size: 20, color: Colors.white),
                 label: const Text(
                   'Visão Motorista',
-                  style: TextStyle(fontWeight: FontWeight.bold),
+                  style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
                 ),
                 onPressed: () {
                   Navigator.of(context).pushNamed('/motorista');
+                },
+              ),
+              IconButton(
+                key: const Key('botaoLogoutPaciente'),
+                icon: const Icon(Icons.logout),
+                color: Colors.white,
+                tooltip: 'Sair da conta',
+                onPressed: () async {
+                  await FirebaseAuthService().logout();
+                  if (context.mounted) {
+                    Navigator.of(context).pushReplacementNamed('/');
+                  }
                 },
               ),
               const SizedBox(width: 8),
@@ -685,9 +714,11 @@ class _PacienteState extends State<Paciente> {
                     ),
                   ],
                   const SizedBox(height: 16),
-                  // 4. COMPONENTE: Card com Espaço Reservado para o Tracking
-                  // Exibe a seção reservada para o mapa de rastreamento da viagem
-                  const CardTrackingPaciente(),
+                  // 4. COMPONENTE: Card com Mapa de Rastreamento dos Motoristas Ativos
+                  // Exibe a localização em tempo real de todos os motoristas em trânsito
+                  CardTrackingPaciente(
+                    motoristasStreamOverride: widget.motoristasStreamOverride,
+                  ),
                 // Fechamento da lista children da Column
                 ],
               // Fechamento da Column

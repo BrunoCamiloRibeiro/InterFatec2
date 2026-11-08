@@ -7,6 +7,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:trans_saude/models/paciente_model.dart';
+import 'package:trans_saude/models/viagem_model.dart';
 import 'package:trans_saude/motorista.dart';
 import 'package:trans_saude/services/paciente_sync_service.dart';
 
@@ -21,6 +22,18 @@ void main() {
     syncService.resetParaTestes(pacientes);
     return MaterialApp(
       home: Motorista(
+        viagemInicial: ViagemModel(
+          id: 'v1',
+          motoristaId: 'm1',
+          motoristaNome: 'Motorista Teste',
+          veiculoId: 'veic1',
+          veiculoPlaca: 'ABC-1234',
+          veiculoModelo: 'Van Master',
+          kmInicial: 100,
+          cidadeDestino: 'São José do Rio Preto',
+          dataHoraInicio: DateTime.now(),
+          status: 'ativa',
+        ),
         syncServiceOverride: syncService,
         pacientesStreamOverride: Stream.value(pacientes),
       ),

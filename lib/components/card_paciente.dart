@@ -86,6 +86,9 @@ class CardPaciente extends StatelessWidget {
   final String? telAcompanhante;
   final bool prontoRetorno;
   final JanelaReversaoModel? janelaReversao;
+  // Atributo codigoAcesso (Issue #65): código de uso temporário de 4-5 dígitos
+  // Exibido ao lado do nome do paciente exclusivamente após o embarque (status >= 1)
+  final String? codigoAcesso;
 
   // Linha em branco separadora entre atributos e construtor
 
@@ -112,6 +115,8 @@ class CardPaciente extends StatelessWidget {
     this.telAcompanhante,
     this.prontoRetorno = false,
     this.janelaReversao,
+    // Parâmetro nomeado opcional (Issue #65): código de acesso gerado após embarque
+    this.codigoAcesso,
   // Fecha a lista de parâmetros do construtor
   });
 
@@ -204,6 +209,51 @@ class CardPaciente extends StatelessWidget {
                       ),
                     // Fecha o widget Expanded do nome
                     ),
+                    // Badge do Código de Acesso (Issue #65)
+                    // Exibido ao lado do nome do paciente apenas após o embarque (status >= 1)
+                    if (codigoAcesso != null &&
+                        codigoAcesso!.isNotEmpty &&
+                        status >= 1) ...[
+                      const SizedBox(width: 6),
+                      Tooltip(
+                        message: 'Código de acesso temporário do passageiro',
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1E293B),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: const Color(0xFF3B82F6),
+                              width: 1,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.key,
+                                size: 12,
+                                color: Color(0xFF60A5FA),
+                              ),
+                              const SizedBox(width: 3),
+                              Text(
+                                codigoAcesso!,
+                                key: const ValueKey('codigo_acesso_badge'),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12,
+                                  letterSpacing: 1.1,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                   // Fecha a lista children da Row de nome
                   ],
                 // Fecha a Row de nome do paciente

@@ -66,6 +66,8 @@ import 'package:trans_saude/models/paciente_model.dart';
 import 'package:trans_saude/models/viagem_model.dart';
 // Importa o serviço responsável pela gestão de viagens e seus fluxos
 import 'package:trans_saude/services/viagem_service.dart';
+import 'package:trans_saude/services/auth_service.dart';
+import 'package:trans_saude/services/localizacao_motorista_service.dart';
 import 'package:trans_saude/services/paciente_sync_service.dart';
 import 'package:trans_saude/services/transicao_paciente_service.dart';
 
@@ -76,6 +78,8 @@ import 'components/dialogo_confirmacao_motorista.dart';
 import 'components/footer_pacientes.dart';
 // Importa o componente visual do cabeçalho de viagem com título e paginação
 import 'components/motorista_header.dart';
+// Importa o formulário de início de viagem para declaração de veículo e KM inicial
+import 'components/formulario_inicio_viagem.dart';
 
 // Declaração do StatefulWidget Motorista, tela operacional acessível pelo perfil motorista
 class Motorista extends StatefulWidget {
@@ -123,6 +127,15 @@ class _MotoristaState extends State<Motorista> {
   // Assinatura na stream para desinscrever adequadamente no método dispose
   StreamSubscription<ViagemModel?>? _subViagemAtiva;
 
+  // Inscrição para escutar a lista com todas as N viagens ativas (Issue #65)
+  StreamSubscription<List<ViagemModel>>? _subViagensAtivas;
+
+  // Lista com as N viagens ativas sob a sessão do motorista (Issue #65)
+  List<ViagemModel> _viagensAtivas = [];
+
+  // Índice da viagem em exibição ativa na tela (0 a N-1)
+  int _indiceViagemAtual = 0;
+
   // Viagem ativa associada à sessão do motorista
   // Armazena a viagem em andamento para exibir na interface e controlar fluxos
   ViagemModel? _viagemAtiva;
@@ -167,6 +180,16 @@ class _MotoristaState extends State<Motorista> {
     // Atribui o valor de viagemInicial recebido via construtor à variável de estado
     _viagemAtiva = widget.viagemInicial;
 
+    // Inicializa o cache local com as viagens ativas pré-existentes na sessão
+    _viagensAtivas = _viagemService.viagensAtivas;
+    if (_viagensAtivas.isNotEmpty && _viagemAtiva == null) {
+      _viagemAtiva = _viagensAtivas.first;
+    }
+    if (_viagemAtiva == null && _viagemService.viagemAtiva != null) {
+      _viagemAtiva = _viagemService.viagemAtiva;
+    }
+    _atualizarTransmissaoGpsMotorista();
+
     // Assina a stream de atualização da viagem ativa
     // Ouve reativamente qualquer alteração na viagem ativa transmitida pelo serviço
     _subViagemAtiva = _viagemService.viagemAtivaStream.listen((viagem) {
@@ -178,9 +201,28 @@ class _MotoristaState extends State<Motorista> {
           _viagemAtiva = viagem;
         // Fechamento da função de callback de setState
         });
+        _atualizarTransmissaoGpsMotorista();
       // Fechamento da verificação if mounted
       }
     // Fechamento do listener da stream
+    });
+
+    // Assina a stream de N viagens ativas (Issue #65)
+    _subViagensAtivas = _viagemService.viagensAtivasStream.listen((viagens) {
+      if (mounted) {
+        setState(() {
+          _viagensAtivas = viagens;
+          if (_viagensAtivas.isNotEmpty) {
+            if (_indiceViagemAtual >= _viagensAtivas.length) {
+              _indiceViagemAtual = _viagensAtivas.length - 1;
+            }
+            _viagemAtiva = _viagensAtivas[_indiceViagemAtual];
+          } else {
+            _viagemAtiva = null;
+          }
+        });
+        _atualizarTransmissaoGpsMotorista();
+      }
     });
 
     // Inicia a escuta dos dados do motorista caso o Firebase esteja disponível
@@ -215,13 +257,34 @@ class _MotoristaState extends State<Motorista> {
   // Fechamento do método didChangeDependencies
   }
 
+  void _atualizarTransmissaoGpsMotorista() {
+    final v = _viagemAtiva;
+    if (v != null && v.isAtiva) {
+      LocalizacaoMotoristaService().iniciarTransmissaoGpsMotorista(
+        motoristaId: v.motoristaId.isNotEmpty
+            ? v.motoristaId
+            : (FirebaseAuthService().currentUserId ?? 'motorista_atual'),
+        motoristaNome: v.motoristaNome.isNotEmpty
+            ? v.motoristaNome
+            : 'Motorista Municipal',
+        veiculoPlaca: v.veiculoPlaca,
+        veiculoModelo: v.veiculoModelo,
+        cidadeDestino: v.cidadeDestino,
+        viagemId: v.id,
+      );
+    } else {
+      LocalizacaoMotoristaService().pararTransmissaoGpsMotorista();
+    }
+  }
+
   // Sobrescrita do ciclo de vida chamada quando o widget é descartado permanentemente
   @override
   // Método de liberação de recursos, cancelamento de assinaturas e timers
   void dispose() {
-    // Cancela a inscrição na stream de viagem ativa
-    // Cancela a assinatura da stream para evitar vazamentos de memória (memory leaks)
+    LocalizacaoMotoristaService().pararTransmissaoGpsMotorista();
+    // Cancela as inscrições nas streams de viagem ativa e N viagens
     _subViagemAtiva?.cancel();
+    _subViagensAtivas?.cancel();
     // Invoca o descarte da classe pai
     super.dispose();
   // Fechamento do método dispose
@@ -274,6 +337,24 @@ class _MotoristaState extends State<Motorista> {
       // Retorna o fluxo mockado injetado no construtor
       return widget.pacientesStreamOverride!;
     // Fechamento da condicional de stream injetada
+    }
+
+    // Se a viagem ativa possuir passageiros cadastrados (ex: definidos pelo admin no Gerenciador)
+    if (_viagemAtiva != null && _viagemAtiva!.passageiros.isNotEmpty) {
+      return Stream.value(
+        _viagemAtiva!.passageiros.map<PacienteModel>((pv) => PacienteModel(
+          id: pv.pacienteId,
+          nome: pv.pacienteNome,
+          cpf: pv.pacienteCpf ?? '',
+          telefone: pv.acompanhanteTelefone ?? '',
+          enderecoPaciente: pv.localOrigem,
+          localSaida: pv.localOrigem,
+          localConsulta: pv.localDestino,
+          nomeAcompanhante: pv.acompanhanteNome,
+          telAcompanhante: pv.acompanhanteTelefone,
+          status: pv.statusEmbarque,
+        )).toList(),
+      );
     }
 
     // Se o serviço do Firebase estiver ativo e inicializado no app
@@ -347,10 +428,62 @@ class _MotoristaState extends State<Motorista> {
   // Fechamento do método carregarPacientes
   }
 
+  // Verifica se o condutor possui viagem ativa em andamento no momento
+  bool get _temViagemAtiva {
+    if (widget.pacientesStreamOverride != null) return true;
+    if (_viagemAtiva != null && _viagemAtiva!.isAtiva) return true;
+    if (_viagensAtivas.isNotEmpty && _viagensAtivas.any((v) => v.isAtiva)) return true;
+    if (_viagemService.viagemAtiva != null && _viagemService.viagemAtiva!.isAtiva) return true;
+    return false;
+  }
+
   // Método que constrói a árvore de widgets da interface do motorista
   @override
   // Recebe o contexto de montagem do widget
   Widget build(BuildContext context) {
+    // Caso o motorista não possua viagem ativa (primeira vez do dia que entrar ou
+    // após finalizar a viagem gerando o relatório final), exibe o formulário de
+    // início de viagem para escolher o veículo e registrar a quilometragem inicial.
+    if (!_temViagemAtiva) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Início da Viagem'),
+          backgroundColor: const Color(0xFF0F172A),
+          foregroundColor: Colors.white,
+          elevation: 2,
+          actions: [
+            IconButton(
+              key: const Key('botaoLogoutMotorista'),
+              icon: const Icon(Icons.logout),
+              tooltip: 'Sair da conta',
+              onPressed: () async {
+                await FirebaseAuthService().logout();
+                if (context.mounted) {
+                  Navigator.of(context).pushReplacementNamed('/');
+                }
+              },
+            ),
+          ],
+        ),
+        backgroundColor: const Color(0xFFF7F8FA),
+        body: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+              child: FormularioInicioViagem(
+                motoristaId: FirebaseAuthService().currentUserId ?? 'motorista_atual',
+                onViagemIniciada: (novaViagem) {
+                  setState(() {
+                    _viagemAtiva = novaViagem;
+                  });
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     // Define lista inicial de pacientes quando o Firebase não está disponível
     // Fornece dados iniciais caso o Firebase esteja offline para evitar tela em branco
     final pacientesIniciais = _isFirebaseDisponivel()
@@ -447,12 +580,16 @@ class _MotoristaState extends State<Motorista> {
 
         // Retorna a estrutura visual completa da página com Scaffold
         return Scaffold(
-          // Barra de navegação superior da aplicação
+          // Barra de navegação superior da aplicação com identidade visual consistente
           appBar: AppBar(
+            backgroundColor: const Color(0xFF0F172A),
+            foregroundColor: Colors.white,
+            elevation: 2,
             // Botão de retorno na extremidade esquerda da barra superior
             leading: IconButton(
               // Ícone com seta apontando para a esquerda
               icon: const Icon(Icons.arrow_back),
+              color: Colors.white,
               // Ação executada ao tocar no botão de voltar
               onPressed: () {
                 // Retorna à tela anterior ou redireciona para a rota inicial
@@ -471,7 +608,14 @@ class _MotoristaState extends State<Motorista> {
             // Fechamento do IconButton leading
             ),
             // Título central da barra de navegação superior
-            title: const Text('Lista de Passageiros'),
+            title: const Text(
+              'Lista de Passageiros',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
             // Ações e widgets auxiliares na extremidade direita da barra superior
             actions: [
               // Exibe a placa do veículo associado à viagem ativa
@@ -480,7 +624,7 @@ class _MotoristaState extends State<Motorista> {
                 // Espaçamento horizontal externo da etiqueta de placa
                 Padding(
                   // Aplica recuo de 12 pixels nas laterais
-                  padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                  padding: const EdgeInsets.symmetric(horizontal: 10.0),
                   // Centraliza verticalmente o widget indicador
                   child: Center(
                     // Contêiner estilizado como uma badge/pílula verde
@@ -488,9 +632,9 @@ class _MotoristaState extends State<Motorista> {
                       // Espaçamento interno da badge
                       padding: const EdgeInsets.symmetric(
                         // Recuo horizontal interno
-                        horizontal: 8,
+                        horizontal: 10,
                         // Recuo vertical interno
-                        vertical: 4,
+                        vertical: 5,
                       // Fechamento do EdgeInsets
                       ),
                       // Decoração visual da badge com cor de fundo verde e cantos arredondados
@@ -523,12 +667,25 @@ class _MotoristaState extends State<Motorista> {
                   ),
                 // Fechamento do Padding
                 ),
+              // Botão de logout do motorista
+              IconButton(
+                key: const Key('botaoLogoutMotorista'),
+                icon: const Icon(Icons.logout),
+                color: Colors.white,
+                tooltip: 'Sair da conta',
+                onPressed: () async {
+                  await FirebaseAuthService().logout();
+                  if (context.mounted) {
+                    Navigator.of(context).pushReplacementNamed('/');
+                  }
+                },
+              ),
             // Fechamento da lista actions
             ],
           // Fechamento do AppBar
           ),
-          // Cor de fundo branca padronizada para toda a página
-          backgroundColor: Colors.white,
+          // Cor de fundo padronizada para toda a página
+          backgroundColor: const Color(0xFFF8FAFC),
           // Área protegida contra entalhes de tela (notches) e barras do sistema operacional
           body: SafeArea(
             // Lista rolável vertical contendo os cabeçalhos e os cartões de pacientes
@@ -541,17 +698,30 @@ class _MotoristaState extends State<Motorista> {
                 // Componente de cabeçalho da viagem mostrando o título da viagem e controles de navegação
                 MotoristaHeader(
                   // Título dinâmico da viagem baseado no ID da viagem ativa ou fallback
-                  tituloViagem:
-                      // Verifica se há viagem ativa com identificador preenchido
-                      _viagemAtiva != null && _viagemAtiva!.id.isNotEmpty
-                      // Exibe o prefixo 'Viagem' concatenado ao identificador
-                      ? 'Viagem ${_viagemAtiva!.id}'
-                      // Fallback padrão se não houver viagem ativa carregada
-                      : 'Viagem 1',
-                  // Callback para avançar ou retroceder viagem (atualmente nulo / pendência TODO 13)
-                  onAnterior: null,
-                  // Callback para avançar viagem (atualmente nulo / pendência TODO 13)
-                  onProxima: null,
+                  tituloViagem: _viagensAtivas.length > 1
+                      ? 'Viagem ${_indiceViagemAtual + 1} de ${_viagensAtivas.length} (${_viagemAtiva?.cidadeDestino ?? ""})'
+                      : (_viagemAtiva != null && _viagemAtiva!.id.isNotEmpty
+                          ? 'Viagem ${_viagemAtiva!.id}'
+                          : 'Viagem 1'),
+                  // Callback para retroceder viagem na sessão ativa (Issue #65)
+                  onAnterior: _viagensAtivas.length > 1 && _indiceViagemAtual > 0
+                      ? () {
+                          setState(() {
+                            _indiceViagemAtual--;
+                            _viagemAtiva = _viagensAtivas[_indiceViagemAtual];
+                          });
+                        }
+                      : null,
+                  // Callback para avançar viagem na sessão ativa (Issue #65)
+                  onProxima: _viagensAtivas.length > 1 &&
+                          _indiceViagemAtual < _viagensAtivas.length - 1
+                      ? () {
+                          setState(() {
+                            _indiceViagemAtual++;
+                            _viagemAtiva = _viagensAtivas[_indiceViagemAtual];
+                          });
+                        }
+                      : null,
                 // Fechamento do MotoristaHeader
                 ),
                 // Espaçador vertical entre o cabeçalho e os cards de passageiros
@@ -668,6 +838,28 @@ class _MotoristaState extends State<Motorista> {
                         if (!context.mounted) return false;
 
                         if (resultado.sucesso) {
+                          // Se o paciente avançou para embarque/viagem (status >= 1) e há viagem ativa, gera ou obtém código de acesso (Issue #65)
+                          if (proximoStatus >= 1 && _viagemAtiva != null) {
+                            final codigo =
+                                await _viagemService.gerarOuObterCodigoAcesso(
+                              viagemId: _viagemAtiva!.id,
+                              pacienteId: paciente.id,
+                            );
+                            if (mounted) {
+                              setState(() {
+                                final novosCodigos = Map<String, String>.from(
+                                  _viagemAtiva!.codigosAcesso,
+                                );
+                                novosCodigos[paciente.id] = codigo;
+                                _viagemAtiva = _viagemAtiva!.copyWith(
+                                  codigosAcesso: novosCodigos,
+                                );
+                              });
+                            }
+                          }
+
+                          if (!context.mounted) return false;
+
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                               backgroundColor: const Color(0xFF16A34A),
@@ -717,6 +909,9 @@ class _MotoristaState extends State<Motorista> {
                         telAcompanhante: paciente.telAcompanhante,
                         prontoRetorno: paciente.prontoRetorno,
                         janelaReversao: paciente.janelaReversao,
+                        // Código de acesso temporário gerado no embarque (Issue #65)
+                        codigoAcesso:
+                            _viagemAtiva?.codigosAcesso[paciente.id],
                       // Fechamento do CardPaciente
                       ),
                     // Fechamento do Dismissible
@@ -734,7 +929,7 @@ class _MotoristaState extends State<Motorista> {
             // Quantidade de assentos ocupados no momento
             lugaresPreenchidos: preenchidos,
             // Capacidade máxima total de assentos do veículo
-            lugaresTotais: _capacidadeVeiculo,
+            lugaresTotais: _capacidadeVeiculo > 0 ? _capacidadeVeiculo : 7,
             // Viagem ativa em andamento para controlar se o botão exibe Iniciar ou Finalizar
             viagem: _viagemAtiva,
             // Lista completa de pacientes para validação de encerramento

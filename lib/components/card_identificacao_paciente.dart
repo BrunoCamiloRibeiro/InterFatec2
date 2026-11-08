@@ -171,26 +171,30 @@ class CardIdentificacaoPaciente extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 // Propriedade children: lista de widgets alinhados horizontalmente no topo do card
                 children: [
-                  // Widget Text: exibe o rótulo descritivo superior em letras maiúsculas
-                  Text(
-                    // Expressão ternária condicional: exibe 'CADASTRO DE PESSOA' se labelBadge foi informado, senão 'IDENTIFICAÇÃO DO PACIENTE'
-                    labelBadge != null
-                        ? 'CADASTRO DE PESSOA'
-                        : 'IDENTIFICAÇÃO DO PACIENTE',
-                    // Propriedade style: formatação tipográfica do rótulo
-                    style: const TextStyle(
-                      // Tamanho reduzido da fonte (12 pontos) para texto secundário
-                      fontSize: 12,
-                      // Espessura negrito para facilitar leitura
-                      fontWeight: FontWeight.bold,
-                      // Espaçamento entre letras (tracking) de 0.5 pontos
-                      letterSpacing: 0.5,
-                      // Cor cinza ardósia suave (Slate 500)
-                      color: Color(0xFF64748B),
-                    // Fecha a constante TextStyle do rótulo
+                  // Widget Text envolto em Expanded: exibe o rótulo descritivo superior em letras maiúsculas sem overflow
+                  Expanded(
+                    child: Text(
+                      // Expressão ternária condicional: exibe 'CADASTRO DE PESSOA' se labelBadge foi informado, senão 'IDENTIFICAÇÃO DO PACIENTE'
+                      labelBadge != null
+                          ? 'CADASTRO DE PESSOA'
+                          : 'IDENTIFICAÇÃO DO PACIENTE',
+                      overflow: TextOverflow.ellipsis,
+                      // Propriedade style: formatação tipográfica do rótulo
+                      style: const TextStyle(
+                        // Tamanho reduzido da fonte (12 pontos) para texto secundário
+                        fontSize: 12,
+                        // Espessura negrito para facilitar leitura
+                        fontWeight: FontWeight.bold,
+                        // Espaçamento entre letras (tracking) de 0.5 pontos
+                        letterSpacing: 0.5,
+                        // Cor cinza ardósia suave (Slate 500)
+                        color: Color(0xFF64748B),
+                      // Fecha a constante TextStyle do rótulo
+                      ),
+                    // Fecha o widget Text do cabeçalho
                     ),
-                  // Fecha o widget Text do cabeçalho
                   ),
+                  const SizedBox(width: 8),
                   // Widget Container: caixa delimitadora do badge com cantos arredondados e borda sutil
                   Container(
                     // Propriedade padding: preenchimento interno de 12 horizontal e 5 vertical
@@ -441,10 +445,12 @@ class CardIdentificacaoPaciente extends StatelessWidget {
                 const Divider(height: 1, color: Color(0xFFE2E8F0)),
                 // Espaçamento vertical constante de 6 pontos abaixo da divisória
                 const SizedBox(height: 6),
-                // Widget Row: alinha os botões de ação à direita do card
-                Row(
-                  // Propriedade mainAxisAlignment: alinha os filhos no final horizontal (à direita)
-                  mainAxisAlignment: MainAxisAlignment.end,
+                // Widget Wrap: alinha os botões de ação à direita do card com quebra responsiva sem overflow
+                Wrap(
+                  // Propriedade alignment: alinha os filhos no final horizontal (à direita)
+                  alignment: WrapAlignment.end,
+                  spacing: 8,
+                  runSpacing: 4,
                   // Propriedade children: lista de botões exibidos na barra de ações
                   children: [
                     // Renderização condicional do botão Editar se o callback onEditar foi informado
@@ -473,9 +479,7 @@ class CardIdentificacaoPaciente extends StatelessWidget {
                       // Fecha o widget TextButton.icon de Editar
                       ),
                     // Renderização condicional do botão Inativar se o callback onInativar foi informado
-                    if (onInativar != null) ...[
-                      // Espaçamento horizontal constante de 8 pontos entre os botões
-                      const SizedBox(width: 8),
+                    if (onInativar != null)
                       // Widget TextButton.icon: botão de texto com ícone para inativação
                       TextButton.icon(
                         // Callback acionado ao pressionar o botão Inativar
@@ -499,11 +503,9 @@ class CardIdentificacaoPaciente extends StatelessWidget {
                         ),
                       // Fecha o widget TextButton.icon de Inativar
                       ),
-                    // Fecha o bloco condicional do botão Inativar
-                    ],
-                  // Fecha a lista children da Row de botões de ação
+                  // Fecha a lista children da Wrap de botões de ação
                   ],
-                // Fecha o widget Row de botões de ação
+                // Fecha o widget Wrap de botões de ação
                 ),
               // Fecha o bloco condicional da barra de ações
               ],

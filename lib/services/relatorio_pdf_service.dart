@@ -53,6 +53,7 @@ import 'package:pdf/widgets.dart' as pw;
 
 import '../models/paciente_model.dart';
 import '../models/viagem_model.dart';
+import 'codigo_acesso_service.dart';
 
 /// Serviço especializado na geração do documento PDF oficial:
 /// "Roteiro da Viagem - Ficha de Atendimento TFD" da Unidade Básica de Saúde de Poloni.
@@ -141,6 +142,11 @@ class RelatorioPdfService {
     pw.Font? fonteRegular,
     pw.Font? fonteBold,
   }) async {
+    // Validação de sanidade: quilometragem não pode ser negativa
+    if (viagem.kmInicial < 0 || (kmSaidaInformado != null && kmSaidaInformado < 0)) {
+      throw ArgumentError('Quilometragem inicial não pode ser negativa: ${viagem.kmInicial}');
+    }
+
     // 1. Inicializa a estrutura de documento em memória do pacote pdf/widgets
     final doc = pw.Document();
 
@@ -223,6 +229,7 @@ class RelatorioPdfService {
                   usarDoisPontosHorario: usarDoisPontosHorario,
                   fRegular: fRegular,
                   fBold: fBold,
+                  codigosAcesso: viagem.codigosAcesso,
                 ),
 
                 // CAMADA 3: Rodapé com carimbo temporal 'Emitido em'
@@ -261,6 +268,81 @@ class RelatorioPdfService {
 
     // 8. Serializa e compila a árvore de widgets em bytes binários PDF
     return doc.save();
+  }
+
+  // ===========================================================================
+  // GERAÇÃO EM LOTE DE TODAS AS N VIAGENS ATIVAS (Issue #65)
+  // ===========================================================================
+
+  /// Gera em lote um documento PDF oficial para cada uma das N viagens ativas do condutor.
+  ///
+  /// - Considera todas as N viagens ativas informadas em [viagens];
+  /// - Filtra apenas os passageiros com baixa/embarque registrado (status >= 1);
+  /// - Atômico: Se a renderização de qualquer uma das viagens falhar, a operação é interrompida
+  ///   imediatamente e lança uma exceção com o ID da viagem causadora da falha, não deixando
+  ///   resultado parcial inconsistente;
+  /// - Idempotente: Execuções subsequentes com os mesmos dados de viagem e passageiros retornam
+  ///   sempre o mesmo mapa ordenado de buffers binários.
+  ///
+  /// Retorna um [Map<String, Uint8List>] indexado pelo ID da viagem correspondente.
+  static Future<Map<String, Uint8List>> gerarLoteViagensPdf({
+    required List<ViagemModel> viagens,
+    Map<String, List<PacienteModel>>? pacientesPorViagem,
+    List<PacienteModel>? pacientes,
+    DateTime? dataHoraEmissao,
+    String? retornoInformado,
+    int? kmSaidaInformado,
+    int? kmRetornoInformado,
+    int? kmRodadoInformado,
+    bool usarDoisPontosHorario = true,
+    pw.Font? fonteRegular,
+    pw.Font? fonteBold,
+  }) async {
+    // Retorna mapa vazio se nenhuma viagem ativa for fornecida
+    if (viagens.isEmpty) {
+      return const <String, Uint8List>{};
+    }
+
+    final emisso = dataHoraEmissao ?? DateTime.now();
+    final Map<String, Uint8List> lotePdfs = {};
+
+    // Itera sequencialmente sobre cada uma das N viagens ativas
+    for (final viagem in viagens) {
+      try {
+        final listaBase = pacientesPorViagem?[viagem.id] ??
+            pacientes ??
+            const <PacienteModel>[];
+        // Filtra apenas os passageiros aos quais o motorista deu baixa/embarcou (status >= 1)
+        final passageirosComBaixa =
+            listaBase.where((p) => p.status >= 1).toList();
+
+        final pdfBytes = await gerarRoteiroViagemPdf(
+          viagem: viagem,
+          pacientes: passageirosComBaixa,
+          dataHoraEmissao: emisso,
+          retornoInformado: retornoInformado,
+          kmSaidaInformado: kmSaidaInformado ?? viagem.kmInicial,
+          kmRetornoInformado: kmRetornoInformado ?? viagem.kmFinal,
+          kmRodadoInformado: kmRodadoInformado ?? viagem.kmRodado,
+          usarDoisPontosHorario: usarDoisPontosHorario,
+          fonteRegular: fonteRegular,
+          fonteBold: fonteBold,
+        );
+
+        if (pdfBytes.isEmpty) {
+          throw Exception(
+            'O documento gerado para a viagem ${viagem.id} resultou em zero bytes.',
+          );
+        }
+
+        lotePdfs[viagem.id] = pdfBytes;
+      } catch (erro) {
+        // Atomicidade: lança exceção imediata identificando qual viagem falhou
+        throw Exception('Falha ao gerar PDF da viagem [${viagem.id}]: $erro');
+      }
+    }
+
+    return Map.unmodifiable(lotePdfs);
   }
 
   // ===========================================================================
@@ -639,6 +721,7 @@ class RelatorioPdfService {
     required bool usarDoisPontosHorario,
     required pw.Font fRegular,
     required pw.Font fBold,
+    Map<String, String>? codigosAcesso,
   }) {
     final List<pw.Widget> blocos = [];
 
@@ -657,6 +740,13 @@ class RelatorioPdfService {
           : '0';
       final String telAcomp = (temAcomp && p.telAcompanhante != null)
           ? p.telAcompanhante!.trim()
+          : '';
+
+      // Código de acesso temporário do paciente (Issue #65)
+      final String? codigo = codigosAcesso?[p.id];
+      // CPF mascarado para conformidade com LGPD (Issue #65)
+      final String cpfMascarado = (p.cpf.isNotEmpty)
+          ? CodigoAcessoService.mascararCpf(p.cpf)
           : '';
 
       // Formatação do horário da consulta com validação de formato
@@ -687,7 +777,9 @@ class RelatorioPdfService {
                         crossAxisAlignment: pw.CrossAxisAlignment.start,
                         children: [
                           pw.Text(
-                            'Paciente',
+                            cpfMascarado.isNotEmpty
+                                ? 'Paciente (CPF: $cpfMascarado)'
+                                : 'Paciente',
                             style: pw.TextStyle(
                               font: fRegular,
                               fontSize: 5.5,
@@ -715,7 +807,9 @@ class RelatorioPdfService {
                         crossAxisAlignment: pw.CrossAxisAlignment.start,
                         children: [
                           pw.Text(
-                            'Telefone',
+                            (codigo != null && codigo.isNotEmpty)
+                                ? 'Telefone / Cód: $codigo'
+                                : 'Telefone',
                             style: pw.TextStyle(
                               font: fRegular,
                               fontSize: 5.5,

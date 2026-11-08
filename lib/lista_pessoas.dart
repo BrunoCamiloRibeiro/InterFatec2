@@ -1257,15 +1257,18 @@ class _ListaPessoasState extends State<ListaPessoas> {
   Widget build(BuildContext context) {
     // Retorna a estrutura visual com Scaffold
     return Scaffold(
-      // Fundo branco padronizado com o tema de motorista.dart e paciente.dart
-      // Fundo branco limpo padronizado
-      backgroundColor: Colors.white,
-      // Barra de navegação superior
+      // Fundo padronizado com o tema do sistema
+      backgroundColor: const Color(0xFFF8FAFC),
+      // Barra de navegação superior com identidade visual consistente
       appBar: AppBar(
+        backgroundColor: const Color(0xFF0F172A),
+        foregroundColor: Colors.white,
+        elevation: 2,
         // Botão de retorno na extremidade esquerda
         leading: IconButton(
           // Ícone de seta de retorno
           icon: const Icon(Icons.arrow_back),
+          color: Colors.white,
           // Ação disparada ao pressionar o botão voltar
           onPressed: () {
             // Retorna à tela anterior ou navega para a rota raiz
@@ -1284,7 +1287,14 @@ class _ListaPessoasState extends State<ListaPessoas> {
         // Fechamento do IconButton
         ),
         // Título central da AppBar
-        title: const Text('Gestão de Pessoas'),
+        title: const Text(
+          'Gestão de Pessoas',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
       // Fechamento do AppBar
       ),
       // Botão flutuante expandido para adição de novos cadastros
