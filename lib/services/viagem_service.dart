@@ -560,8 +560,6 @@ class ViagemService {
                 // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
                 // Escreve os veículos padrão no Firestore quando a coleção está sem documentos
                 // ------------------------------------------------------------
-                // Sincroniza a base de dados padrão no Firestore de forma assíncrona
-                _sincronizarVeiculosBaseNoFirestore();
                 // Retorna os veículos da memória aplicando o filtro de disponibilidade
                 return ValidacaoViagem.filtrarVeiculosDisponiveis(
                   _veiculosMemoria,
@@ -623,38 +621,6 @@ class ViagemService {
   }
 
   // Linha em branco separadora entre métodos de carregamento e sincronização
-  // ----------------------------------------------------------------------------
-  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
-  // Envia os veículos da lista em memória para a coleção 'veiculos' do Firestore
-  // ----------------------------------------------------------------------------
-  // MÉTODO ASSÍNCRONO: _sincronizarVeiculosBaseNoFirestore
-  // - Grava os veículos padrão da prefeitura na coleção 'veiculos' do Firestore.
-  // --------------------------------------------------------------------------
-  Future<void> _sincronizarVeiculosBaseNoFirestore() async {
-    // Interrompe se o Firebase não estiver configurado
-    if (!_isFirebaseDisponivel()) return;
-    // Bloco try para capturar eventuais falhas de gravação em lote
-    try {
-      // Obtém referência para a coleção 'veiculos'
-      final col = FirebaseFirestore.instance.collection('veiculos');
-      // Itera por cada veículo cadastrado na memória
-      for (final v in _veiculosMemoria) {
-        // Grava o veículo com merge de opções no Firestore
-        await col.doc(v.id).set(v.toMap(), SetOptions(merge: true));
-      // Fecha o loop de veículos
-      }
-    // Captura falhas de escrita sem quebrar o fluxo
-    } catch (_) {
-      // ----------------------------------------------------------------------
-      // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
-      // Ignora falhas de escrita durante a sincronização
-      // ----------------------------------------------------------------------
-    // Fecha o bloco catch
-    }
-  // Fecha o método _sincronizarVeiculosBaseNoFirestore
-  }
-
-  // Linha em branco separadora entre sincronização e iniciarViagem
   // Linha em branco separadora entre sincronização e declararVeiculo
   // ----------------------------------------------------------------------------
   // DECLARAÇÃO DE VEÍCULO (Issue #65: Novo Fluxo)

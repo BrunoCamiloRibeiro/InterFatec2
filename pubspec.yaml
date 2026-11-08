@@ -130,8 +130,6 @@ flutter:
   # To add assets to your application, add an assets section, like this:
   # Seção de ativos estáticos embutidos no pacote da aplicação
   assets:
-      # Arquivo JSON com dados simulados de pacientes
-      - assets/data/dados_pacientes.json
       # Arquivo JSON com catálogo e frota de veículos
       - assets/data/dados_veiculos.json
       # Fonte TrueType Liberation Sans Regular para geração de PDF

@@ -149,7 +149,7 @@ class MyApp extends StatelessWidget {
         // Gate principal com maquina de estados de autenticacao
         '/auth-gate': (context) => const AuthGate(),
         // Rota direta para a tela do paciente (Issue #19)
-        '/paciente': (context) => const Paciente(pacienteId: 'paciente_novo_issue19'),
+        '/paciente': (context) => const Paciente(),
         // Rota direta para a tela do motorista
         '/motorista': (context) => const Motorista(),
         '/lista-passageiros': (context) => const Motorista(),

@@ -311,28 +311,53 @@ class _PacienteState extends State<Paciente> {
 
     // Se o serviço do Firebase estiver ativo e operacional
     if (_isFirebaseDisponivel()) {
-      final docIdAlvo = widget.pacienteId ?? 'paciente_novo_issue19';
+      final docIdAlvo = widget.pacienteId;
+      if (docIdAlvo != null && docIdAlvo.trim().isNotEmpty) {
+        return FirebaseFirestore.instance
+            .collection('usuarios')
+            .doc(docIdAlvo)
+            .snapshots()
+            .map((doc) {
+              if (doc.exists && doc.data() != null) {
+                final dados = doc.data()!;
+                final ativo = dados['ativo'];
+                final status = dados['status']?.toString().toLowerCase().trim();
+                final situacao = dados['situacao']?.toString().toLowerCase().trim();
+                if (ativo == false ||
+                    ativo == 'false' ||
+                    status == 'inativo' ||
+                    situacao == 'inativo' ||
+                    status == 'excluido' ||
+                    situacao == 'excluido') {
+                  return null;
+                }
+                return PacienteModel.fromMap(dados, docId: doc.id);
+              }
+              return null;
+            });
+      }
+
       return FirebaseFirestore.instance
           .collection('usuarios')
-          .doc(docIdAlvo)
+          .where('role', isEqualTo: 'paciente')
+          .limit(1)
           .snapshots()
-          .map((doc) {
-            if (doc.exists && doc.data() != null) {
-              final dados = doc.data()!;
-              final ativo = dados['ativo'];
-              final status = dados['status']?.toString().toLowerCase().trim();
-              final situacao = dados['situacao']?.toString().toLowerCase().trim();
-              if (ativo == false ||
-                  ativo == 'false' ||
-                  status == 'inativo' ||
-                  situacao == 'inativo' ||
-                  status == 'excluido' ||
-                  situacao == 'excluido') {
-                return null;
-              }
-              return PacienteModel.fromMap(dados, docId: doc.id);
+          .map((snapshot) {
+            if (snapshot.docs.isEmpty) return null;
+            final doc = snapshot.docs.first;
+            final dados = doc.data();
+            final ativo = dados['ativo'];
+            final status = dados['status']?.toString().toLowerCase().trim();
+            final situacao = dados['situacao']?.toString().toLowerCase().trim();
+            if (ativo == false ||
+                ativo == 'false' ||
+                status == 'inativo' ||
+                situacao == 'inativo' ||
+                status == 'excluido' ||
+                situacao == 'excluido') {
+              return null;
             }
-            return null;
+            return PacienteModel.fromMap(dados, docId: doc.id);
           });
     }
 
