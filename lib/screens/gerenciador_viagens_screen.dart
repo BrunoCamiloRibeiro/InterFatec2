@@ -36,6 +36,7 @@ import 'package:flutter/material.dart';
 
 import '../Outdated/administrativo.dart';
 import '../lista_pessoas.dart';
+import '../lista_veiculos.dart';
 import '../models/motorista_model.dart';
 import '../models/paciente_model.dart';
 import '../models/user_role.dart';
@@ -1924,45 +1925,8 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                   subtitle: const Text('Controle da frota municipal'),
                   onTap: () {
                     Navigator.of(context).pop();
-                    showDialog(
-                      context: context,
-                      builder: (ctx) => AlertDialog(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        title: const Row(
-                          children: [
-                            Icon(Icons.directions_car, color: Color(0xFF0F172A)),
-                            SizedBox(width: 8),
-                            Text('Frota Municipal'),
-                          ],
-                        ),
-                        content: const Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Veículos Ativos na Rede Municipal:',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF0F172A),
-                              ),
-                            ),
-                            SizedBox(height: 10),
-                            Text('• Chevrolet Spin 1.8 LTZ (BRA-2E19) - 7 lugares'),
-                            SizedBox(height: 4),
-                            Text('• Renault Master Minibus (ABC-1D23) - 16 lugares'),
-                            SizedBox(height: 4),
-                            Text('• Mercedes-Benz Sprinter (XYZ-9F88) - 19 lugares'),
-                          ],
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.of(ctx).pop(),
-                            child: const Text('Fechar'),
-                          ),
-                        ],
-                      ),
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const Veiculos()),
                     );
                   },
                 ),
