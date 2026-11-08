@@ -1922,27 +1922,46 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                     style: TextStyle(fontWeight: FontWeight.w600),
                   ),
                   subtitle: const Text('Controle da frota municipal'),
-                  trailing: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFEF3C7),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: const Text(
-                      'PR #33',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: Color(0xFF92400E),
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
                   onTap: () {
                     Navigator.of(context).pop();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Módulo de Frota em homologação (Pull Request #33 da Audrey).'),
-                        duration: Duration(seconds: 3),
+                    showDialog(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        title: const Row(
+                          children: [
+                            Icon(Icons.directions_car, color: Color(0xFF0F172A)),
+                            SizedBox(width: 8),
+                            Text('Frota Municipal'),
+                          ],
+                        ),
+                        content: const Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Veículos Ativos na Rede Municipal:',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF0F172A),
+                              ),
+                            ),
+                            SizedBox(height: 10),
+                            Text('• Chevrolet Spin 1.8 LTZ (BRA-2E19) - 7 lugares'),
+                            SizedBox(height: 4),
+                            Text('• Renault Master Minibus (ABC-1D23) - 16 lugares'),
+                            SizedBox(height: 4),
+                            Text('• Mercedes-Benz Sprinter (XYZ-9F88) - 19 lugares'),
+                          ],
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.of(ctx).pop(),
+                            child: const Text('Fechar'),
+                          ),
+                        ],
                       ),
                     );
                   },
@@ -1950,9 +1969,9 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                 const Divider(),
                 ListTile(
                   key: const Key('menuItemAdminLegado'),
-                  leading: const Icon(Icons.history_edu, color: Color(0xFF64748B)),
-                  title: const Text('Protótipo Legado (Figma)'),
-                  subtitle: const Text('Tela original do cadastro rápido'),
+                  leading: const Icon(Icons.playlist_add_check_rounded, color: Color(0xFF64748B)),
+                  title: const Text('Cadastro Rápido de Viagem'),
+                  subtitle: const Text('Formulário simplificado de agendamento'),
                   onTap: () {
                     Navigator.of(context).pop();
                     Navigator.of(context).push(
