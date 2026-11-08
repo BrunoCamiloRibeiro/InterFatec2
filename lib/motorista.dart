@@ -67,6 +67,7 @@ import 'package:trans_saude/models/viagem_model.dart';
 // Importa o serviço responsável pela gestão de viagens e seus fluxos
 import 'package:trans_saude/services/viagem_service.dart';
 import 'package:trans_saude/services/auth_service.dart';
+import 'package:trans_saude/services/localizacao_motorista_service.dart';
 
 // Importa o componente visual de card individual de paciente
 import 'components/card_paciente.dart';
@@ -173,6 +174,7 @@ class _MotoristaState extends State<Motorista> {
     if (_viagemAtiva == null && _viagemService.viagemAtiva != null) {
       _viagemAtiva = _viagemService.viagemAtiva;
     }
+    _atualizarTransmissaoGpsMotorista();
 
     // Assina a stream de atualização da viagem ativa
     // Ouve reativamente qualquer alteração na viagem ativa transmitida pelo serviço
@@ -185,6 +187,7 @@ class _MotoristaState extends State<Motorista> {
           _viagemAtiva = viagem;
         // Fechamento da função de callback de setState
         });
+        _atualizarTransmissaoGpsMotorista();
       // Fechamento da verificação if mounted
       }
     // Fechamento do listener da stream
@@ -204,6 +207,7 @@ class _MotoristaState extends State<Motorista> {
             _viagemAtiva = null;
           }
         });
+        _atualizarTransmissaoGpsMotorista();
       }
     });
 
@@ -239,10 +243,31 @@ class _MotoristaState extends State<Motorista> {
   // Fechamento do método didChangeDependencies
   }
 
+  void _atualizarTransmissaoGpsMotorista() {
+    final v = _viagemAtiva;
+    if (v != null && v.isAtiva) {
+      LocalizacaoMotoristaService().iniciarTransmissaoGpsMotorista(
+        motoristaId: v.motoristaId.isNotEmpty
+            ? v.motoristaId
+            : (FirebaseAuthService().currentUserId ?? 'motorista_atual'),
+        motoristaNome: v.motoristaNome.isNotEmpty
+            ? v.motoristaNome
+            : 'Motorista Municipal',
+        veiculoPlaca: v.veiculoPlaca,
+        veiculoModelo: v.veiculoModelo,
+        cidadeDestino: v.cidadeDestino,
+        viagemId: v.id,
+      );
+    } else {
+      LocalizacaoMotoristaService().pararTransmissaoGpsMotorista();
+    }
+  }
+
   // Sobrescrita do ciclo de vida chamada quando o widget é descartado permanentemente
   @override
   // Método de liberação de recursos, cancelamento de assinaturas e timers
   void dispose() {
+    LocalizacaoMotoristaService().pararTransmissaoGpsMotorista();
     // Cancela as inscrições nas streams de viagem ativa e N viagens
     _subViagemAtiva?.cancel();
     _subViagensAtivas?.cancel();

@@ -17,6 +17,7 @@
 
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:trans_saude/components/card_tracking_paciente.dart';
 import 'package:trans_saude/models/localizacao_motorista_model.dart';
@@ -227,6 +228,31 @@ void main() {
       // Inativação de motorista ao encerrar viagem
       service.removerOuInativarMotorista('m_teste');
       expect(service.motoristasAtivos.length, 0);
+    });
+
+    testWidgets('5. Renderiza FlutterMap com tiles reais e controles de GPS do dispositivo', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: CardTrackingPaciente(
+              motoristasStreamOverride: streamController.stream,
+            ),
+          ),
+        ),
+      );
+
+      streamController.add([]);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // Verifica presença da API de mapa (FlutterMap) e TileLayer
+      expect(find.byType(FlutterMap), findsOneWidget);
+      expect(find.byType(TileLayer), findsOneWidget);
+
+      // Verifica controles de GPS do dispositivo
+      expect(find.textContaining('GPS'), findsWidgets);
+      expect(find.byIcon(Icons.directions_bus_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.my_location), findsOneWidget);
     });
   });
 }

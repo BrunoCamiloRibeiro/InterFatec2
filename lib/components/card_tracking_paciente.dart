@@ -5,15 +5,17 @@
 // Camada: Apresentação / Componentes Visuais (Components / UI)
 //
 // O QUE ESTE ARQUIVO FAZ:
-// Renderiza o mapa interativo e painel de rastreamento veicular em tempo real
-// exibindo a localização de todos os motoristas municipais que estiverem
-// com viagens ativas no momento.
-// 1) Ouve a Stream reativa de motoristas ativos (LocalizacaoMotoristaService);
-// 2) Apresenta mapa geográfico interativo com pins veiculares, pulso de sinal
-//    e identificação visual do condutor, veículo e município de destino;
-// 3) Permite interação de zoom, arrasto e seleção de condutores em trânsito;
-// 4) Cumpre estritamente a diretriz do projeto: apenas exibe a localização dos
-//    motoristas ativos no mapa, SEM estimativas de rota e SEM cálculo de ETA.
+// Renderiza o mapa interativo cartográfico baseado em API de mapas (OpenStreetMap /
+// flutter_map) e painel de rastreamento veicular em tempo real exibindo a localização
+// de todos os motoristas municipais que estiverem com viagens ativas no momento.
+// 1) Utiliza API de mapas com tiles cartográficos reais (estradas, cidades, hospitais);
+// 2) Verifica e solicita permissão de localização do Android/Web (Geolocator) para
+//    exibir a posição do aparelho do próprio paciente ("Você está aqui") no mapa;
+// 3) Ouve a Stream reativa de motoristas ativos (LocalizacaoMotoristaService) e plota
+//    pins veiculares interativos com identificação de condutor, placa e destino;
+// 4) Fornece controles de zoom (+, -), centralização da frota e foco no GPS do usuário;
+// 5) Cumpre estritamente a diretriz do projeto: apenas exibe as localizações no mapa,
+//    SEM estimativas de tempo (ETA) e SEM cálculo de rotas.
 //
 // ONDE É USADO NO PROJETO:
 // - lib/paciente.dart (seção inferior do painel do passageiro)
@@ -25,15 +27,19 @@
 // - Parâmetro opcional de injeção 'motoristasStreamOverride' para testes unitários.
 //
 // ORIGEM HISTÓRICA:
-// Evolução do componente concebido na Issue #18, implementado na Issue #65.
+// Issue #18, refinado na Issue #65 com integração de API de mapas e permissão de GPS Android.
 // ============================================================================
 
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../models/localizacao_motorista_model.dart';
 import '../services/localizacao_motorista_service.dart';
 
-/// Card interativo de rastreamento em tempo real para o painel do paciente.
+/// Card interativo de rastreamento em tempo real com API de mapas para o paciente.
 class CardTrackingPaciente extends StatefulWidget {
   /// Stream customizada opcional para injeção em testes automatizados
   final Stream<List<LocalizacaoMotoristaModel>>? motoristasStreamOverride;
@@ -51,9 +57,15 @@ class _CardTrackingPacienteState extends State<CardTrackingPaciente>
     with SingleTickerProviderStateMixin {
   late final LocalizacaoMotoristaService _localizacaoService;
   late final AnimationController _pulseController;
+  final MapController _mapController = MapController();
 
   String? _motoristaSelecionadoId;
-  double _zoomLevel = 1.0;
+  LatLng? _posicaoDispositivo;
+  bool _solicitandoGps = false;
+  LocationPermission? _permissaoGps;
+
+  // Centro padrão regional (Poloni - SP / Região Noroeste Paulista)
+  static const LatLng _centroPadrao = LatLng(-20.7389, -49.8217);
 
   @override
   void initState() {
@@ -63,19 +75,87 @@ class _CardTrackingPacienteState extends State<CardTrackingPaciente>
       vsync: this,
       duration: const Duration(seconds: 2),
     );
+
     // Em testes automatizados, repetição infinita bloqueia pumpAndSettle()
     final isTestEnvironment =
         WidgetsBinding.instance.runtimeType.toString().contains('Test');
     if (!isTestEnvironment) {
       _pulseController.repeat();
+      // Em tempo de execução, verifica a localização do aparelho
+      _verificarLocalizacaoInicial();
     } else {
       _pulseController.value = 0.5;
     }
   }
 
+  Future<void> _verificarLocalizacaoInicial() async {
+    try {
+      final perm = await Geolocator.checkPermission();
+      if (!mounted) return;
+      setState(() {
+        _permissaoGps = perm;
+      });
+      if (perm == LocationPermission.whileInUse ||
+          perm == LocationPermission.always) {
+        await _atualizarPosicaoAparelho();
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _pedirPermissaoEAtualizarGps() async {
+    if (_solicitandoGps) return;
+    setState(() {
+      _solicitandoGps = true;
+    });
+
+    try {
+      final perm = await _localizacaoService.solicitarPermissaoLocalizacao();
+      if (!mounted) return;
+      setState(() {
+        _permissaoGps = perm;
+      });
+
+      if (perm == LocationPermission.whileInUse ||
+          perm == LocationPermission.always) {
+        await _atualizarPosicaoAparelho();
+        if (_posicaoDispositivo != null) {
+          _mapController.move(_posicaoDispositivo!, 14.0);
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Permissão de localização necessária para exibir sua posição no mapa.',
+            ),
+            duration: Duration(seconds: 3),
+            backgroundColor: Color(0xFF0F172A),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _solicitandoGps = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _atualizarPosicaoAparelho() async {
+    try {
+      final pos = await _localizacaoService.obterPosicaoDispositivoAtual();
+      if (pos != null && mounted) {
+        setState(() {
+          _posicaoDispositivo = LatLng(pos.latitude, pos.longitude);
+        });
+      }
+    } catch (_) {}
+  }
+
   @override
   void dispose() {
     _pulseController.dispose();
+    _mapController.dispose();
     super.dispose();
   }
 
@@ -84,6 +164,38 @@ class _CardTrackingPacienteState extends State<CardTrackingPaciente>
       return widget.motoristasStreamOverride!;
     }
     return _localizacaoService.obterMotoristasAtivosStream();
+  }
+
+  void _centralizarFrota(List<LocalizacaoMotoristaModel> motoristas) {
+    if (motoristas.isEmpty) {
+      if (_posicaoDispositivo != null) {
+        _mapController.move(_posicaoDispositivo!, 13.0);
+      } else {
+        _mapController.move(_centroPadrao, 10.0);
+      }
+      return;
+    }
+
+    if (motoristas.length == 1) {
+      final m = motoristas.first;
+      _mapController.move(LatLng(m.latitude, m.longitude), 12.0);
+      return;
+    }
+
+    double minLat = motoristas.first.latitude;
+    double maxLat = motoristas.first.latitude;
+    double minLng = motoristas.first.longitude;
+    double maxLng = motoristas.first.longitude;
+
+    for (final m in motoristas) {
+      if (m.latitude < minLat) minLat = m.latitude;
+      if (m.latitude > maxLat) maxLat = m.latitude;
+      if (m.longitude < minLng) minLng = m.longitude;
+      if (m.longitude > maxLng) maxLng = m.longitude;
+    }
+
+    final centro = LatLng((minLat + maxLat) / 2, (minLng + maxLng) / 2);
+    _mapController.move(centro, 10.0);
   }
 
   @override
@@ -136,11 +248,15 @@ class _CardTrackingPacienteState extends State<CardTrackingPaciente>
                 _construirCabecalho(motoristasAtivos.length),
                 const SizedBox(height: 12),
 
-                // 2. Mapa Interativo
+                // 2. Banner de status do GPS do dispositivo
+                _construirBarraStatusGps(),
+                const SizedBox(height: 10),
+
+                // 3. Mapa Interativo com API de Mapas
                 _construirContainerMapa(motoristasAtivos, motoristaFocado),
                 const SizedBox(height: 12),
 
-                // 3. Seletor e Ficha de Detalhes dos Motoristas Ativos
+                // 4. Seletor e Ficha de Detalhes dos Motoristas Ativos
                 if (motoristasAtivos.isNotEmpty) ...[
                   _construirSeletorMotoristas(motoristasAtivos),
                   const SizedBox(height: 10),
@@ -232,14 +348,99 @@ class _CardTrackingPacienteState extends State<CardTrackingPaciente>
     );
   }
 
+  Widget _construirBarraStatusGps() {
+    final gpsAtivo = _posicaoDispositivo != null;
+    final gpsNegado = _permissaoGps == LocationPermission.denied ||
+        _permissaoGps == LocationPermission.deniedForever;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: gpsAtivo
+            ? const Color(0xFFEFF6FF)
+            : (gpsNegado ? const Color(0xFFFEF2F2) : const Color(0xFFF8FAFC)),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: gpsAtivo
+              ? const Color(0xFFBFDBFE)
+              : (gpsNegado ? const Color(0xFFFECACA) : const Color(0xFFE2E8F0)),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            gpsAtivo
+                ? Icons.gps_fixed
+                : (gpsNegado ? Icons.location_disabled : Icons.gps_not_fixed),
+            size: 16,
+            color: gpsAtivo
+                ? const Color(0xFF2563EB)
+                : (gpsNegado ? const Color(0xFFDC2626) : const Color(0xFF64748B)),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              gpsAtivo
+                  ? 'Localização do seu aparelho ativa (exibida no mapa)'
+                  : (gpsNegado
+                      ? 'Permissão de GPS do Android não concedida'
+                      : 'Ative a localização do aparelho para ver sua posição'),
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: gpsAtivo
+                    ? const Color(0xFF1E40AF)
+                    : (gpsNegado
+                        ? const Color(0xFF991B1B)
+                        : const Color(0xFF475569)),
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: _pedirPermissaoEAtualizarGps,
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: _solicitandoGps
+                ? const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Text(
+                    gpsAtivo
+                        ? 'Atualizar GPS'
+                        : (gpsNegado ? 'Permitir GPS' : 'Ativar GPS'),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: gpsAtivo
+                          ? const Color(0xFF2563EB)
+                          : (gpsNegado
+                              ? const Color(0xFFDC2626)
+                              : const Color(0xFF0F172A)),
+                    ),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _construirContainerMapa(
     List<LocalizacaoMotoristaModel> motoristas,
     LocalizacaoMotoristaModel focado,
   ) {
+    final centroInicial = motoristas.isNotEmpty
+        ? LatLng(motoristas.first.latitude, motoristas.first.longitude)
+        : (_posicaoDispositivo ?? _centroPadrao);
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
       child: Container(
-        height: 220,
+        height: 240,
         width: double.infinity,
         decoration: BoxDecoration(
           color: const Color(0xFFE2E8F0),
@@ -247,24 +448,82 @@ class _CardTrackingPacienteState extends State<CardTrackingPaciente>
         ),
         child: Stack(
           children: [
-            // Pintura vetorial personalizada do mapa regional
-            AnimatedBuilder(
-              animation: _pulseController,
-              builder: (context, _) {
-                return CustomPaint(
-                  size: const Size(double.infinity, 220),
-                  painter: _MapaRegionalPainter(
-                    motoristas: motoristas,
-                    motoristaFocadoId: _motoristaSelecionadoId ??
-                        (motoristas.isNotEmpty ? motoristas.first.motoristaId : null),
-                    pulseValue: _pulseController.value,
-                    zoom: _zoomLevel,
-                  ),
-                );
-              },
+            // 1. Mapa Real Interativo (OpenStreetMap / FlutterMap)
+            FlutterMap(
+              mapController: _mapController,
+              options: MapOptions(
+                initialCenter: centroInicial,
+                initialZoom: 10.5,
+                minZoom: 4.0,
+                maxZoom: 18.0,
+                interactionOptions: const InteractionOptions(
+                  flags: InteractiveFlag.all,
+                ),
+              ),
+              children: [
+                // Camada de Tiles Cartográficos Oficiais (OpenStreetMap)
+                TileLayer(
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'br.gov.sp.fatec.trans_saude',
+                  tileProvider: NetworkTileProvider(),
+                  errorTileCallback: (tile, error, stackTrace) {
+                    // Trata falhas de conectividade de forma silenciosa e resiliente
+                  },
+                ),
+
+                // Camada de Marcadores Reais dos Veículos e do Dispositivo
+                AnimatedBuilder(
+                  animation: _pulseController,
+                  builder: (context, _) {
+                    final markers = <Marker>[];
+
+                    // Marcador do aparelho do paciente ("Você está aqui")
+                    if (_posicaoDispositivo != null) {
+                      markers.add(
+                        Marker(
+                          point: _posicaoDispositivo!,
+                          width: 80,
+                          height: 60,
+                          child: _construirPinUsuario(),
+                        ),
+                      );
+                    }
+
+                    // Marcadores dos motoristas ativos em trânsito
+                    for (final m in motoristas) {
+                      final isSelected = (_motoristaSelecionadoId == m.motoristaId) ||
+                          (_motoristaSelecionadoId == null &&
+                              motoristas.isNotEmpty &&
+                              motoristas.first == m);
+
+                      markers.add(
+                        Marker(
+                          point: LatLng(m.latitude, m.longitude),
+                          width: 110,
+                          height: 64,
+                          child: GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                _motoristaSelecionadoId = m.motoristaId;
+                              });
+                              _mapController.move(
+                                LatLng(m.latitude, m.longitude),
+                                13.0,
+                              );
+                            },
+                            child: _construirPinMotorista(m, isSelected),
+                          ),
+                        ),
+                      );
+                    }
+
+                    return MarkerLayer(markers: markers);
+                  },
+                ),
+              ],
             ),
 
-            // Controles de zoom sobrepostos (+ / -)
+            // Controles de zoom e centralização sobrepostos (+ / - / my_location)
             Positioned(
               right: 10,
               top: 10,
@@ -274,9 +533,13 @@ class _CardTrackingPacienteState extends State<CardTrackingPaciente>
                     icon: Icons.add,
                     tooltip: 'Aumentar Zoom',
                     onTap: () {
-                      setState(() {
-                        if (_zoomLevel < 1.8) _zoomLevel += 0.2;
-                      });
+                      final zoomAtual = _mapController.camera.zoom;
+                      if (zoomAtual < 17.5) {
+                        _mapController.move(
+                          _mapController.camera.center,
+                          zoomAtual + 1.0,
+                        );
+                      }
                     },
                   ),
                   const SizedBox(height: 6),
@@ -284,27 +547,43 @@ class _CardTrackingPacienteState extends State<CardTrackingPaciente>
                     icon: Icons.remove,
                     tooltip: 'Diminuir Zoom',
                     onTap: () {
-                      setState(() {
-                        if (_zoomLevel > 0.8) _zoomLevel -= 0.2;
-                      });
+                      final zoomAtual = _mapController.camera.zoom;
+                      if (zoomAtual > 5.0) {
+                        _mapController.move(
+                          _mapController.camera.center,
+                          zoomAtual - 1.0,
+                        );
+                      }
                     },
                   ),
                   const SizedBox(height: 6),
                   _botaoControleMapa(
                     icon: Icons.my_location,
+                    tooltip: 'Minha Localização',
+                    onTap: () async {
+                      if (_posicaoDispositivo != null) {
+                        _mapController.move(_posicaoDispositivo!, 14.0);
+                      } else {
+                        await _pedirPermissaoEAtualizarGps();
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 6),
+                  _botaoControleMapa(
+                    icon: Icons.directions_bus_rounded,
                     tooltip: 'Centralizar Frota',
                     onTap: () {
                       setState(() {
-                        _zoomLevel = 1.0;
                         _motoristaSelecionadoId = null;
                       });
+                      _centralizarFrota(motoristas);
                     },
                   ),
                 ],
               ),
             ),
 
-            // Legenda compacta de orientação geográfica regional
+            // Legenda compacta de orientação e escala
             Positioned(
               left: 10,
               bottom: 10,
@@ -315,7 +594,7 @@ class _CardTrackingPacienteState extends State<CardTrackingPaciente>
                   borderRadius: BorderRadius.circular(6),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.06),
+                      color: Colors.black.withValues(alpha: 0.08),
                       blurRadius: 4,
                     ),
                   ],
@@ -323,10 +602,10 @@ class _CardTrackingPacienteState extends State<CardTrackingPaciente>
                 child: const Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.near_me, size: 12, color: Color(0xFF0F172A)),
+                    Icon(Icons.map_outlined, size: 12, color: Color(0xFF0F172A)),
                     SizedBox(width: 4),
                     Text(
-                      'Poloni • Barretos • S. J. Rio Preto',
+                      'OpenStreetMap • Tempo Real',
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w600,
@@ -340,6 +619,117 @@ class _CardTrackingPacienteState extends State<CardTrackingPaciente>
           ],
         ),
       ),
+    );
+  }
+
+  Widget _construirPinUsuario() {
+    final pulso = _pulseController.value;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            color: const Color(0xFF2563EB),
+            borderRadius: BorderRadius.circular(4),
+            boxShadow: const [
+              BoxShadow(color: Colors.black26, blurRadius: 3),
+            ],
+          ),
+          child: const Text(
+            'Você',
+            style: TextStyle(
+              fontSize: 9,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+        ),
+        const SizedBox(height: 2),
+        Stack(
+          alignment: Alignment.center,
+          children: [
+            Container(
+              width: 22 + (pulso * 10),
+              height: 22 + (pulso * 10),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF2563EB).withValues(alpha: 1.0 - pulso),
+              ),
+            ),
+            Container(
+              width: 14,
+              height: 14,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF2563EB),
+                border: Border.all(color: Colors.white, width: 2),
+                boxShadow: const [
+                  BoxShadow(color: Colors.black38, blurRadius: 4),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _construirPinMotorista(LocalizacaoMotoristaModel m, bool isSelected) {
+    final corDestaque = isSelected ? const Color(0xFF16A34A) : const Color(0xFF0F172A);
+    final primeiroNome = m.motoristaNome.split(" ").first;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Tag com nome e placa
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: corDestaque, width: isSelected ? 1.5 : 1.0),
+            boxShadow: const [
+              BoxShadow(
+                color: Colors.black26,
+                blurRadius: 3,
+                offset: Offset(0, 1),
+              ),
+            ],
+          ),
+          child: Text(
+            'Condutor $primeiroNome',
+            style: TextStyle(
+              fontSize: 9,
+              fontWeight: FontWeight.bold,
+              color: corDestaque,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        const SizedBox(height: 2),
+        // Ícone do veículo com borda e sombra
+        Container(
+          padding: const EdgeInsets.all(5),
+          decoration: BoxDecoration(
+            color: corDestaque,
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 1.8),
+            boxShadow: const [
+              BoxShadow(
+                color: Colors.black38,
+                blurRadius: 4,
+                offset: Offset(0, 2),
+              ),
+            ],
+          ),
+          child: const Icon(
+            Icons.directions_car,
+            size: 14,
+            color: Colors.white,
+          ),
+        ),
+      ],
     );
   }
 
@@ -409,6 +799,7 @@ class _CardTrackingPacienteState extends State<CardTrackingPaciente>
                 setState(() {
                   _motoristaSelecionadoId = m.motoristaId;
                 });
+                _mapController.move(LatLng(m.latitude, m.longitude), 13.0);
               },
             ),
           );
@@ -487,6 +878,27 @@ class _CardTrackingPacienteState extends State<CardTrackingPaciente>
                 'Posição: ${m.latitude.toStringAsFixed(4)}, ${m.longitude.toStringAsFixed(4)}',
                 style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
               ),
+              const Spacer(),
+              InkWell(
+                onTap: () {
+                  _mapController.move(LatLng(m.latitude, m.longitude), 13.5);
+                },
+                child: const Row(
+                  children: [
+                    Icon(Icons.center_focus_strong,
+                        size: 14, color: Color(0xFF0284C7)),
+                    SizedBox(width: 4),
+                    Text(
+                      'Focar no Mapa',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF0284C7),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         ],
@@ -515,217 +927,5 @@ class _CardTrackingPacienteState extends State<CardTrackingPaciente>
         ],
       ),
     );
-  }
-}
-
-/// CustomPainter que desenha o mapa da região noroeste paulista e os pins dos motoristas
-class _MapaRegionalPainter extends CustomPainter {
-  final List<LocalizacaoMotoristaModel> motoristas;
-  final String? motoristaFocadoId;
-  final double pulseValue;
-  final double zoom;
-
-  _MapaRegionalPainter({
-    required this.motoristas,
-    required this.motoristaFocadoId,
-    required this.pulseValue,
-    required this.zoom,
-  });
-
-  // Limites geográficos do mapa (Noroeste Paulista)
-  static const double _minLat = -21.15;
-  static const double _maxLat = -20.45;
-  static const double _minLng = -50.10;
-  static const double _maxLng = -48.50;
-
-  Offset _geoToCanvas(double lat, double lng, Size size) {
-    final xRatio = (lng - _minLng) / (_maxLng - _minLng);
-    final yRatio = (lat - _minLat) / (_maxLat - _minLat);
-
-    final centerX = size.width / 2;
-    final centerY = size.height / 2;
-
-    final rawX = xRatio * size.width;
-    final rawY = (1.0 - yRatio) * size.height;
-
-    // Aplica zoom centrado
-    final scaledX = centerX + (rawX - centerX) * zoom;
-    final scaledY = centerY + (rawY - centerY) * zoom;
-
-    return Offset(scaledX, scaledY);
-  }
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final backgroundPaint = Paint()..color = const Color(0xFFF1F5F9);
-    canvas.drawRect(Offset.zero & size, backgroundPaint);
-
-    // 1. Linhas de rodovias regionais (SP-310 Washington Luís / SP-326 Faria Lima)
-    final roadPaint = Paint()
-      ..color = const Color(0xFFCBD5E1)
-      ..strokeWidth = 3.5 * zoom
-      ..style = PaintingStyle.stroke;
-
-    final minorRoadPaint = Paint()
-      ..color = const Color(0xFFE2E8F0)
-      ..strokeWidth = 2.0 * zoom
-      ..style = PaintingStyle.stroke;
-
-    // Poloni: (-20.7389, -49.8217)
-    final pPoloni = _geoToCanvas(-20.7389, -49.8217, size);
-    // Mirassol: (-20.8194, -49.5028)
-    final pMirassol = _geoToCanvas(-20.8194, -49.5028, size);
-    // São José do Rio Preto: (-20.8113, -49.3758)
-    final pRioPreto = _geoToCanvas(-20.8113, -49.3758, size);
-    // Barretos: (-20.5572, -48.5678)
-    final pBarretos = _geoToCanvas(-20.5572, -48.5678, size);
-    // Monte Aprazível: (-20.7711, -49.7144)
-    final pMonte = _geoToCanvas(-20.7711, -49.7144, size);
-
-    // Traçado das rodovias estaduais
-    final path = Path()
-      ..moveTo(pPoloni.dx, pPoloni.dy)
-      ..lineTo(pMonte.dx, pMonte.dy)
-      ..lineTo(pMirassol.dx, pMirassol.dy)
-      ..lineTo(pRioPreto.dx, pRioPreto.dy);
-
-    final pathBarretos = Path()
-      ..moveTo(pPoloni.dx, pPoloni.dy)
-      ..quadraticBezierTo(
-        (pPoloni.dx + pBarretos.dx) / 2,
-        pPoloni.dy - 20,
-        pBarretos.dx,
-        pBarretos.dy,
-      );
-
-    canvas.drawPath(path, roadPaint);
-    canvas.drawPath(pathBarretos, minorRoadPaint);
-
-    // 2. Marcadores das cidades de referência
-    _desenharCidade(canvas, pPoloni, 'Poloni (Sede)', true);
-    _desenharCidade(canvas, pRioPreto, 'S. J. Rio Preto (HB)', false);
-    _desenharCidade(canvas, pBarretos, 'Barretos (H. Amor)', false);
-    _desenharCidade(canvas, pMirassol, 'Mirassol', false);
-
-    // 3. Marcadores dos Motoristas Ativos
-    for (int i = 0; i < motoristas.length; i++) {
-      final m = motoristas[i];
-      final pos = _geoToCanvas(m.latitude, m.longitude, size);
-      final isFocado = (m.motoristaId == motoristaFocadoId) ||
-          (motoristaFocadoId == null && i == 0);
-
-      _desenharPinMotorista(canvas, pos, m, isFocado);
-    }
-  }
-
-  void _desenharCidade(Canvas canvas, Offset pos, String nome, bool isSede) {
-    final dotPaint = Paint()
-      ..color = isSede ? const Color(0xFF0F172A) : const Color(0xFF64748B)
-      ..style = PaintingStyle.fill;
-
-    canvas.drawCircle(pos, isSede ? 5 : 3.5, dotPaint);
-
-    final textSpan = TextSpan(
-      text: nome,
-      style: TextStyle(
-        color: isSede ? const Color(0xFF0F172A) : const Color(0xFF475569),
-        fontSize: isSede ? 10.5 : 9.5,
-        fontWeight: isSede ? FontWeight.bold : FontWeight.w600,
-      ),
-    );
-    final textPainter = TextPainter(
-      text: textSpan,
-      textDirection: TextDirection.ltr,
-    )..layout();
-
-    textPainter.paint(
-      canvas,
-      Offset(pos.dx - (textPainter.width / 2), pos.dy + 6),
-    );
-  }
-
-  void _desenharPinMotorista(
-    Canvas canvas,
-    Offset pos,
-    LocalizacaoMotoristaModel m,
-    bool isFocado,
-  ) {
-    // 1. Radar / Anel pulsante de sinal ativo
-    final radarRadius = (16.0 + (pulseValue * 14.0)) * (isFocado ? 1.2 : 1.0);
-    final radarPaint = Paint()
-      ..color = const Color(0xFF0284C7).withValues(
-        alpha: (1.0 - pulseValue).clamp(0.0, 0.7),
-      )
-      ..style = PaintingStyle.fill;
-    canvas.drawCircle(pos, radarRadius, radarPaint);
-
-    // 2. Círculo externo do Pin
-    final pinOuterPaint = Paint()
-      ..color = isFocado ? const Color(0xFF0F172A) : const Color(0xFF0369A1)
-      ..style = PaintingStyle.fill;
-    canvas.drawCircle(pos, isFocado ? 13 : 11, pinOuterPaint);
-
-    // 3. Círculo interno branco
-    final pinInnerPaint = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.fill;
-    canvas.drawCircle(pos, isFocado ? 10.5 : 8.5, pinInnerPaint);
-
-    // 4. Ponto central indicando o veículo
-    final centerDotPaint = Paint()
-      ..color = isFocado ? const Color(0xFF059669) : const Color(0xFF0284C7)
-      ..style = PaintingStyle.fill;
-    canvas.drawCircle(pos, isFocado ? 5.5 : 4.5, centerDotPaint);
-
-    // 5. Etiqueta descritiva com placa e primeiro nome
-    final nomeCurto = m.motoristaNome.split(' ').first;
-    final tagText = '$nomeCurto • ${m.veiculoPlaca}';
-    final tagSpan = TextSpan(
-      text: tagText,
-      style: TextStyle(
-        color: isFocado ? Colors.white : const Color(0xFF0F172A),
-        fontSize: 10,
-        fontWeight: FontWeight.bold,
-      ),
-    );
-    final tagPainter = TextPainter(
-      text: tagSpan,
-      textDirection: TextDirection.ltr,
-    )..layout();
-
-    final tagWidth = tagPainter.width + 12;
-    final tagHeight = tagPainter.height + 6;
-    final tagRect = RRect.fromRectAndRadius(
-      Rect.fromCenter(
-        center: Offset(pos.dx, pos.dy - 22),
-        width: tagWidth,
-        height: tagHeight,
-      ),
-      const Radius.circular(6),
-    );
-
-    final tagBgPaint = Paint()
-      ..color = isFocado ? const Color(0xFF0F172A) : Colors.white
-      ..style = PaintingStyle.fill;
-    final tagBorderPaint = Paint()
-      ..color = isFocado ? Colors.white : const Color(0xFFCBD5E1)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0;
-
-    canvas.drawRRect(tagRect, tagBgPaint);
-    canvas.drawRRect(tagRect, tagBorderPaint);
-
-    tagPainter.paint(
-      canvas,
-      Offset(pos.dx - (tagPainter.width / 2), pos.dy - 22 - (tagPainter.height / 2)),
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _MapaRegionalPainter oldDelegate) {
-    return oldDelegate.pulseValue != pulseValue ||
-        oldDelegate.zoom != zoom ||
-        oldDelegate.motoristaFocadoId != motoristaFocadoId ||
-        oldDelegate.motoristas.length != motoristas.length;
   }
 }

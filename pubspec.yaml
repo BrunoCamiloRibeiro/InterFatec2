@@ -96,6 +96,8 @@ dependencies:
   timeline_tile: ^2.0.0
   # Extensão de timelines para interface gráfica
   timelines_plus: ^2.0.0
+  flutter_map: ^8.3.2
+  latlong2: ^0.10.1
 
 # Dependências restritas ao ambiente de desenvolvimento e testes
 dev_dependencies:

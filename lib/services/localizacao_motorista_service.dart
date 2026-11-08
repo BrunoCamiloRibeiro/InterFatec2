@@ -303,30 +303,105 @@ class LocalizacaoMotoristaService {
     }
   }
 
-  /// Tenta capturar a posição do GPS do dispositivo de forma resiliente
-  Future<Position?> capturarPosicaoGpsSegura() async {
+  StreamSubscription<Position>? _gpsStreamSubscription;
+
+  /// Solicita explicitamente a permissão de geolocalização do dispositivo (Android e Web)
+  Future<LocationPermission> solicitarPermissaoLocalizacao() async {
     try {
       final servicoHabilitado = await Geolocator.isLocationServiceEnabled();
-      if (!servicoHabilitado) return null;
-
+      if (!servicoHabilitado) {
+        return LocationPermission.denied;
+      }
       LocationPermission permissao = await Geolocator.checkPermission();
       if (permissao == LocationPermission.denied) {
         permissao = await Geolocator.requestPermission();
-        if (permissao == LocationPermission.denied) return null;
       }
+      return permissao;
+    } catch (e) {
+      debugPrint('Erro ao solicitar permissão de localização do Android/Web: $e');
+      return LocationPermission.denied;
+    }
+  }
 
-      if (permissao == LocationPermission.deniedForever) return null;
-
+  /// Retorna as coordenadas GPS atuais do aparelho do usuário (paciente ou motorista)
+  Future<Position?> obterPosicaoDispositivoAtual() async {
+    try {
+      final permissao = await solicitarPermissaoLocalizacao();
+      if (permissao == LocationPermission.denied ||
+          permissao == LocationPermission.deniedForever) {
+        return null;
+      }
       return await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.medium,
+          accuracy: LocationAccuracy.high,
           timeLimit: Duration(seconds: 5),
         ),
       );
     } catch (e) {
-      debugPrint('Captura de GPS indisponível ou emulada: $e');
+      debugPrint('Erro ao obter posição do dispositivo: $e');
       return null;
     }
+  }
+
+  /// Inicia o envio periódico da geolocalização real do aparelho do motorista
+  Future<bool> iniciarTransmissaoGpsMotorista({
+    required String motoristaId,
+    required String motoristaNome,
+    required String veiculoPlaca,
+    required String veiculoModelo,
+    required String cidadeDestino,
+    String? viagemId,
+  }) async {
+    try {
+      final posInicial = await obterPosicaoDispositivoAtual();
+      if (posInicial != null) {
+        await atualizarLocalizacaoMotorista(
+          motoristaId: motoristaId,
+          motoristaNome: motoristaNome,
+          veiculoPlaca: veiculoPlaca,
+          veiculoModelo: veiculoModelo,
+          cidadeDestino: cidadeDestino,
+          latitude: posInicial.latitude,
+          longitude: posInicial.longitude,
+          viagemId: viagemId,
+        );
+      }
+
+      // Escuta stream contínua de movimentação
+      _gpsStreamSubscription?.cancel();
+      _gpsStreamSubscription = Geolocator.getPositionStream(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 15,
+        ),
+      ).listen((pos) {
+        atualizarLocalizacaoMotorista(
+          motoristaId: motoristaId,
+          motoristaNome: motoristaNome,
+          veiculoPlaca: veiculoPlaca,
+          veiculoModelo: veiculoModelo,
+          cidadeDestino: cidadeDestino,
+          latitude: pos.latitude,
+          longitude: pos.longitude,
+          viagemId: viagemId,
+        );
+      });
+      return true;
+    } catch (e) {
+      debugPrint('Erro ao iniciar transmissão GPS do motorista: $e');
+      return false;
+    }
+  }
+
+  /// Encerra a transmissão contínua de GPS do motorista
+  void pararTransmissaoGpsMotorista() {
+    _gpsStreamSubscription?.cancel();
+    _gpsStreamSubscription = null;
+  }
+
+  /// Tenta capturar a posição do GPS do dispositivo de forma resiliente
+  Future<Position?> capturarPosicaoGpsSegura() async {
+    return obterPosicaoDispositivoAtual();
   }
 
   /// Método para reset em bateria de testes unitários
