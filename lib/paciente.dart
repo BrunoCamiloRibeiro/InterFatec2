@@ -49,6 +49,8 @@
 //   o primeiro paciente cadastrado (.limit(1)), útil para desenvolvimento, mas
 //   não segmentado por usuário logado específico.
 // ============================================================================
+import 'dart:async';
+
 // Importa a biblioteca oficial do Cloud Firestore para acesso ao banco de dados NoSQL
 import 'package:cloud_firestore/cloud_firestore.dart';
 // Importa o pacote principal do Firebase Core para verificação de inicialização
@@ -67,8 +69,10 @@ import 'models/localizacao_motorista_model.dart';
 // Importa o modelo de dados representativo da entidade Paciente
 import 'components/banner_reversao_paciente.dart';
 import 'models/paciente_model.dart';
+import 'models/viagem_model.dart';
 import 'services/auth_service.dart';
 import 'services/paciente_sync_service.dart';
+import 'services/viagem_service.dart';
 
 // Tela principal do Módulo do Paciente (Issue #18)
 // Centraliza a identificação, dados da consulta agendada, tracking e botões de ação
@@ -104,6 +108,7 @@ class Paciente extends StatefulWidget {
 class _PacienteState extends State<Paciente> {
   late final PacienteSyncService _syncService;
   late Stream<PacienteModel?> _pacienteStream;
+  StreamSubscription<List<ViagemModel>>? _viagensSub;
   bool _processandoAcao = false;
 
   @override
@@ -111,6 +116,17 @@ class _PacienteState extends State<Paciente> {
     super.initState();
     _syncService = widget.syncServiceOverride ?? PacienteSyncService();
     _pacienteStream = _carregarPaciente();
+    _viagensSub = ViagemService().todasViagensStream.listen((_) {
+      if (mounted) {
+        setState(() {});
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _viagensSub?.cancel();
+    super.dispose();
   }
 
   @override
@@ -298,6 +314,110 @@ class _PacienteState extends State<Paciente> {
   // Fechamento do método _isFirebaseDisponivel
   }
 
+  // Enriquecimento dos dados do paciente com informações de agendamento da viagem ativa ou planejada
+  PassageiroViagemModel? _localizarPassageiroNaViagem(String pacienteId, {String? cpf}) {
+    final cpfLimpo = cpf?.replaceAll(RegExp(r'\D'), '') ?? '';
+    final viagens = ViagemService().todasViagens;
+    final ordenadas = [
+      ...viagens.where((v) => v.isAtiva && !v.isCancelada && !v.isConcluida),
+      ...viagens.where((v) => v.isPlanejada && !v.isCancelada && !v.isConcluida),
+      ...viagens.where((v) => !v.isAtiva && !v.isPlanejada),
+    ];
+
+    for (final v in ordenadas) {
+      for (final p in v.passageiros) {
+        if (p.pacienteId == pacienteId) {
+          return p;
+        }
+        if (cpfLimpo.isNotEmpty && p.pacienteCpf != null) {
+          final pCpfLimpo = p.pacienteCpf!.replaceAll(RegExp(r'\D'), '');
+          if (pCpfLimpo == cpfLimpo) {
+            return p;
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  PacienteModel _enriquecerComDadosViagem(PacienteModel paciente) {
+    final pv = _localizarPassageiroNaViagem(paciente.id, cpf: paciente.cpf);
+    if (pv == null) return paciente;
+
+    final localConsultaVazio = paciente.localConsulta.trim().isEmpty ||
+        paciente.localConsulta.trim() == 'Local da consulta não informado';
+    final localSaidaVazio = paciente.localSaida.trim().isEmpty;
+    final horarioVazio = paciente.horarioConsulta.trim().isEmpty;
+    final acompNomeVazio =
+        paciente.nomeAcompanhante == null || paciente.nomeAcompanhante!.trim().isEmpty;
+    final acompTelVazio =
+        paciente.telAcompanhante == null || paciente.telAcompanhante!.trim().isEmpty;
+
+    return PacienteModel(
+      id: paciente.id,
+      nome: (paciente.nome.trim().isEmpty || paciente.nome == 'Paciente sem nome') &&
+              pv.pacienteNome.trim().isNotEmpty
+          ? pv.pacienteNome.trim()
+          : paciente.nome,
+      cpf: (paciente.cpf.trim().isEmpty || paciente.cpf == '000.000.000-00') &&
+              pv.pacienteCpf != null &&
+              pv.pacienteCpf!.trim().isNotEmpty
+          ? pv.pacienteCpf!.trim()
+          : paciente.cpf,
+      telefone: paciente.telefone,
+      enderecoPaciente: paciente.enderecoPaciente,
+      localConsulta: localConsultaVazio && pv.localDestino.trim().isNotEmpty
+          ? pv.localDestino.trim()
+          : paciente.localConsulta,
+      localSaida: localSaidaVazio && pv.localOrigem.trim().isNotEmpty
+          ? pv.localOrigem.trim()
+          : paciente.localSaida,
+      horarioConsulta: horarioVazio && pv.horarioAtendimento.trim().isNotEmpty
+          ? pv.horarioAtendimento.trim()
+          : paciente.horarioConsulta,
+      status: paciente.status,
+      nomeAcompanhante: acompNomeVazio &&
+              pv.acompanhanteNome != null &&
+              pv.acompanhanteNome!.trim().isNotEmpty
+          ? pv.acompanhanteNome!.trim()
+          : paciente.nomeAcompanhante,
+      telAcompanhante: acompTelVazio &&
+              pv.acompanhanteTelefone != null &&
+              pv.acompanhanteTelefone!.trim().isNotEmpty
+          ? pv.acompanhanteTelefone!.trim()
+          : paciente.telAcompanhante,
+      cpfAcompanhante: paciente.cpfAcompanhante,
+      rg: paciente.rg,
+      cnh: paciente.cnh,
+      role: paciente.role,
+      ativo: paciente.ativo,
+      criadoEm: paciente.criadoEm,
+      prontoRetorno: paciente.prontoRetorno,
+      janelaReversao: paciente.janelaReversao,
+      ultimaIdempotencyKey: paciente.ultimaIdempotencyKey,
+    );
+  }
+
+  PacienteModel? _buscarPacienteEmViagem(String docId) {
+    final pv = _localizarPassageiroNaViagem(docId);
+    if (pv == null) return null;
+    return PacienteModel(
+      id: pv.pacienteId,
+      nome: pv.pacienteNome,
+      cpf: pv.pacienteCpf ?? '000.000.000-00',
+      telefone: 'Telefone não informado',
+      enderecoPaciente: 'Endereço não informado',
+      localConsulta: pv.localDestino.trim().isNotEmpty
+          ? pv.localDestino.trim()
+          : 'Local da consulta não informado',
+      localSaida: pv.localOrigem.trim(),
+      horarioConsulta: pv.horarioAtendimento.trim(),
+      status: pv.statusEmbarque,
+      nomeAcompanhante: pv.acompanhanteNome,
+      telAcompanhante: pv.acompanhanteTelefone,
+    );
+  }
+
   // Retorna a stream de dados do paciente ativo em tempo real
   // Função que produz o fluxo reativo do paciente corrente
   Stream<PacienteModel?> _carregarPaciente() {
@@ -311,8 +431,13 @@ class _PacienteState extends State<Paciente> {
 
     // Se o serviço do Firebase estiver ativo e operacional
     if (_isFirebaseDisponivel()) {
-      final docIdAlvo = widget.pacienteId;
-      if (docIdAlvo != null && docIdAlvo.trim().isNotEmpty) {
+      final idParam = widget.pacienteId?.trim();
+      final idAuth = FirebaseAuthService().currentUserId?.trim();
+      final docIdAlvo = (idParam != null && idParam.isNotEmpty)
+          ? idParam
+          : ((idAuth != null && idAuth.isNotEmpty) ? idAuth : null);
+
+      if (docIdAlvo != null && docIdAlvo.isNotEmpty) {
         return FirebaseFirestore.instance
             .collection('usuarios')
             .doc(docIdAlvo)
@@ -331,33 +456,35 @@ class _PacienteState extends State<Paciente> {
                     situacao == 'excluido') {
                   return null;
                 }
-                return PacienteModel.fromMap(dados, docId: doc.id);
+                final base = PacienteModel.fromMap(dados, docId: doc.id);
+                return _enriquecerComDadosViagem(base);
               }
-              return null;
+              return _buscarPacienteEmViagem(docIdAlvo);
             });
       }
 
       return FirebaseFirestore.instance
           .collection('usuarios')
           .where('role', isEqualTo: 'paciente')
-          .limit(1)
           .snapshots()
           .map((snapshot) {
-            if (snapshot.docs.isEmpty) return null;
-            final doc = snapshot.docs.first;
-            final dados = doc.data();
-            final ativo = dados['ativo'];
-            final status = dados['status']?.toString().toLowerCase().trim();
-            final situacao = dados['situacao']?.toString().toLowerCase().trim();
-            if (ativo == false ||
-                ativo == 'false' ||
-                status == 'inativo' ||
-                situacao == 'inativo' ||
-                status == 'excluido' ||
-                situacao == 'excluido') {
-              return null;
+            for (final doc in snapshot.docs) {
+              final dados = doc.data();
+              final ativo = dados['ativo'];
+              final status = dados['status']?.toString().toLowerCase().trim();
+              final situacao = dados['situacao']?.toString().toLowerCase().trim();
+              if (ativo == false ||
+                  ativo == 'false' ||
+                  status == 'inativo' ||
+                  situacao == 'inativo' ||
+                  status == 'excluido' ||
+                  situacao == 'excluido') {
+                continue;
+              }
+              final base = PacienteModel.fromMap(dados, docId: doc.id);
+              return _enriquecerComDadosViagem(base);
             }
-            return PacienteModel.fromMap(dados, docId: doc.id);
+            return null;
           });
     }
 
@@ -391,8 +518,11 @@ class _PacienteState extends State<Paciente> {
         // Fechamento do if de aguardando
         }
 
-        // Extrai o objeto paciente do snapshot atual
-        final paciente = snapshot.data;
+        // Extrai o objeto paciente do snapshot atual (enriquecido com dados da viagem quando disponíveis)
+        final rawPaciente = snapshot.data;
+        final paciente = rawPaciente != null
+            ? _enriquecerComDadosViagem(rawPaciente)
+            : null;
 
         // Caso nenhum registro seja localizado
         // Se o paciente for nulo (não encontrado no banco de dados)

@@ -154,10 +154,10 @@ class RouteGuard {
       case '/paciente':
         // Valida se o perfil autenticado é exatamente paciente
         if (role == UserRole.paciente) {
-          // Constrói a rota com a tela do paciente
+          // Constrói a rota com a tela do paciente vinculada ao ID autenticado
           return MaterialPageRoute(
             settings: settings,
-            builder: (_) => const Paciente(),
+            builder: (_) => Paciente(pacienteId: service.currentUserId),
           );
         // Fecha if de validação de paciente
         }
@@ -203,8 +203,8 @@ class RouteGuard {
       UserRole.motorista => const Motorista(),
       // Se for administrador, devolve a tela do administrador
       UserRole.admin => AdminPlaceholderScreen(authService: service),
-      // Se for paciente, devolve a tela do paciente
-      UserRole.paciente => const Paciente(),
+      // Se for paciente, devolve a tela do paciente vinculada ao ID autenticado
+      UserRole.paciente => Paciente(pacienteId: service.currentUserId),
       // Se não houver papel em cache, verifica se há sessão ativa
       null =>
         // Se houver usuário autenticado no Firebase, direciona ao AuthGate

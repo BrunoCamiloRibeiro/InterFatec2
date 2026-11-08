@@ -662,8 +662,10 @@ class _AuthGateState extends State<AuthGate> {
         UserRole.motorista => const Motorista(),
         // Papel administrador: exibe o painel de administração
         UserRole.admin => AdminPlaceholderScreen(authService: _authService),
-        // Papel paciente: exibe a tela do paciente
-        UserRole.paciente => const Paciente(),
+        // Papel paciente: exibe a tela do paciente vinculada ao ID autenticado
+        UserRole.paciente => Paciente(
+          pacienteId: _currentUid ?? _authService.currentUserId,
+        ),
       },
       // Estado perfil inválido: exibe card com instrução de retorno ao login
       AuthGatePerfilInvalido(:final mensagem) => _buildCardFeedback(
