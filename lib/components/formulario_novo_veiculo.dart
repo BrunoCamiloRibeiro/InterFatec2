@@ -46,7 +46,6 @@ class _FormularioNovoVeiculoState extends State<FormularioNovoVeiculo> {
 
   late String _tipoSelecionado;
   late String _statusSelecionado;
-  // String? _motoristaSelecionado; // Desativado a pedido do PO (não há motorista responsável fixo)
   late bool _possuiAC;
   late bool _possuiPreferencial;
 
@@ -83,15 +82,6 @@ class _FormularioNovoVeiculoState extends State<FormularioNovoVeiculo> {
   };
 
   static final List<String> _marcasSugeridas = _modelosPorMarca.keys.toList();
-
-  // REMOVIDO A PEDIDO DO PO: Não existe motorista fixo/responsável por veículo
-  // static const List<String> _motoristasMock = [
-  //   'motorista001',
-  //   'Carlos Silva (Matrícula: 1042)',
-  //   'Mariana Santos (Matrícula: 1055)',
-  //   'Roberto Albuquerque (Matrícula: 1089)',
-  //   'Sem motorista fixo',
-  // ];
 
   @override
   void initState() {
@@ -132,9 +122,6 @@ class _FormularioNovoVeiculoState extends State<FormularioNovoVeiculo> {
     if (!_statusOpcoes.any((s) => s['valor'] == _statusSelecionado)) {
       _statusSelecionado = 'disponivel';
     }
-
-    // _motoristaSelecionado =
-    //     v['ultimoMotoristaId']?.toString() ?? v['motoristaResponsavelId']?.toString();
 
     _possuiAC = v['possuiAC'] == true;
     _possuiPreferencial = v['possuiPreferencial'] == true;
@@ -376,7 +363,6 @@ class _FormularioNovoVeiculoState extends State<FormularioNovoVeiculo> {
       'qtdAssentos': int.tryParse(_assentosController.text.trim()) ?? 15,
       'status': _statusSelecionado,
       'quilometragemAtual': int.tryParse(_kmController.text.trim()) ?? 0,
-      // 'motoristaResponsavelId': _motoristaSelecionado, // Desativado a pedido do PO
       'ultimoMotoristaId': widget.veiculoParaEditar?['ultimoMotoristaId'],
       'possuiAC': _possuiAC,
       'possuiPreferencial': _possuiPreferencial,
@@ -744,29 +730,6 @@ class _FormularioNovoVeiculoState extends State<FormularioNovoVeiculo> {
                                     ),
                                   ],
                                 ),
-                                // REMOVIDO A PEDIDO DO PO: Não existe motorista fixo/responsável por veículo
-                                // const SizedBox(height: 12),
-                                // DropdownButtonFormField<String>(
-                                //   initialValue: _motoristaSelecionado,
-                                //   decoration: _campoDecoracao(
-                                //     label: 'Motorista Responsável',
-                                //     hint: 'Selecione o motorista',
-                                //     icone: Icons.person_outline,
-                                //   ),
-                                //   items: _motoristasMock.map((m) {
-                                //     return DropdownMenuItem<String>(
-                                //       value: m,
-                                //       child: Text(
-                                //         m,
-                                //         overflow: TextOverflow.ellipsis,
-                                //         style: const TextStyle(fontSize: 13),
-                                //       ),
-                                //     );
-                                //   }).toList(),
-                                //   onChanged: (valor) {
-                                //     _motoristaSelecionado = valor;
-                                //   },
-                                // ),
                               ],
                             ),
                           ),

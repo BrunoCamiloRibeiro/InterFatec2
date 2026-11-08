@@ -59,7 +59,6 @@ class _DetalhesVeiculoState extends State<DetalhesVeiculo> {
     final String placa = (veiculo['placa'] ?? 'XXX-1234').toString();
     final String criadoEm = (veiculo['criadoEm'] ?? '01/10/2026').toString();
     final String atualizadoEm = (veiculo['atualizadoEm'] ?? '20/10/2026').toString();
-    // final String? motoristaFixo = veiculo['motoristaResponsavelId']?.toString(); // Desativado a pedido do PO (não há motorista fixo)
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -122,30 +121,6 @@ class _DetalhesVeiculoState extends State<DetalhesVeiculo> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // REMOVIDO A PEDIDO DO PO: Não existe motorista fixo/responsável por veículo
-                      // Row(
-                      //   children: [
-                      //     Icon(Icons.person_pin_outlined, color: Colors.grey[700], size: 20),
-                      //     const SizedBox(width: 10),
-                      //     Column(
-                      //       crossAxisAlignment: CrossAxisAlignment.start,
-                      //       children: [
-                      //         Text(
-                      //           'Motorista Fixo Responsável',
-                      //           style: TextStyle(
-                      //             fontSize: 12,
-                      //             color: Color.lerp(Colors.grey, Colors.black, 0.5),
-                      //           ),
-                      //         ),
-                      //         Text(
-                      //           motoristaFixo ?? 'Nenhum motorista fixo vinculado',
-                      //           style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                      //         ),
-                      //       ],
-                      //     ),
-                      //   ],
-                      // ),
-                      // const SizedBox(height: 14),
                       Row(
                         children: [
                           Icon(Icons.calendar_today_outlined, color: Colors.grey[700], size: 20),

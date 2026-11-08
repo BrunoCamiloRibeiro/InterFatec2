@@ -30,7 +30,6 @@ class CardVeiculo extends StatelessWidget {
     final dynamic assentos = veiculo['qtdAssentos'] ?? 0;
     final String ultimoMotorista =
         (veiculo['ultimoMotoristaId'] ??
-                // veiculo['motoristaResponsavelId'] ?? // Removido a pedido do PO (não há motorista responsável fixo)
                 'Nome do Último Motorista')
             .toString();
     final bool possuiAC = veiculo['possuiAC'] == true;
