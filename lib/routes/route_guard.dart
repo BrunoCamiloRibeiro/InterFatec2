@@ -55,6 +55,7 @@ import '../motorista.dart';
 import '../paciente.dart';
 import '../screens/admin_placeholder_screen.dart';
 import '../screens/auth_gate.dart';
+import '../screens/gerenciador_viagens_screen.dart';
 import '../screens/login_screen.dart';
 import '../services/auth_service.dart';
 
@@ -128,6 +129,21 @@ class RouteGuard {
         // Fecha if de validação de admin
         }
         // Redireciona caso o papel não coincida
+        return _redirecionarAcessoIndevido(role, settings, service);
+
+      // Linha em branco separadora entre casos de rotas
+      // ----------------------------------------------------------------------
+      // ROTA: /gerenciador-horarios e /gerenciador-viagens
+      // - Exige perfil 'UserRole.admin'.
+      // ----------------------------------------------------------------------
+      case '/gerenciador-horarios':
+      case '/gerenciador-viagens':
+        if (role == UserRole.admin) {
+          return MaterialPageRoute(
+            settings: settings,
+            builder: (_) => GerenciadorViagensScreen(authServiceOverride: service),
+          );
+        }
         return _redirecionarAcessoIndevido(role, settings, service);
 
       // Linha em branco separadora entre casos de rotas

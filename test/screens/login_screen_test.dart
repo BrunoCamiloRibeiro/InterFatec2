@@ -49,6 +49,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 // Importa o enum de papéis funcionais de usuários
 import 'package:trans_saude/models/user_role.dart';
+// Importa o modelo de paciente para assinaturas de teste
+import 'package:trans_saude/models/paciente_model.dart';
 // Importa a tela LoginScreen sob teste
 import 'package:trans_saude/screens/login_screen.dart';
 // Importa a interface do serviço de autenticação e sua classe de exceção
@@ -94,6 +96,22 @@ class FakeAuthService implements AuthService {
 
     // Retorna o papel configurado ou padrão motorista
     return roleToReturn ?? UserRole.motorista;
+  }
+
+  // Sobrescrita do loginPacienteComCodigo
+  @override
+  Future<UserRole> loginPacienteComCodigo({
+    required String documento,
+    required String codigoAcesso,
+    String? ipOrigem,
+    List<PacienteModel>? pacientesParaTestes,
+  }) async {
+    loginCalls++;
+    lastCpf = documento;
+    lastPassword = codigoAcesso;
+    if (completer != null) return completer!.future;
+    if (exceptionToThrow != null) throw exceptionToThrow!;
+    return roleToReturn ?? UserRole.paciente;
   }
 
   // Sobrescrita do logout
