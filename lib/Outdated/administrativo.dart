@@ -343,6 +343,38 @@ class Administrativo extends StatelessWidget {
               // Fechamento da Row
               ),
               // Espaçador vertical
+              SizedBox(height: 8),
+              // Terceira linha de botões de atalho: Frota de Veículos (Issue #33)
+              Row(
+                children: [
+                  Expanded(
+                    child: Material(
+                      elevation: 1,
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.black87,
+                          padding: EdgeInsets.symmetric(vertical: 12),
+                          side: BorderSide(color: Colors.grey.shade300),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        icon: Icon(Icons.airport_shuttle_outlined, size: 18),
+                        label: Text(
+                          'Frota de Veículos',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                        onPressed: () {
+                          Navigator.pushNamed(context, '/veiculos');
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              // Espaçador vertical
               SizedBox(height: 20),
 
               // card do formulário feito com Material em vez de Container com BoxShadow

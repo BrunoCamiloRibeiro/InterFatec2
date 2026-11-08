@@ -44,6 +44,7 @@ import 'package:flutter/material.dart';
 // Linha em branco separadora entre imports do framework e imports internos
 // Importa o modelo PacienteModel para obtenção centralizada de textos, cores e ícones de status da viagem
 import '../models/paciente_model.dart';
+import '../models/janela_reversao_model.dart';
 
 // Linha em branco separadora entre modelos e componentes filhos
 // Importa o utilitário TextAbbreviator para abreviação inteligente de nomes próprios longos
@@ -83,6 +84,8 @@ class CardPaciente extends StatelessWidget {
   // Atributo telAcompanhante: telefone para contato com o acompanhante, se houver
   // Tipo: String? anulável
   final String? telAcompanhante;
+  final bool prontoRetorno;
+  final JanelaReversaoModel? janelaReversao;
   // Atributo codigoAcesso (Issue #65): código de uso temporário de 4-5 dígitos
   // Exibido ao lado do nome do paciente exclusivamente após o embarque (status >= 1)
   final String? codigoAcesso;
@@ -110,6 +113,8 @@ class CardPaciente extends StatelessWidget {
     this.nomeAcompanhante,
     // Parâmetro nomeado opcional: telefone do acompanhante
     this.telAcompanhante,
+    this.prontoRetorno = false,
+    this.janelaReversao,
     // Parâmetro nomeado opcional (Issue #65): código de acesso gerado após embarque
     this.codigoAcesso,
   // Fecha a lista de parâmetros do construtor
@@ -138,79 +143,10 @@ class CardPaciente extends StatelessWidget {
       // Propriedade child de Card: widget interativo InkWell que responde a toques do condutor
       // Widget InkWell: adiciona comportamento tátil com efeito de onda ao tocar no card
       child: InkWell(
-        // Comentário original do autor mantido byte a byte:
-        // O InkWell fica logo DENTRO do Card por conta da animação
-        // Propriedade onTap: callback acionado quando o usuário toca em qualquer região do card
-        onTap: () {
-          // Expressão switch de padrão do Dart 3: mapeia o código de status numérico para o rótulo da ação a ser confirmada
-          String acaoTexto = switch (status) {
-            // Se o status for 0 (Aguardando), a próxima ação operacional é o embarque do paciente
-            0 => 'o embarque',
-            // Se o status for 1 (Em Trânsito), a próxima ação operacional é o desembarque na consulta
-            1 => 'o desembarque',
-            // Se o status for 2 (Na Consulta), a próxima ação operacional é a conclusão do transporte
-            2 => 'a conclusão',
-            // Caso padrão coringa (_) para quaisquer outros valores de status
-            _ => 'esta alteração',
-          // Fecha a expressão switch
-          };
-
-          // Linha em branco separadora entre cálculo do texto e abertura do diálogo
-          // Função showDialog: exibe uma caixa de diálogo modal flutuante na tela atual
-          // Recebe: context (BuildContext) e builder (função construtora do diálogo)
-          showDialog(
-            // Contexto de build da árvore de elementos
-            context: context,
-            // Função builder que constrói o diálogo AlertDialog
-            builder: (BuildContext context) {
-              // Widget AlertDialog: caixa de alerta com título, conteúdo explicativo e botões de ação
-              return AlertDialog(
-                // Propriedade title: título do diálogo modal de confirmação
-                title: Text('Confirmação'),
-                // Propriedade content: corpo textual da mensagem solicitando confirmação do motorista
-                content: Text(
-                  // Interpolação de strings formatando o nome da ação e do paciente em letras maiúsculas
-                  'Deseja confirmar ${acaoTexto.toUpperCase()} do passageiro ${nomePaciente.toUpperCase()}?',
-                // Fecha o widget Text do conteúdo do diálogo
-                ),
-                // Propriedade actions: lista de botões alinhados na base do diálogo
-                actions: [
-                  // Widget TextButton: botão para cancelar a operação sem aplicar nenhuma alteração
-                  TextButton(
-                    // Callback executado ao clicar em Cancelar
-                    onPressed: () {
-                      // Navigator.of(context).pop(): fecha a tela modal do diálogo desempilhando-a
-                      Navigator.of(context).pop();
-                    // Fecha a função anônima de onPressed
-                    },
-                    // Rótulo textual do botão Cancelar
-                    child: Text('Cancelar'),
-                  // Fecha o widget TextButton de Cancelar
-                  ),
-                  // Widget TextButton: botão para confirmar a alteração operacional de status
-                  TextButton(
-                    // Callback executado ao clicar em Confirmar
-                    onPressed: () {
-                      // Comentário original do autor mantido byte a byte:
-                      // IMPLEMENTAR A LÓGICA DE ATUALIZAÇÃO DE STATUS AQUI
-                      // Navigator.of(context).pop(): fecha a tela modal do diálogo desempilhando-a
-                      Navigator.of(context).pop();
-                    // Fecha a função anônima de onPressed
-                    },
-                    // Rótulo textual do botão Confirmar
-                    child: Text('Confirmar'),
-                  // Fecha o widget TextButton de Confirmar
-                  ),
-                // Fecha a lista de ações do AlertDialog
-                ],
-              // Fecha o widget AlertDialog
-              );
-            // Fecha a função builder do diálogo
-            },
-          // Fecha a chamada da função showDialog
-          );
-        // Fecha a função anônima de onTap do InkWell
-        },
+        // Propriedade onTap desativada (null) conforme diretriz arquitetural de QA (Issue #19):
+        // Elimina o diálogo placebo anterior e concentra o controle operacional exclusivamente no
+        // gesto intencional de deslize (Swipe/Dismissible) com diálogo defensivo de confirmação.
+        onTap: null,
         // Propriedade child de InkWell: container decorativo que envolve o conteúdo visual do card
         // Widget Container: caixa de layout com padding e decoração de borda
         child: Container(
@@ -573,6 +509,58 @@ class CardPaciente extends StatelessWidget {
                       // Fecha a Row de status
                       ),
                       // Widget SizedBox: espaçamento vertical de 10 pixels lógicos acima da barra de progresso
+                      if (janelaReversao != null && janelaReversao!.estaAtiva() && status == 5) ...[
+                        const SizedBox(height: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFEF2F2),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: const Color(0xFFB83227).withValues(alpha: 0.4)),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.schedule, size: 14, color: Color(0xFFB83227)),
+                              SizedBox(width: 4),
+                              Text(
+                                'Aguardando confirmação do passageiro',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFFB83227),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                      if (status == 2 && prontoRetorno) ...[
+                        const SizedBox(height: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFECFDF5),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: const Color(0xFF16A34A).withValues(alpha: 0.4)),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.check_circle, size: 14, color: Color(0xFF16A34A)),
+                              SizedBox(width: 4),
+                              Text(
+                                'Pronto para Retorno',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF16A34A),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                       SizedBox(height: 10),
                       // Invocação do widget IndicadorProgresso: renderiza os segmentos coloridos da viagem
                       IndicadorProgresso(
