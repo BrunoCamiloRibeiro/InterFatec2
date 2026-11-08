@@ -486,14 +486,14 @@ class CardIdentificacaoPaciente extends StatelessWidget {
                         onPressed: onInativar,
                         // Ícone do botão: pessoa desabilitada em vermelho
                         icon: const Icon(
-                          Icons.person_off_outlined,
+                          Icons.delete_outline,
                           size: 16,
                           color: Color(0xFFDC2626),
                         // Fecha o widget Icon de inativação
                         ),
                         // Rótulo textual do botão Inativar
                         label: const Text(
-                          'Inativar',
+                          'Excluir',
                           style: TextStyle(
                             color: Color(0xFFDC2626),
                             fontWeight: FontWeight.w600,

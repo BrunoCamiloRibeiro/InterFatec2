@@ -369,9 +369,19 @@ class _MotoristaState extends State<Motorista> {
           .snapshots()
           // Mapeia o snapshot de documentos para uma lista tipada de PacienteModel
           .map((snapshot) {
-            // Itera sobre cada documento retornado no snapshot
-            return snapshot.docs.map((doc) {
-              // Converte o documento bruto em um objeto PacienteModel estruturado
+            // Filtra documentos ativos e desconsidera registros excluídos logicamente (Issue #34)
+            return snapshot.docs.where((d) {
+              final dados = d.data();
+              final ativo = dados['ativo'];
+              final status = dados['status']?.toString().toLowerCase().trim();
+              final situacao = dados['situacao']?.toString().toLowerCase().trim();
+              return ativo != false &&
+                  ativo != 'false' &&
+                  status != 'inativo' &&
+                  situacao != 'inativo' &&
+                  status != 'excluido' &&
+                  situacao != 'excluido';
+            }).map((doc) {
               return PacienteModel.fromMap(doc.data(), docId: doc.id);
             // Converte a sequência mapeada em uma lista do Dart
             }).toList();

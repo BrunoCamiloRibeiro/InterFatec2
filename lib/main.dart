@@ -31,7 +31,7 @@
 //
 // ORIGEM HISTÓRICA:
 // Criado no commit inicial do scaffold (59a63c4) e mantido pela equipe em
-// evolução contínua (issues #17, #19, #28, #33, #34, #65; PRs #58, #59, #60, #63, #66, #67).
+// evolução contínua (issues #17, #19, #28, #33, #34, #65; PRs #58, #59, #60, #63, #64, #66, #67).
 //
 // DEPENDÊNCIAS EXTERNAS E EFEITOS COLATERAIS:
 // Depende de 'package:firebase_core/firebase_core.dart' e 'package:flutter/material.dart'.
@@ -152,6 +152,7 @@ class MyApp extends StatelessWidget {
         '/paciente': (context) => const Paciente(pacienteId: 'paciente_novo_issue19'),
         // Rota direta para a tela do motorista
         '/motorista': (context) => const Motorista(),
+        '/lista-passageiros': (context) => const Motorista(),
         // Comentário original do autor mantido byte a byte:
         // Rota mantida para acesso direto ao formulário inicial
         // Rota direta para abertura de viagem
@@ -211,6 +212,7 @@ class MyApp extends StatelessWidget {
         // Gestão de Pessoas (Issue #34)
         // Rota para o painel de listagem de pessoas
         '/lista-pessoas': (context) => const ListaPessoas(),
+        '/crud-pessoas': (context) => const ListaPessoas(),
         // Rota para a tela de gestão de veículos (Issue #33)
         '/veiculos': (context) => const Veiculos(),
         '/lista-veiculos': (context) => const Veiculos(),

@@ -318,7 +318,19 @@ class _PacienteState extends State<Paciente> {
           .snapshots()
           .map((doc) {
             if (doc.exists && doc.data() != null) {
-              return PacienteModel.fromMap(doc.data()!, docId: doc.id);
+              final dados = doc.data()!;
+              final ativo = dados['ativo'];
+              final status = dados['status']?.toString().toLowerCase().trim();
+              final situacao = dados['situacao']?.toString().toLowerCase().trim();
+              if (ativo == false ||
+                  ativo == 'false' ||
+                  status == 'inativo' ||
+                  situacao == 'inativo' ||
+                  status == 'excluido' ||
+                  situacao == 'excluido') {
+                return null;
+              }
+              return PacienteModel.fromMap(dados, docId: doc.id);
             }
             return null;
           });

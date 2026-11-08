@@ -35,22 +35,23 @@
 // ============================================================================
 // Importa a biblioteca de componentes visuais Material Design do Flutter
 import 'package:flutter/material.dart';
-// Importa o framework oficial de testes de widgets do Flutter
 import 'package:flutter_test/flutter_test.dart';
-// Importa a tela ListaPessoas sob teste
 import 'package:trans_saude/lista_pessoas.dart';
-// Importa o modelo de administradores
 import 'package:trans_saude/models/admin_model.dart';
-// Importa o modelo de motoristas
 import 'package:trans_saude/models/motorista_model.dart';
-// Importa o modelo de pacientes
 import 'package:trans_saude/models/paciente_model.dart';
 
-// Função principal de entrada da suíte de testes de ListaPessoas
+/// ============================================================================
+/// SUÍTE DE TESTES DE WIDGET: LISTA E GESTÃO DE PESSOAS (ISSUE #34)
+/// ============================================================================
+/// Valida as funcionalidades centrais da tela de Gestão de Pessoas (CRUD):
+/// 1. Renderização inicial com contadores consolidados e prevenção de colisões.
+/// 2. Filtragem polimórfica por papel (Abas: Todos, Pacientes, Motoristas, Admins).
+/// 3. Busca em tempo real por nome e CPF com feedback de estado vazio.
+/// 4. Disparo de ações contextuais: modal de cadastro, edição e exclusão lógica.
 void main() {
-  // Lista de pacientes simulados para os testes de widget
+  // Mocks de teste isolados para injeção direta no widget
   final mockPacientes = [
-    // Primeiro paciente mockado
     PacienteModel(
       id: 'p1',
       nome: 'Carlos Drummond',
@@ -59,7 +60,6 @@ void main() {
       enderecoPaciente: 'Rua Poeta, 10',
       localConsulta: 'Hospital das Clínicas',
     ),
-    // Segundo paciente mockado
     PacienteModel(
       id: 'p2',
       nome: 'Clarice Lispector',
@@ -70,9 +70,7 @@ void main() {
     ),
   ];
 
-  // Lista de motoristas simulados para os testes de widget
   final mockMotoristas = [
-    // Primeiro motorista mockado
     MotoristaModel(
       id: 'm1',
       nome: 'Machado de Assis',
@@ -85,125 +83,107 @@ void main() {
     ),
   ];
 
-  // Função auxiliar que cria o widget da tela de teste com mocks injetados
-  Widget criarTelaTeste() {
-    // Retorna MaterialApp envolvendo a tela ListaPessoas
+  /// Helper para montar a tela de teste injetando dados controlados
+  Widget criarTelaTeste({List<AdminModel>? mockAdmins}) {
     return MaterialApp(
-      // Configura a tela inicial com pacientes e motoristas de teste
       home: ListaPessoas(
         mockPacientes: mockPacientes,
         mockMotoristas: mockMotoristas,
+        mockAdmins: mockAdmins,
       ),
     );
   }
 
-  // Agrupamento dos testes de widget e de filtros da tela ListaPessoas
-  group('ListaPessoas - Testes de Widget e Filtros (Issue #34)', () {
-    // Testa o carregamento padrão da tela sem lançar exceções de layout ou chave
+  /// Configura o tamanho físico da viewport para testes com listas extensas
+  void configurarViewportLongo(WidgetTester tester) {
+    tester.view.physicalSize = const Size(800, 1200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+  }
+
+  group('1. Carga Inicial e Renderização da Lista', () {
     testWidgets(
       'Carrega com dados padrão sem colisão de chaves (sem exceptions)',
-      (tester) async {
-        // Configura viewport de 800x1200 pixels
-        tester.view.physicalSize = const Size(800, 1200);
-        tester.view.devicePixelRatio = 1.0;
-        // Registra restauração de dimensões ao término
-        addTearDown(tester.view.resetPhysicalSize);
-        addTearDown(tester.view.resetDevicePixelRatio);
+      (WidgetTester tester) async {
+        // Arranjo: Viewport expandida para visualização de cards múltiplos
+        configurarViewportLongo(tester);
 
-        // Renderiza a tela sem mocks explícitos para exercitar os dados estáticos padrão
+        // Ação: Renderiza com a lista padrão sem sobrecargas
         await tester.pumpWidget(const MaterialApp(home: ListaPessoas()));
-        // Assegura que nenhuma exceção foi capturada
+
+        // Verificação: Nenhuma exceção de concorrência ou colisão de chaves
         expect(tester.takeException(), isNull);
-        // Valida que o título da tela está presente
         expect(find.text('Gestão de Pessoas'), findsOneWidget);
-        // Valida presença de paciente padrão
         expect(find.text('Maria Silva Santos'), findsOneWidget);
-        // Valida presença de motorista padrão
         expect(find.text('João de Deus Pereira'), findsOneWidget);
       },
     );
 
-    // Testa se o cabeçalho, a barra de busca e as abas com contadores são renderizados
     testWidgets('Carrega título, barra de busca e abas de filtro', (
-      tester,
+      WidgetTester tester,
     ) async {
-      // Monta o widget de teste
+      // Ação: Monta a tela com dados mockados
       await tester.pumpWidget(criarTelaTeste());
 
-      // Valida o título na AppBar
+      // Verificação: Elementos estruturais essenciais presentes na AppBar e cabeçalho
       expect(find.text('Gestão de Pessoas'), findsOneWidget);
-      // Valida o texto placeholder do campo de busca
       expect(find.text('Buscar por nome ou CPF...'), findsOneWidget);
-      // Valida o contador total da aba Todos
       expect(find.text('Todos (3)'), findsOneWidget);
-      // Valida o contador da aba Pacientes
       expect(find.text('Pacientes (2)'), findsOneWidget);
-      // Valida o contador da aba Motoristas
       expect(find.text('Motoristas (1)'), findsOneWidget);
     });
 
-    // Testa a exibição completa de todos os registros na aba padrão Todos
-    testWidgets('Exibe todos os registros na aba Todos', (tester) async {
-      // Configura dimensões de viewport
-      tester.view.physicalSize = const Size(800, 1200);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
+    testWidgets('Exibe todos os registros na aba Todos', (
+      WidgetTester tester,
+    ) async {
+      configurarViewportLongo(tester);
 
-      // Renderiza a tela
+      // Ação: Monta a tela na aba padrão ('Todos')
       await tester.pumpWidget(criarTelaTeste());
 
-      // Valida presença de Carlos Drummond
+      // Verificação: Todos os pacientes e motoristas são renderizados
       expect(find.text('Carlos Drummond'), findsOneWidget);
-      // Valida presença de Clarice Lispector
       expect(find.text('Clarice Lispector'), findsOneWidget);
-      // Valida presença de Machado de Assis
       expect(find.text('Machado de Assis'), findsOneWidget);
     });
+  });
 
-    // Testa a filtragem exclusiva de pacientes ao tocar na aba Pacientes
+  group('2. Filtros por Papel (Abas)', () {
     testWidgets('Filtra apenas pacientes ao selecionar a aba Pacientes', (
-      tester,
+      WidgetTester tester,
     ) async {
-      // Monta a tela
       await tester.pumpWidget(criarTelaTeste());
 
-      // Clica na aba Pacientes
-      // Toca no chip de Pacientes
+      // Ação: Clica na aba Pacientes
       await tester.tap(find.text('Pacientes (2)'));
       await tester.pumpAndSettle();
 
-      // Valida que apenas os pacientes estão visíveis
+      // Verificação: Apenas pacientes visíveis, motorista filtrado
       expect(find.text('Carlos Drummond'), findsOneWidget);
       expect(find.text('Clarice Lispector'), findsOneWidget);
-      // Valida que o motorista Machado de Assis foi ocultado
       expect(find.text('Machado de Assis'), findsNothing);
     });
 
-    // Testa a filtragem exclusiva de motoristas ao tocar na aba Motoristas
     testWidgets('Filtra apenas motoristas ao selecionar a aba Motoristas', (
-      tester,
+      WidgetTester tester,
     ) async {
-      // Monta a tela
       await tester.pumpWidget(criarTelaTeste());
 
-      // Clica na aba Motoristas
-      // Toca no chip de Motoristas
+      // Ação: Clica na aba Motoristas
       await tester.tap(find.text('Motoristas (1)'));
       await tester.pumpAndSettle();
 
-      // Valida que o motorista Machado de Assis é exibido
+      // Verificação: Apenas motorista visível, pacientes ocultados
       expect(find.text('Machado de Assis'), findsOneWidget);
-      // Valida que os pacientes não são exibidos
       expect(find.text('Carlos Drummond'), findsNothing);
       expect(find.text('Clarice Lispector'), findsNothing);
     });
 
-    // Testa a filtragem exclusiva de administradores ao tocar na aba Administradores
     testWidgets(
       'Filtra apenas administradores ao selecionar a aba Administradores',
-      (tester) async {
-        // Administrador de teste adicional
+      (WidgetTester tester) async {
+        // Arranjo: Mock pontual de administrador
         final mockAdmins = [
           AdminModel(
             id: 'adm_teste',
@@ -214,116 +194,134 @@ void main() {
           ),
         ];
 
-        // Monta a tela incluindo administradores
-        await tester.pumpWidget(
-          MaterialApp(
-            home: ListaPessoas(
-              mockPacientes: mockPacientes,
-              mockMotoristas: mockMotoristas,
-              mockAdmins: mockAdmins,
-            ),
-          ),
-        );
+        await tester.pumpWidget(criarTelaTeste(mockAdmins: mockAdmins));
 
-        // Valida aba Administradores
+        // Ação: Clica na aba Administradores
         expect(find.text('Administradores (1)'), findsOneWidget);
-        // Toca no chip de administradores
         await tester.tap(find.text('Administradores (1)'));
         await tester.pumpAndSettle();
 
-        // Valida exibição de Guimarães Rosa
+        // Verificação: Exibe apenas o administrador
         expect(find.text('Guimarães Rosa'), findsOneWidget);
-        // Valida ausência de outros perfis
         expect(find.text('Carlos Drummond'), findsNothing);
         expect(find.text('Machado de Assis'), findsNothing);
       },
     );
+  });
 
-    // Testa se a busca por nome filtra a lista corretamente
+  group('3. Busca Textual por Nome e CPF', () {
     testWidgets('Busca textual por nome filtra a lista corretamente', (
-      tester,
+      WidgetTester tester,
     ) async {
-      // Monta a tela
       await tester.pumpWidget(criarTelaTeste());
 
-      // Digita 'Clarice' no campo de busca
+      // Ação: Digita busca parcial por nome
       await tester.enterText(find.byType(TextField), 'Clarice');
       await tester.pumpAndSettle();
 
-      // Valida que apenas Clarice Lispector permaneceu
+      // Verificação: Apenas o registro correspondente permanece na lista
       expect(find.text('Clarice Lispector'), findsOneWidget);
       expect(find.text('Carlos Drummond'), findsNothing);
       expect(find.text('Machado de Assis'), findsNothing);
     });
 
-    // Testa se a busca por CPF filtra a lista corretamente
-    testWidgets('Busca por CPF filtra a lista corretamente', (tester) async {
-      // Monta a tela
+    testWidgets('Busca por CPF filtra a lista corretamente', (
+      WidgetTester tester,
+    ) async {
       await tester.pumpWidget(criarTelaTeste());
 
-      // Digita dígitos do CPF de Machado de Assis
+      // Ação: Digita trecho do CPF formatado
       await tester.enterText(find.byType(TextField), '999.888');
       await tester.pumpAndSettle();
 
-      // Valida que Machado de Assis foi localizado
+      // Verificação: Filtro localiza o motorista correspondente
       expect(find.text('Machado de Assis'), findsOneWidget);
-      // Valida que os demais foram filtrados
       expect(find.text('Carlos Drummond'), findsNothing);
     });
 
-    // Testa a exibição do estado vazio quando nenhum registro combina com o texto
     testWidgets('Exibe estado vazio quando busca não encontra resultados', (
-      tester,
+      WidgetTester tester,
     ) async {
-      // Monta a tela
       await tester.pumpWidget(criarTelaTeste());
 
-      // Digita termo inexistente
+      // Ação: Digita termo sem correspondência
       await tester.enterText(find.byType(TextField), 'Inexistente XYZ');
       await tester.pumpAndSettle();
 
-      // Valida mensagem amigável de estado vazio
+      // Verificação: Exibe mensagem amigável de estado vazio
       expect(find.text('Nenhuma pessoa encontrada'), findsOneWidget);
       expect(
         find.text('Tente buscar com outro nome ou número de CPF.'),
         findsOneWidget,
       );
     });
+  });
 
-    // Testa o fluxo completo de abertura do diálogo de inativação e remoção visual do registro
-    testWidgets('Diálogo de inativação (exclusão lógica) abre e confirma', (
-      tester,
+  group('4. Ações de Gestão (Cadastro, Edição e Exclusão Lógica)', () {
+    testWidgets('Diálogo de exclusão lógica abre e confirma', (
+      WidgetTester tester,
     ) async {
-      // Monta a tela
       await tester.pumpWidget(criarTelaTeste());
 
-      // Localiza o botão 'Inativar' do primeiro card
-      // Obtém o botão Inativar do primeiro item
-      final botaoInativar = find.text('Inativar').first;
-      await tester.tap(botaoInativar);
+      // Ação: Localiza o botão 'Excluir' do primeiro card e clica
+      final botaoExcluir = find.text('Excluir').first;
+      await tester.tap(botaoExcluir);
       await tester.pumpAndSettle();
 
-      // Confirma que abriu o alerta explicativo com a justificativa de governança
-      // Valida título do diálogo
-      expect(find.text('Inativar Registro'), findsOneWidget);
-      // Valida mensagem com justificativa de governança e auditoria
+      // Verificação: Diálogo explicativo de auditoria e governança é exibido
+      expect(find.text('Excluir Registro'), findsOneWidget);
       expect(
         find.textContaining('Conforme as regras de governança e auditoria'),
         findsOneWidget,
       );
 
-      // Clica em Confirmar Inativação
-      // Confirma a ação no diálogo modal
-      await tester.tap(find.text('Confirmar Inativação'));
+      // Ação: Confirma a exclusão lógica
+      await tester.tap(find.text('Confirmar Exclusão'));
       await tester.pumpAndSettle();
 
-      // Registro do Carlos foi inativado da lista
-      // Valida que o registro foi removido visualmente da tela
+      // Verificação: O registro é imediatamente removido da lista exibida
       expect(find.text('Carlos Drummond'), findsNothing);
       expect(find.text('Clarice Lispector'), findsOneWidget);
-    // Fechamento do testWidgets
     });
-  // Fechamento do grupo
+
+    testWidgets(
+      'Botão flutuante Novo abre diálogo de cadastro FormularioPessoa',
+      (WidgetTester tester) async {
+        await tester.pumpWidget(criarTelaTeste());
+
+        // Ação: Clica no FloatingActionButton 'Novo'
+        final botaoNovo = find.widgetWithText(FloatingActionButton, 'Novo');
+        expect(botaoNovo, findsOneWidget);
+
+        await tester.tap(botaoNovo);
+        await tester.pumpAndSettle();
+
+        // Verificação: Abre o modal de cadastro com título e botão correspondentes
+        expect(find.text('Nova Pessoa'), findsOneWidget);
+        expect(find.text('Cadastrar'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'Botão Editar no card abre formulário de edição com dados pré-carregados',
+      (WidgetTester tester) async {
+        await tester.pumpWidget(criarTelaTeste());
+
+        // Ação: Clica no botão 'Editar' do primeiro card
+        final botaoEditar = find.text('Editar').first;
+        expect(botaoEditar, findsOneWidget);
+
+        await tester.tap(botaoEditar);
+        await tester.pumpAndSettle();
+
+        // Verificação: Modal abre em modo de edição com o nome preenchido
+        expect(find.text('Editar Pessoa'), findsOneWidget);
+        expect(find.text('Salvar Alterações'), findsOneWidget);
+        expect(
+          find.widgetWithText(TextFormField, 'Carlos Drummond'),
+          findsOneWidget,
+        );
+      },
+    );
   });
-// Fechamento da função main
 }

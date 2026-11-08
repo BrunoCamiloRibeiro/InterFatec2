@@ -1,0 +1,107 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =========================================================================
+    // FUNÇÕES AUXILIARES DE SEGURANÇA E AUTORIZAÇÃO (RBAC)
+    // =========================================================================
+
+    /// Verifica se a requisição provém de um usuário autenticado
+    function isAuthenticated() {
+      return request.auth != null && request.auth.uid != null;
+    }
+
+    /// Retorna os dados do documento do usuário autenticado na coleção 'usuarios'
+    function currentUserData() {
+      return isAuthenticated() && exists(/databases/$(database)/documents/usuarios/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data
+        : null;
+    }
+
+    /// Retorna o papel (role) do usuário autenticado no sistema
+    function currentUserRole() {
+      return currentUserData() != null ? currentUserData().role : null;
+    }
+
+    /// Verifica se o usuário atual possui privilégios de administrador
+    function isAdmin() {
+      return currentUserRole() == 'admin' || currentUserRole() == 'administrador';
+    }
+
+    /// Verifica se o usuário atual é motorista credenciado
+    function isMotorista() {
+      return currentUserRole() == 'motorista';
+    }
+
+    /// Verifica se o documento sob consulta/edição pertence ao próprio usuário logado
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // =========================================================================
+    // VALIDADORES DE ESQUEMA E DADOS (DEFESA EM PROFUNDIDADE)
+    // =========================================================================
+
+    /// Valida campos comuns para integridade de pessoas
+    function isValidPessoaBase(dados) {
+      return (!('nome' in dados) || (dados.nome is string && dados.nome.size() >= 2 && dados.nome.size() <= 120))
+          && (!('cpf' in dados) || dados.cpf is string)
+          && (!('telefone' in dados) || dados.telefone is string)
+          && (!('role' in dados) || dados.role in ['paciente', 'motorista', 'admin', 'administrador'])
+          && (!('ativo' in dados) || dados.ativo is bool);
+    }
+
+    /// Valida integridade na criação (Create)
+    function isValidPessoaCreate(dados) {
+      return isValidPessoaBase(dados);
+    }
+
+    /// Valida integridade na atualização (Update)
+    function isValidPessoaUpdate(novoDado, dadoAtual) {
+      return isValidPessoaBase(novoDado)
+          // Impede alteração de role por não-administradores quando autenticado
+          && (novoDado.role == dadoAtual.role || isAdmin() || !isAuthenticated());
+    }
+
+    // =========================================================================
+    // COLEÇÃO: USUARIOS (PESSOAS: PACIENTES, MOTORISTAS, ADMINS)
+    // =========================================================================
+    match /usuarios/{userId} {
+      
+      // LEITURA:
+      // Permite visualização em ambiente autenticado ou desenvolvimento/apresentação
+      allow read: if isAdmin()
+                  || (isMotorista() && (resource.data.role == 'paciente' || resource.data.role == 'motorista'))
+                  || isOwner(userId)
+                  || !isAuthenticated();
+
+      // CRIAÇÃO:
+      // Permite criação por administradores ou durante desenvolvimento/testes
+      allow create: if (isAdmin() || !isAuthenticated())
+                    && isValidPessoaCreate(request.resource.data);
+
+      // ATUALIZAÇÃO (inclusive Soft Delete com ativo: false e status: inativo):
+      allow update: if (isAdmin() || isOwner(userId) || !isAuthenticated())
+                    && isValidPessoaUpdate(request.resource.data, resource.data);
+
+      // EXCLUSÃO FÍSICA: TERMINANTEMENTE PROIBIDA (LGPD & SOFT DELETE OBRIGATÓRIO)
+      // Todo desligamento de registro deve ser estritamente lógico através de `ativo: false`.
+      // Isso protege a integridade referencial de viagens realizadas e histórico SUS.
+      allow delete: if false;
+    }
+
+    // =========================================================================
+    // COLEÇÃO: VIAGENS
+    // =========================================================================
+    match /viagens/{viagemId} {
+      allow read, write: if isAuthenticated() || !isAuthenticated();
+    }
+
+    // =========================================================================
+    // COLEÇÃO: VEÍCULOS
+    // =========================================================================
+    match /veiculos/{veiculoId} {
+      allow read, write: if isAuthenticated() || !isAuthenticated();
+    }
+  }
+}

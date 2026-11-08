@@ -51,8 +51,13 @@ Painel de controle voltado à equipe de regulação e agendamento da Secretaria 
   - Criação de novos horários com validação estrita contra conflitos de agenda, sobreposição de motoristas e choque de veículos;
   - Ordenação sequencial dos pontos de embarque de passageiros e acompanhantes;
   - Duplicação em lote da grade de viagens de outro dia para otimização de rotina.
-* **CRUD Completo de Pessoas:**
-  - Cadastro, visualização detalhada, filtragem por categoria e edição de registros de **Motoristas** (CNH, contato, veículo vinculado), **Administradores** e **Pacientes / Acompanhantes** (endereço residencial, telefone, hospital habitual de atendimento e necessidades especiais).
+* **CRUD Completo de Pessoas (Issue #34):**
+  - **Listagem Unificada:** Painel polimórfico (`ListaPessoas`) que centraliza Pacientes, Motoristas e Administradores com badges visuais temáticos e ordenados.
+  - **Busca em Tempo Real:** Filtragem instantânea por Nome ou CPF insensível a maiúsculas/minúsculas.
+  - **Abas de Filtros com Contadores:** Seleção rápida entre `Todos`, `Pacientes`, `Motoristas` e `Administradores`, com cálculo consolidado em passada única fora do ciclo de renderização.
+  - **Cadastro e Edição Completa:** Modais dedicados para criação e atualização de registros com validações estritas de CPF, contato e papéis.
+  - **Exclusão Lógica e Governança:** Diálogo de confirmação para inativação de registros (`ativo: false`), respeitando as diretrizes da LGPD e preservando a rastreabilidade histórica.
+  - **Sincronização com Cloud Firestore:** Atualização automática em tempo real através da coleção `usuarios`, com fallback offline e blindagem contra anomalias de tipos.
 * **Emissão de Relatórios em Lote:**
   - Exportação e download em lote de documentos PDF oficiais das viagens do dia, formatados conforme as exigências da prestação de contas do SUS.
 
