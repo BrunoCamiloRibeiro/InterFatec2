@@ -54,6 +54,10 @@ import 'components/formulario_inicio_viagem.dart';
 import 'firebase_options.dart';
 // Importa a tela de gestão de pessoas
 import 'lista_pessoas.dart';
+// Importa a tela oficial do paciente (Issue 18 e 19)
+import 'paciente.dart';
+// Importa a tela oficial do motorista
+import 'motorista.dart';
 // Importa a guarda de rotas por perfil de acesso
 import 'routes/route_guard.dart';
 // Importa o AuthGate reativo de autenticação
@@ -98,17 +102,32 @@ class MyApp extends StatelessWidget {
       // Comentário original do autor mantido byte a byte:
       // Rota inicial controlada pelo AuthGate reativo
       // Rota inicial raiz apontando para o AuthGate
-      initialRoute: '/',
+      initialRoute: '/paciente',
       // Comentário original do autor mantido byte a byte:
       // Guarda de rotas com validação de perfil (RBAC) para rotas protegidas
       // Manipulador dinâmico de rotas para autorização por papel
-      onGenerateRoute: RouteGuard.onGenerateRoute,
+      onGenerateRoute: (settings) {
+        if (settings.name == '/motorista') {
+          return MaterialPageRoute(
+            settings: settings,
+            builder: (_) => const Motorista(),
+          );
+        }
+        return RouteGuard.onGenerateRoute(settings);
+      },
       // Tabela de rotas estáticas nomeadas da aplicação
       routes: {
         // Comentário original do autor mantido byte a byte:
         // Gate principal com máquina de estados de autenticação
         // Rota raiz direcionada ao AuthGate
-        '/': (context) => const AuthGate(),
+        // Rota inicial apontada diretamente para a tela do paciente
+        '/': (context) => const Paciente(pacienteId: 'paciente_novo_issue19'),
+        // Gate principal com maquina de estados de autenticacao
+        '/auth-gate': (context) => const AuthGate(),
+        // Rota direta para a tela do paciente
+        '/paciente': (context) => const Paciente(pacienteId: 'paciente_novo_issue19'),
+        // Rota direta para a tela do motorista
+        '/motorista': (context) => const Motorista(),
         // Comentário original do autor mantido byte a byte:
         // Rota mantida para acesso direto ao formulário inicial
         // Rota direta para abertura de viagem
