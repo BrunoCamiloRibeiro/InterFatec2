@@ -144,7 +144,7 @@ class _FormularioNovoVeiculoState extends State<FormularioNovoVeiculo> {
   }
 
   bool _placaJaExiste(String placaLimpa) {
-    final placas = widget.placasExistentes ?? const ['ABC1D23', 'DEF4G56'];
+    final placas = widget.placasExistentes ?? const <String>[];
     final placaOriginal = widget.veiculoParaEditar?['placa']
         ?.toString()
         .replaceAll(RegExp(r'[^A-Za-z0-9]'), '')

@@ -1,4 +1,4 @@
-// ============================================================================
+﻿// ============================================================================
 // CABEÇALHO DE DOCUMENTAÇÃO DE ARQUIVO
 // ============================================================================
 // Arquivo: lib/screens/gerenciador_viagens_screen.dart
@@ -32,6 +32,8 @@
 // ============================================================================
 
 import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
 import '../lista_pessoas.dart';
@@ -49,12 +51,18 @@ class GerenciadorViagensScreen extends StatefulWidget {
   final ViagemService? viagemServiceOverride;
   final AuthService? authServiceOverride;
   final DateTime? dataInicial;
+  final List<VeiculoModel>? veiculosIniciais;
+  final List<MotoristaModel>? motoristasIniciais;
+  final List<PacienteModel>? pacientesIniciais;
 
   const GerenciadorViagensScreen({
     super.key,
     this.viagemServiceOverride,
     this.authServiceOverride,
     this.dataInicial,
+    this.veiculosIniciais,
+    this.motoristasIniciais,
+    this.pacientesIniciais,
   });
 
   @override
@@ -68,6 +76,16 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
   late DateTime _dataSelecionada;
   StreamSubscription<List<ViagemModel>>? _subViagens;
   StreamSubscription<List<VeiculoModel>>? _subVeiculos;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _subFirestoreVeiculos;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _subFirestoreUsuarios;
+
+  bool _isFirebaseDisponivel() {
+    try {
+      return Firebase.apps.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
 
   List<ViagemModel> _todasViagensDoDia = [];
   List<VeiculoModel> _veiculosCadastrados = [];
@@ -110,123 +128,74 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
   void dispose() {
     _subViagens?.cancel();
     _subVeiculos?.cancel();
+    _subFirestoreVeiculos?.cancel();
+    _subFirestoreUsuarios?.cancel();
     super.dispose();
   }
 
   void _inicializarDadosBasePessoasEVeiculos() {
-    // Carrega veículos conhecidos
-    _veiculosCadastrados = [
-      const VeiculoModel(
-        id: 'v1',
-        placa: 'ABC-1D23',
-        modelo: 'Chevrolet Spin 1.8 LTZ',
-        capacidade: 7,
-        quilometragemAtual: 85420,
-        emUso: false,
-      ),
-      const VeiculoModel(
-        id: 'v2',
-        placa: 'BRA-2E45',
-        modelo: 'Renault Master Minibus',
-        capacidade: 16,
-        quilometragemAtual: 142100,
-        emUso: false,
-      ),
-      const VeiculoModel(
-        id: 'v3',
-        placa: 'POL-3F67',
-        modelo: 'Fiat Ducato Ambulância',
-        capacidade: 4,
-        quilometragemAtual: 63250,
-        emUso: false,
-      ),
-      const VeiculoModel(
-        id: 'v4',
-        placa: 'XYZ-9K88',
-        modelo: 'Fiat Cronos Drive 1.3',
-        capacidade: 5,
-        quilometragemAtual: 41900,
-        emUso: true,
-      ),
-    ];
+    _veiculosCadastrados = List<VeiculoModel>.from(
+      widget.veiculosIniciais ?? _viagemService.todosVeiculos,
+    );
+    _motoristasCadastrados = List<MotoristaModel>.from(
+      widget.motoristasIniciais ?? const <MotoristaModel>[],
+    );
+    _pacientesCadastrados = List<PacienteModel>.from(
+      widget.pacientesIniciais ?? const <PacienteModel>[],
+    );
 
-    // Carrega motoristas conhecidos da prefeitura
-    _motoristasCadastrados = [
-      MotoristaModel(
-        id: 'mot_antonio',
-        nome: 'Antônio Carlos da Silva',
-        cpf: '111.222.333-44',
-        email: 'antonio@saude.sp.gov.br',
-        telefone: '(17) 99711-2233',
-        cnh: '12345678900',
-        veiculoModelo: 'Chevrolet Spin',
-        veiculoPlaca: 'ABC-1D23',
-      ),
-      MotoristaModel(
-        id: 'mot_marcos',
-        nome: 'Marcos Roberto Pereira',
-        cpf: '222.333.444-55',
-        email: 'marcos@saude.sp.gov.br',
-        telefone: '(17) 99822-3344',
-        cnh: '23456789011',
-        veiculoModelo: 'Renault Master',
-        veiculoPlaca: 'BRA-2E45',
-      ),
-      MotoristaModel(
-        id: 'mot_joao',
-        nome: 'João de Deus Pereira',
-        cpf: '333.444.555-66',
-        email: 'joao@saude.sp.gov.br',
-        telefone: '(17) 99633-4455',
-        cnh: '34567890122',
-        veiculoModelo: 'Fiat Ducato',
-        veiculoPlaca: 'POL-3F67',
-      ),
-    ];
+    if (_isFirebaseDisponivel()) {
+      try {
+        _subFirestoreVeiculos = FirebaseFirestore.instance
+            .collection('veiculos')
+            .snapshots()
+            .listen((snapshot) {
+          if (!mounted) return;
+          setState(() {
+            _veiculosCadastrados = snapshot.docs
+                .map((d) => VeiculoModel.fromMap(d.data(), docId: d.id))
+                .toList();
+          });
+        });
 
-    // Carrega pacientes cadastrados para busca/vinculação
-    _pacientesCadastrados = [
-      PacienteModel(
-        id: 'p1',
-        nome: 'Maria das Graças Aparecida',
-        cpf: '123.456.789-00',
-        telefone: '(17) 99123-4567',
-        enderecoPaciente: 'Rua das Flores, 125 - Centro',
-        localConsulta: 'Hospital de Amor de Barretos',
-        localSaida: 'UBS Central Poloni',
-      ),
-      PacienteModel(
-        id: 'p2',
-        nome: 'Carlos Eduardo Martins',
-        cpf: '987.654.321-00',
-        telefone: '(17) 99456-7890',
-        enderecoPaciente: 'Rua dos Ipês, 310',
-        localConsulta: 'Hospital de Base São José do Rio Preto',
-        localSaida: 'UBS Central Poloni',
-        nomeAcompanhante: 'Ana Paula Martins',
-        telAcompanhante: '(17) 99456-0000',
-      ),
-      PacienteModel(
-        id: 'p3',
-        nome: 'Aparecida de Souza Lima',
-        cpf: '456.789.012-33',
-        telefone: '(17) 99789-1122',
-        enderecoPaciente: 'Av. Brasil, 840',
-        localConsulta: 'AME São José do Rio Preto',
-        localSaida: 'UBS Central Poloni',
-      ),
-      PacienteModel(
-        id: 'p4',
-        nome: 'Sebastião Vicente Ferreira (Sem CPF)',
-        cpf: '', // Teste da regra de pacientes sem documento
-        telefone: '(17) 99111-2222',
-        enderecoPaciente: 'Sítio Primavera, Zona Rural',
-        localConsulta: 'Hospital Lucy Montoro',
-        localSaida: 'UBS Central Poloni',
-      ),
-    ];
+        _subFirestoreUsuarios = FirebaseFirestore.instance
+            .collection('usuarios')
+            .snapshots()
+            .listen((snapshot) {
+          if (!mounted) return;
+          final motoristas = <MotoristaModel>[];
+          final pacientes = <PacienteModel>[];
+          for (final doc in snapshot.docs) {
+            final dados = doc.data();
+            final ativo = dados['ativo'];
+            final status = dados['status']?.toString().toLowerCase().trim();
+            final situacao = dados['situacao']?.toString().toLowerCase().trim();
+            if (ativo == false ||
+                ativo == 'false' ||
+                status == 'inativo' ||
+                situacao == 'inativo' ||
+                status == 'excluido' ||
+                situacao == 'excluido') {
+              continue;
+            }
+            final role = (dados['role'] ?? dados['tipo'] ?? '')
+                .toString()
+                .toLowerCase()
+                .trim();
+            if (role == 'motorista') {
+              motoristas.add(MotoristaModel.fromMap(dados, docId: doc.id));
+            } else if (role == 'paciente' || role.isEmpty) {
+              pacientes.add(PacienteModel.fromMap(dados, docId: doc.id));
+            }
+          }
+          setState(() {
+            _motoristasCadastrados = motoristas;
+            _pacientesCadastrados = pacientes;
+          });
+        });
+      } catch (_) {}
+    }
   }
-
   void _atualizarViagensDoDia() {
     setState(() {
       _todasViagensDoDia = _viagemService.obterViagensPorData(_dataSelecionada);
@@ -1141,10 +1110,12 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
       text: viagemExistente?.observacoes ?? '',
     );
 
-    String veiculoId = viagemExistente?.veiculoId ??
-        (_veiculosCadastrados.isNotEmpty ? _veiculosCadastrados.first.id : 'v1');
-    String motoristaId = viagemExistente?.motoristaId ??
-        (_motoristasCadastrados.isNotEmpty ? _motoristasCadastrados.first.id : 'mot_antonio');
+    String? veiculoId = _veiculosCadastrados.any((v) => v.id == viagemExistente?.veiculoId)
+        ? viagemExistente!.veiculoId
+        : (_veiculosCadastrados.isNotEmpty ? _veiculosCadastrados.first.id : null);
+    String? motoristaId = _motoristasCadastrados.any((m) => m.id == viagemExistente?.motoristaId)
+        ? viagemExistente!.motoristaId
+        : (_motoristasCadastrados.isNotEmpty ? _motoristasCadastrados.first.id : null);
 
     List<PassageiroViagemModel> passageirosTemp = viagemExistente != null
         ? List<PassageiroViagemModel>.from(viagemExistente.passageiros)
@@ -1157,18 +1128,18 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (context, setModalState) {
-            final veiculoSelecionado = _veiculosCadastrados.firstWhere(
-              (v) => v.id == veiculoId,
-              orElse: () => _veiculosCadastrados.first,
-            );
-            final motoristaSelecionado = _motoristasCadastrados.firstWhere(
-              (m) => m.id == motoristaId,
-              orElse: () => _motoristasCadastrados.first,
-            );
+            final veiculoSelecionado = _veiculosCadastrados
+                    .where((v) => v.id == veiculoId)
+                    .firstOrNull ??
+                (_veiculosCadastrados.isNotEmpty ? _veiculosCadastrados.first : null);
+            final motoristaSelecionado = _motoristasCadastrados
+                    .where((m) => m.id == motoristaId)
+                    .firstOrNull ??
+                (_motoristasCadastrados.isNotEmpty ? _motoristasCadastrados.first : null);
 
             final totalAssentos =
                 passageirosTemp.fold<int>(0, (acc, p) => acc + p.assentosOcupados);
-            final capacidade = veiculoSelecionado.capacidade;
+            final capacidade = veiculoSelecionado?.capacidade ?? 0;
 
             return AlertDialog(
               title: Text(eEdicao ? 'Editar Horário' : 'Novo Horário de Saída'),
@@ -1384,15 +1355,21 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                     foregroundColor: Colors.white,
                   ),
                   onPressed: () async {
+                    if (veiculoSelecionado == null || motoristaSelecionado == null || veiculoId == null || motoristaId == null) {
+                      setModalState(() {
+                        mensagemErroValidacao = 'Selecione um veículo e um motorista cadastrados.';
+                      });
+                      return;
+                    }
                     if (eEdicao) {
                       final viagemAtualizada = viagemExistente.copyWith(
                         nomeHorario: controllerHorario.text.trim(),
                         cidadeDestino: controllerDestino.text.trim(),
                         observacoes: controllerObs.text.trim(),
-                        veiculoId: veiculoId,
+                        veiculoId: veiculoSelecionado.id,
                         veiculoPlaca: veiculoSelecionado.placa,
                         veiculoModelo: veiculoSelecionado.modelo,
-                        motoristaId: motoristaId,
+                        motoristaId: motoristaSelecionado.id,
                         motoristaNome: motoristaSelecionado.nome,
                         passageiros: passageirosTemp,
                       );
@@ -1413,11 +1390,11 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                       final res = await _viagemService.criarHorarioViagem(
                         data: _dataSelecionada,
                         horario: controllerHorario.text.trim(),
-                        veiculoId: veiculoId,
+                        veiculoId: veiculoSelecionado.id,
                         veiculoPlaca: veiculoSelecionado.placa,
                         veiculoModelo: veiculoSelecionado.modelo,
                         capacidadeVeiculo: veiculoSelecionado.capacidade,
-                        motoristaId: motoristaId,
+                        motoristaId: motoristaSelecionado.id,
                         motoristaNome: motoristaSelecionado.nome,
                         cidadeDestino: controllerDestino.text.trim(),
                         passageiros: passageirosTemp,
@@ -1472,10 +1449,10 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (context, setSubModalState) {
-            final pacienteObj = _pacientesCadastrados.firstWhere(
-              (p) => p.id == pacienteIdSelecionado,
-              orElse: () => _pacientesCadastrados.first,
-            );
+            final pacienteObj = _pacientesCadastrados
+                    .where((p) => p.id == pacienteIdSelecionado)
+                    .firstOrNull ??
+                (_pacientesCadastrados.isNotEmpty ? _pacientesCadastrados.first : null);
 
             return AlertDialog(
               title: const Text('Adicionar Passageiro ao Horário'),
@@ -1585,6 +1562,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                     foregroundColor: Colors.white,
                   ),
                   onPressed: () {
+                    if (pacienteObj == null) return;
                     final passageiro = PassageiroViagemModel(
                       pacienteId: pacienteObj.id,
                       pacienteNome: pacienteObj.nome,

@@ -392,6 +392,9 @@ class ViagemService {
   // --------------------------------------------------------------------------
   Stream<List<VeiculoModel>> get veiculosStream => _veiculosController.stream;
 
+
+  /// Retorna lista imutável com todos os veículos em memória
+  List<VeiculoModel> get todosVeiculos => List.unmodifiable(_veiculosMemoria);
   // Linha em branco separadora entre getters e métodos privados
   // ----------------------------------------------------------------------------
   // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
@@ -403,109 +406,27 @@ class ViagemService {
   void _inicializarDadosBase() {
     // Interrompe se a lista já tiver sido inicializada anteriormente
     if (_inicializado) return;
-    // Popula a memória com 4 veículos representativos da prefeitura
-    _veiculosMemoria.addAll([
-      // Veículo 1: Chevrolet Spin de 7 lugares
-      const VeiculoModel(
-        id: 'v1',
-        placa: 'ABC-1D23',
-        modelo: 'Chevrolet Spin 1.8 LTZ',
-        capacidade: 7,
-        quilometragemAtual: 85420,
-        emUso: false,
-      ),
-      // Veículo 2: Van Renault Master de 16 lugares
-      const VeiculoModel(
-        id: 'v2',
-        placa: 'BRA-2E45',
-        modelo: 'Renault Master Minibus',
-        capacidade: 16,
-        quilometragemAtual: 142100,
-        emUso: false,
-      ),
-      // Veículo 3: Fiat Ducato Ambulância de 4 lugares
-      const VeiculoModel(
-        id: 'v3',
-        placa: 'POL-3F67',
-        modelo: 'Fiat Ducato Ambulância',
-        capacidade: 4,
-        quilometragemAtual: 63250,
-        emUso: false,
-      ),
-      // Veículo 4: Fiat Cronos de 5 lugares ocupado por mot_antonio
-      const VeiculoModel(
-        id: 'v4',
-        placa: 'XYZ-9K88',
-        modelo: 'Fiat Cronos Drive 1.3',
-        capacidade: 5,
-        quilometragemAtual: 41900,
-        emUso: true,
-        motoristaAtualId: 'mot_antonio',
-      ),
-    // Fecha a lista literal de veículos
-    ]);
-
-    // Inicializa viagens e horários padrão em memória (FASE 1: Horários do Dia)
-    final hoje = DateTime.now();
-    final dataHoje = DateTime(hoje.year, hoje.month, hoje.day);
-    if (_todasViagensMemoria.isEmpty) {
-      _todasViagensMemoria.addAll([
-        ViagemModel(
-          id: 'horario_${dataHoje.year}_${dataHoje.month}_${dataHoje.day}_1',
-          motoristaId: 'mot_antonio',
-          motoristaNome: 'Antônio Carlos da Silva',
-          veiculoId: 'v1',
-          veiculoPlaca: 'ABC-1D23',
-          veiculoModelo: 'Chevrolet Spin 1.8 LTZ',
-          kmInicial: 85420,
-          cidadeDestino: 'BARRETOS',
-          nomeHorario: '06:00 - Barretos (Hospital de Amor)',
-          dataViagem: dataHoje,
-          dataHoraInicio: DateTime(dataHoje.year, dataHoje.month, dataHoje.day, 6, 0),
-          status: 'planejada',
-          passageiros: const [
-            PassageiroViagemModel(
-              pacienteId: 'p1',
-              pacienteNome: 'Maria das Graças Aparecida',
-              localOrigem: 'Rua das Flores, 125 - Centro',
-              localDestino: 'Hospital de Amor de Barretos',
-              horarioAtendimento: '09:00',
-              ordemEmbarque: 1,
-              observacoes: 'Exame de rotina oncologia',
-            ),
-            PassageiroViagemModel(
-              pacienteId: 'p2',
-              pacienteNome: 'Carlos Eduardo Martins',
-              acompanhanteNome: 'Ana Paula Martins',
-              localOrigem: 'Rua dos Ipês, 310',
-              localDestino: 'Ambulatório Geral de Barretos',
-              horarioAtendimento: '10:30',
-              ordemEmbarque: 2,
-              observacoes: 'Cadeirante com acompanhante',
-            ),
-          ],
-          passageirosIds: const ['p1', 'p2'],
-        ),
-        ViagemModel(
-          id: 'horario_${dataHoje.year}_${dataHoje.month}_${dataHoje.day}_2',
-          motoristaId: 'mot_marcos',
-          motoristaNome: 'Marcos Roberto Pereira',
-          veiculoId: 'v2',
-          veiculoPlaca: 'BRA-2E45',
-          veiculoModelo: 'Renault Master Minibus',
-          kmInicial: 142100,
-          cidadeDestino: 'SÃO JOSÉ DO RIO PRETO',
-          nomeHorario: '08:30 - São José do Rio Preto (HB / Lucy Montoro)',
-          dataViagem: dataHoje,
-          dataHoraInicio: DateTime(dataHoje.year, dataHoje.month, dataHoje.day, 8, 30),
-          status: 'planejada',
-          passageiros: const [],
-          passageirosIds: const [],
-        ),
-      ]);
-      _todasViagensController.add(List.unmodifiable(_todasViagensMemoria));
+    // Quando o Firebase está disponível, sincroniza frota e viagens diretamente do Firestore
+    if (_isFirebaseDisponivel()) {
+      try {
+        FirebaseFirestore.instance.collection('veiculos').snapshots().listen((snap) {
+          _veiculosMemoria
+            ..clear()
+            ..addAll(snap.docs.map((d) => VeiculoModel.fromMap(d.data(), docId: d.id)));
+          if (!_veiculosController.isClosed) {
+            _veiculosController.add(ValidacaoViagem.filtrarVeiculosDisponiveis(_veiculosMemoria));
+          }
+        });
+        FirebaseFirestore.instance.collection('viagens').snapshots().listen((snap) {
+          _todasViagensMemoria
+            ..clear()
+            ..addAll(snap.docs.map((d) => ViagemModel.fromMap(d.data(), docId: d.id)));
+          if (!_todasViagensController.isClosed) {
+            _todasViagensController.add(List.unmodifiable(_todasViagensMemoria));
+          }
+        });
+      } catch (_) {}
     }
-
     // Marca a flag como verdadeira para prevenir reinicialização
     _inicializado = true;
   // Fecha o método _inicializarDadosBase

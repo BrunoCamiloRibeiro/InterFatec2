@@ -60,7 +60,7 @@ class LocalizacaoMotoristaService {
 
   /// Stream reativa de todos os motoristas ativos em trânsito no momento
   Stream<List<LocalizacaoMotoristaModel>> obterMotoristasAtivosStream() {
-    _garantirDadosIniciais();
+    _motoristasAtivosController.add(motoristasAtivos);
     return _motoristasAtivosController.stream;
   }
 
@@ -72,52 +72,6 @@ class LocalizacaoMotoristaService {
     }
   }
 
-  void _garantirDadosIniciais() {
-    if (_motoristasAtivosMemoria.isNotEmpty) {
-      _motoristasAtivosController.add(motoristasAtivos);
-      return;
-    }
-
-    // Se estiver em ambiente sem Firebase ou inicializando com mock realista
-    _popularMockRegional();
-  }
-
-  void _popularMockRegional() {
-    final agora = DateTime.now();
-    final motoristasMock = [
-      LocalizacaoMotoristaModel(
-        id: 'loc_mot_1',
-        motoristaId: 'm1',
-        motoristaNome: 'Antônio Carlos da Silva',
-        veiculoPlaca: 'ABC-1D23',
-        veiculoModelo: 'Chevrolet Spin 1.8 LTZ',
-        cidadeDestino: 'BARRETOS (Hospital de Amor)',
-        latitude: -20.6120,
-        longitude: -48.9100,
-        ultimaAtualizacao: agora,
-        emViagem: true,
-        viagemId: 'v1',
-      ),
-      LocalizacaoMotoristaModel(
-        id: 'loc_mot_2',
-        motoristaId: 'm2',
-        motoristaNome: 'Carlos Eduardo Oliveira',
-        veiculoPlaca: 'BRA-2E45',
-        veiculoModelo: 'Renault Master Minibus',
-        cidadeDestino: 'SÃO JOSÉ DO RIO PRETO (HB)',
-        latitude: -20.7800,
-        longitude: -49.5200,
-        ultimaAtualizacao: agora.subtract(const Duration(minutes: 2)),
-        emViagem: true,
-        viagemId: 'v2',
-      ),
-    ];
-
-    for (final m in motoristasMock) {
-      _motoristasAtivosMemoria[m.motoristaId] = m;
-    }
-    _motoristasAtivosController.add(motoristasAtivos);
-  }
 
   void _inicializarOuvintes() {
     if (_inicializado) return;

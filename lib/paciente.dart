@@ -361,37 +361,8 @@ class _PacienteState extends State<Paciente> {
           });
     }
 
-    // Mock de fallback com dados realistas caso execute offline ou sem Firebase
-    // Retorna uma Stream com um único valor contendo um paciente fictício para testes
-    return Stream.value(
-      // Instanciação de PacienteModel com atributos realistas
-      PacienteModel(
-        // Identificador fixo fictício
-        id: 'p1',
-        // Nome completo do paciente
-        nome: 'Maria das Graças Aparecida',
-        // CPF formatado fictício
-        cpf: '123.456.789-00',
-        // Telefone de contato
-        telefone: '(17) 99123-4567',
-        // Endereço de residência
-        enderecoPaciente: 'Rua das Flores, 125 - Centro',
-        // Hospital de destino
-        localConsulta: 'Hospital de Base de São José do Rio Preto',
-        // Ponto de saída do paciente
-        localSaida: 'Residência',
-        // Horário agendado da consulta
-        horarioConsulta: '14:30',
-        // Nome do acompanhante cadastrado
-        nomeAcompanhante: 'José Aparecido',
-        // Status inicial: 0 (Aguardando)
-        status: 0,
-        // Data e hora de criação do registro
-        criadoEm: DateTime.now(),
-      // Fechamento do PacienteModel
-      ),
-    // Fechamento do Stream.value
-    );
+    // Retorna stream nula caso o Firebase não esteja inicializado e não haja streamOverride
+    return Stream.value(null);
   // Fechamento do método _carregarPaciente
   }
 

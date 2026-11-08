@@ -18,7 +18,7 @@ class CardVeiculo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final String placa = (veiculo['placa'] ?? 'XXX-1234').toString();
+    final String placa = (veiculo['placa'] ?? '-').toString();
     final String marca = (veiculo['marca'] ?? 'Marca').toString();
     final String modelo = (veiculo['modelo'] ?? 'Modelo').toString();
     final dynamic ano = veiculo['ano'] ?? 'YYYY';
@@ -30,7 +30,7 @@ class CardVeiculo extends StatelessWidget {
     final dynamic assentos = veiculo['qtdAssentos'] ?? 0;
     final String ultimoMotorista =
         (veiculo['ultimoMotoristaId'] ??
-                'Nome do Último Motorista')
+                'Não informado')
             .toString();
     final bool possuiAC = veiculo['possuiAC'] == true;
     final bool possuiPreferencial = veiculo['possuiPreferencial'] == true;

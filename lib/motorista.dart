@@ -390,51 +390,8 @@ class _MotoristaState extends State<Motorista> {
     // Fechamento da condicional de verificação do Firebase
     }
 
-    // Retorna lista com pacientes de teste quando o Firebase não está disponível
-    // Fluxo de fallback com dados mockados para exibição offline ou modo de demonstração
-    return Stream.value([
-      // Primeiro paciente fictício de exemplo
-      PacienteModel(
-        // Identificador fixo para teste
-        id: 'p1',
-        // Nome fictício do paciente
-        nome: 'Maria das Graças Aparecida',
-        // CPF formatado fictício
-        cpf: '123.456.789-00',
-        // Endereço de embarque do paciente
-        enderecoPaciente: 'Rua das Flores, 125 - Centro',
-        // Número de telefone para contato
-        telefone: '(17) 99123-4567',
-        // Destino da consulta de saúde
-        localConsulta: 'Hospital de Base',
-        // Local de saída / embarque de origem
-        localSaida: 'Laboratório de Análises Clínicas',
-        // Status inicial: 0 (Aguardando)
-        status: 0,
-      // Fechamento da instância de PacienteModel p1
-      ),
-      // Segundo paciente fictício de exemplo
-      PacienteModel(
-        // Identificador fixo para teste
-        id: 'p2',
-        // Nome fictício do segundo paciente
-        nome: 'Carlos Eduardo Martins',
-        // CPF formatado fictício
-        cpf: '987.654.321-00',
-        // Endereço de embarque do segundo paciente
-        enderecoPaciente: 'Rua dos Ipês, 310',
-        // Número de telefone para contato
-        telefone: '(17) 99456-7890',
-        // Destino da consulta médica
-        localConsulta: 'AME São José do Rio Preto',
-        // Local de saída ou laboratório
-        localSaida: 'Centro de Diagnóstico por Imagem',
-        // Status inicial: 1 (Embarcou)
-        status: 1,
-      // Fechamento da instância de PacienteModel p2
-      ),
-    // Fechamento da lista fornecida na Stream.value
-    ]);
+    // Retorna lista vazia quando o Firebase não está inicializado e não há streamOverride
+    return Stream.value(const <PacienteModel>[]);
   // Fechamento do método carregarPacientes
   }
 
@@ -494,60 +451,9 @@ class _MotoristaState extends State<Motorista> {
       );
     }
 
-    // Define lista inicial de pacientes quando o Firebase não está disponível
-    // Fornece dados iniciais caso o Firebase esteja offline para evitar tela em branco
-    final pacientesIniciais = _isFirebaseDisponivel()
-        // Se o Firebase estiver ativo, não define dados iniciais síncronos
-        ? null
-        // Se estiver offline, define uma lista estática de fallback
-        : [
-            // Paciente 1 mockado para renderização imediata offline
-            PacienteModel(
-              // ID fictício
-              id: 'p1',
-              // Nome completo
-              nome: 'Maria das Graças Aparecida',
-              // CPF
-              cpf: '123.456.789-00',
-              // Endereço
-              enderecoPaciente: 'Rua das Flores, 125 - Centro',
-              // Telefone
-              telefone: '(17) 99123-4567',
-              // Destino hospitalar
-              localConsulta: 'Hospital de Base',
-              // Ponto de partida
-              localSaida: 'Laboratório de Análises Clínicas',
-              // Status
-              status: 0,
-            // Fechamento do paciente mock 1
-            ),
-            // Paciente 2 mockado para renderização imediata offline
-            PacienteModel(
-              // ID fictício
-              id: 'p2',
-              // Nome completo
-              nome: 'Carlos Eduardo Martins',
-              // CPF
-              cpf: '987.654.321-00',
-              // Endereço
-              enderecoPaciente: 'Rua dos Ipês, 310',
-              // Telefone
-              telefone: '(17) 99456-7890',
-              // Destino de saúde
-              localConsulta: 'AME São José do Rio Preto',
-              // Ponto de partida
-              localSaida: 'Centro de Diagnóstico por Imagem',
-              // Status
-              status: 1,
-            // Fechamento do paciente mock 2
-            ),
-          // Fechamento da lista de pacientes iniciais
-          ];
-
     // Constrói a UI de forma reativa a partir da Stream de pacientes
     return StreamBuilder<List<PacienteModel>>(
-      // Dados iniciais fornecidos para exibição imediata antes do primeiro evento
-      initialData: pacientesIniciais,
+      initialData: _isFirebaseDisponivel() ? null : const <PacienteModel>[],
       // Stream de onde os dados de pacientes são continuamente consumidos
       stream: carregarPacientes(),
       // Construtor reativo chamado a cada nova emissão da Stream

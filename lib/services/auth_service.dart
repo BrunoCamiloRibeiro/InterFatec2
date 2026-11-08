@@ -634,53 +634,11 @@ class FirebaseAuthService implements AuthService {
     final cleanCpf = cpf.replaceAll(RegExp(r'\D'), '');
 
     // 2. Proteção contra ataques de força bruta (Rate Limiting de 5 tentativas)
-    if (customAuth != null && estaBloqueadoOperacional(cleanCpf)) {
+    if (estaBloqueadoOperacional(cleanCpf)) {
       throw const AuthException(
         'Muitas tentativas incorretas. Acesso bloqueado temporariamente por 15 minutos.',
         code: 'rate-limit-exceeded',
       );
-    }
-
-    // 3. Catálogo de homologação para testes locais / offline e avaliação
-    // APENAS ATIVADO QUANDO NÃO HOUVER MOCK INJETADO (customAuth == null)
-    if (customAuth == null) {
-      final credenciaisHomologacao = <String, (UserRole, String)>{
-        '67890123455': (UserRole.admin, 'Dra. Fernanda Vasconcelos'),
-        '00011122233': (UserRole.admin, 'Administrador Geral'),
-        '98765432100': (UserRole.admin, 'Gestor Admin'),
-        '45678901233': (UserRole.motorista, 'João de Deus Pereira'),
-        '11122233344': (UserRole.motorista, 'Antônio Carlos Ribeiro'),
-        '12345678901': (UserRole.motorista, 'João Motorista'),
-      };
-
-      final senhaLimpa = senha.trim().toLowerCase();
-      final ehAdminPorSenha = senhaLimpa.contains('admin');
-      final ehMotoristaPorSenha = senhaLimpa.contains('motor');
-
-      UserRole? roleDemo;
-      if (credenciaisHomologacao.containsKey(cleanCpf)) {
-        final (rolePadrao, _) = credenciaisHomologacao[cleanCpf]!;
-        if (ehAdminPorSenha) {
-          roleDemo = UserRole.admin;
-        } else if (ehMotoristaPorSenha) {
-          roleDemo = UserRole.motorista;
-        } else {
-          roleDemo = rolePadrao;
-        }
-      } else if (ehAdminPorSenha) {
-        roleDemo = UserRole.admin;
-      } else if (ehMotoristaPorSenha) {
-        roleDemo = UserRole.motorista;
-      }
-
-      // Se as credenciais forem válidas na homologação, autentica imediatamente
-      if (roleDemo != null) {
-        resetarTentativasOperacional(cleanCpf);
-        final uidDemo = 'uid_homologacao_${roleDemo.name}_$cleanCpf';
-        _usuarioOperacionalLogadoId = uidDemo;
-        _roleCache[uidDemo] = roleDemo;
-        return roleDemo;
-      }
     }
 
     // Resolve o e-mail correspondente ao CPF
@@ -809,11 +767,7 @@ class FirebaseAuthService implements AuthService {
     }
 
     // 3. Validação do formato do documento: se for CPF (11 dígitos), valida dígitos verificadores
-    // Permite CPFs válidos e credenciais de homologação/teste (123.456.789-00)
-    if (docLimpo.length == 11 &&
-        docLimpo != '12345678900' &&
-        customAuth != null &&
-        !CodigoAcessoService.validarCpf(docLimpo)) {
+    if (docLimpo.length == 11 && !CodigoAcessoService.validarCpf(docLimpo)) {
       CodigoAcessoService.registrarTentativaFalha(
         docLimpo,
         ip: ipOrigem,
@@ -866,53 +820,6 @@ class FirebaseAuthService implements AuthService {
       }
     } catch (_) {}
 
-    // Garante a presença da viagem de homologação para testes e homologações
-    final viagemDemo = ViagemModel(
-      id: 'viagem_demo_homologacao',
-      motoristaId: 'dRlCd8lD7TD0Dj0OhKlm',
-      motoristaNome: 'Carlos Roberto',
-      veiculoId: 'v1',
-      veiculoPlaca: 'BRA-2E19',
-      veiculoModelo: 'Chevrolet Spin 1.8 LTZ',
-      kmInicial: 50000,
-      cidadeDestino: 'São José do Rio Preto',
-      dataHoraInicio: DateTime(2026, 11, 7, 16),
-      status: 'ativa',
-      passageirosIds: const [
-        'nhkT53OclKj552MmiMN5',
-        'paciente_demo_homologacao',
-        'p1',
-        'p2',
-      ],
-      codigosAcesso: const {
-        'nhkT53OclKj552MmiMN5': '7890',
-        'paciente_demo_homologacao': '4821',
-        'p1': '12345',
-        'p2': '8420',
-      },
-      codigosHash: {
-        'nhkT53OclKj552MmiMN5': CodigoAcessoService.calcularHash(
-          '7890',
-          'viagem_demo_homologacao',
-        ),
-        'paciente_demo_homologacao': CodigoAcessoService.calcularHash(
-          '4821',
-          'viagem_demo_homologacao',
-        ),
-        'p1': CodigoAcessoService.calcularHash(
-          '12345',
-          'viagem_demo_homologacao',
-        ),
-        'p2': CodigoAcessoService.calcularHash(
-          '8420',
-          'viagem_demo_homologacao',
-        ),
-      },
-    );
-    if (!viagensAtivas.any((v) => v.id == 'viagem_demo_homologacao')) {
-      viagensAtivas.add(viagemDemo);
-    }
-
     // Carrega a base de pacientes ativos para conferência de documentos e acompanhantes
     List<PacienteModel> pacientesDisponiveis = [];
     if (pacientesParaTestes != null && pacientesParaTestes.isNotEmpty) {
@@ -927,55 +834,6 @@ class FirebaseAuthService implements AuthService {
             .map((d) => PacienteModel.fromMap(d.data(), docId: d.id))
             .toList();
       } catch (_) {}
-    }
-
-    // Garante presença dos pacientes de homologação com CPFs oficiais válidos
-    final pacientesHomologacao = [
-      PacienteModel(
-        id: 'nhkT53OclKj552MmiMN5',
-        nome: 'Sebastião Ferreira de Souza',
-        cpf: '571.098.984-31',
-        enderecoPaciente: 'Rua Sete de Setembro, 340 - Centro',
-        telefone: '(14) 99765-4321',
-        localConsulta: 'Hospital das Clínicas de Botucatu - Unesp',
-        localSaida: 'Residência',
-        status: 1,
-      ),
-      PacienteModel(
-        id: 'paciente_demo_homologacao',
-        nome: 'Maria Silva Poloni',
-        cpf: '529.982.247-25',
-        enderecoPaciente: 'Rua das Flores, 125 - Centro',
-        telefone: '(17) 99123-4567',
-        localConsulta: 'Hospital de Base',
-        localSaida: 'UBS Poloni',
-        status: 1,
-      ),
-      PacienteModel(
-        id: 'p1',
-        nome: 'Maria das Graças Aparecida',
-        cpf: '123.456.789-00',
-        enderecoPaciente: 'Rua das Flores, 125 - Centro',
-        telefone: '(17) 99123-4567',
-        localConsulta: 'Hospital de Base',
-        localSaida: 'Laboratório de Análises Clínicas',
-        status: 1,
-      ),
-      PacienteModel(
-        id: 'p2',
-        nome: 'Carlos Eduardo Martins',
-        cpf: '301.894.649-92',
-        enderecoPaciente: 'Rua dos Ipês, 310',
-        telefone: '(17) 99456-7890',
-        localConsulta: 'AME São José do Rio Preto',
-        localSaida: 'Centro de Diagnóstico por Imagem',
-        status: 1,
-      ),
-    ];
-    for (final pHomo in pacientesHomologacao) {
-      if (!pacientesDisponiveis.any((p) => p.id == pHomo.id)) {
-        pacientesDisponiveis.add(pHomo);
-      }
     }
 
     // 6. Itera sobre as viagens ativas procurando a correspondência
@@ -1009,14 +867,7 @@ class FirebaseAuthService implements AuthService {
         if (matchDocumento) {
           // Verifica se o hash calculado coincide com o hash gravado na viagem
           final hashRegistrado = viagem.codigosHash[paciente.id];
-          final hashValido = (hashRegistrado != null &&
-                  hashRegistrado == hashTentativa) ||
-              (viagem.id == 'viagem_demo_homologacao' &&
-                  viagem.passageirosIds.contains(paciente.id) &&
-                  (codigoSanitizado == '12345' ||
-                      codigoSanitizado == '4821' ||
-                      codigoSanitizado == '7890' ||
-                      codigoSanitizado == '8420'));
+          final hashValido = hashRegistrado != null && hashRegistrado == hashTentativa;
           if (hashValido) {
             // Sucesso! Registra na proteção contra força bruta
             CodigoAcessoService.registrarSucesso(
@@ -1030,30 +881,6 @@ class FirebaseAuthService implements AuthService {
             return UserRole.paciente;
           }
         }
-      }
-    }
-
-    // Fallback defensivo de homologação apenas quando não for injeção de testes controlados
-    if (pacientesParaTestes == null &&
-        customAuth == null &&
-        (codigoSanitizado == '7890' ||
-            codigoSanitizado == '4821' ||
-            codigoSanitizado == '1234' ||
-            codigoSanitizado == '12345' ||
-            codigoSanitizado == '8420')) {
-      final pMatch = pacientesDisponiveis.where(
-        (p) =>
-            CodigoAcessoService.normalizarDigitos(p.cpf) == docLimpo ||
-            (docLimpo == '12345678900' && p.id == 'p1') ||
-            (docLimpo == '57109898431' && p.id == 'nhkT53OclKj552MmiMN5') ||
-            (docLimpo == '52998224725' &&
-                (p.id == 'paciente_demo_homologacao' || p.id == 'p1')),
-      ).firstOrNull;
-      if (pMatch != null) {
-        CodigoAcessoService.registrarSucesso(docLimpo, ip: ipOrigem);
-        _pacienteLogadoId = pMatch.id;
-        _roleCache[pMatch.id] = UserRole.paciente;
-        return UserRole.paciente;
       }
     }
 

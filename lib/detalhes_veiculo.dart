@@ -56,9 +56,9 @@ class _DetalhesVeiculoState extends State<DetalhesVeiculo> {
   @override
   Widget build(BuildContext context) {
     final veiculo = widget.veiculo;
-    final String placa = (veiculo['placa'] ?? 'XXX-1234').toString();
-    final String criadoEm = (veiculo['criadoEm'] ?? '01/10/2026').toString();
-    final String atualizadoEm = (veiculo['atualizadoEm'] ?? '20/10/2026').toString();
+    final String placa = (veiculo['placa'] ?? '-').toString();
+    final String criadoEm = (veiculo['criadoEm'] ?? '-').toString();
+    final String atualizadoEm = (veiculo['atualizadoEm'] ?? '-').toString();
 
     return Scaffold(
       backgroundColor: Colors.white,
