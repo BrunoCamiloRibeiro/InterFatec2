@@ -407,8 +407,15 @@ class _PacienteState extends State<Paciente> {
         }
 
         // Avaliação de timer ativo e regras de habilitação dos botões de ação:
-        final bool temTimerAtivo = paciente.janelaReversao != null &&
-            paciente.janelaReversao!.estaAtiva();
+        // A janela de reversão só é válida se estiver ativa no tempo E consistente com o estado atual:
+        // - 'cancelamento_carona' só tem sentido se o paciente estiver em status 5 (Cancelado).
+        // - 'pronto_retorno' só tem sentido se o paciente estiver em status 2 (Desembarcou) com prontoRetorno == true.
+        final bool isJanelaValida = paciente.janelaReversao != null &&
+            paciente.janelaReversao!.estaAtiva() &&
+            ((paciente.janelaReversao!.acao == 'cancelamento_carona' && paciente.status == 5) ||
+             (paciente.janelaReversao!.acao == 'pronto_retorno' && paciente.status == 2 && paciente.prontoRetorno));
+
+        final bool temTimerAtivo = isJanelaValida;
 
         // Quando o paciente se encontra dentro da van (Status 1: Embarcou para Ida ou
         // Status 3: Reembarcou para Volta), ambos os botões devem ficar cinzas e
@@ -538,7 +545,7 @@ class _PacienteState extends State<Paciente> {
                   const SizedBox(height: 16),
 
                   // BANNER DE REVERSÃO / UNDO (Issue #19)
-                  if (paciente.janelaReversao != null && paciente.janelaReversao!.estaAtiva())
+                  if (temTimerAtivo && paciente.janelaReversao != null)
                     BannerReversaoPaciente(
                       janela: paciente.janelaReversao!,
                       carregando: _processandoAcao,
