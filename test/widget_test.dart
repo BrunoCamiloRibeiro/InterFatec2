@@ -37,14 +37,6 @@
 import 'package:flutter/material.dart';
 // Importa o framework oficial de testes do Flutter
 import 'package:flutter_test/flutter_test.dart';
-// Importa a tela administrativa legada
-import 'package:trans_saude/Outdated/administrativo.dart';
-// Importa a tela de login legada
-import 'package:trans_saude/Outdated/login.dart';
-// Importa a tela de paciente legada
-import 'package:trans_saude/Outdated/paciente.dart';
-// Importa a tela de registro legada
-import 'package:trans_saude/Outdated/register.dart';
 import 'package:trans_saude/components/formulario_novo_veiculo.dart';
 // Importa o componente e tela de início de viagem
 import 'package:trans_saude/components/formulario_inicio_viagem.dart';
@@ -57,47 +49,6 @@ import 'package:trans_saude/motorista.dart';
 
 // Ponto de entrada da suíte principal de testes de widgets
 void main() {
-  // Teste de carregamento da tela de paciente legada
-  testWidgets('Tela do paciente carrega corretamente', (
-    WidgetTester tester,
-  ) async {
-    await tester.pumpWidget(MaterialApp(home: Paciente()));
-    expect(find.text('Painel Paciente'), findsOneWidget);
-  });
-
-  // Teste de carregamento da tela de login legada
-  testWidgets('Tela de login carrega com dropdown e botões', (
-    WidgetTester tester,
-  ) async {
-    await tester.pumpWidget(MaterialApp(home: Login()));
-    expect(find.text('Acesse sua Conta'), findsOneWidget);
-    expect(find.text('Entrar'), findsOneWidget);
-    expect(find.text('Registrar-se'), findsOneWidget);
-    expect(find.text('Admin'), findsOneWidget);
-  });
-
-  // Teste de carregamento da tela de registro legada
-  testWidgets('Tela de registro carrega com campos e botão entrar', (
-    WidgetTester tester,
-  ) async {
-    await tester.pumpWidget(MaterialApp(home: Register()));
-    expect(find.text('Criar Nova Conta'), findsOneWidget);
-    expect(find.text('CONFIRMAR SENHA'), findsOneWidget);
-    expect(find.text('Cadastrar'), findsOneWidget);
-    expect(find.text('Entrar'), findsOneWidget);
-  });
-
-  // Teste de carregamento da tela administrativa legada
-  testWidgets('Tela administrativo carrega cards e botões', (
-    WidgetTester tester,
-  ) async {
-    await tester.pumpWidget(MaterialApp(home: Administrativo()));
-    expect(find.text('Gestão de Transporte'), findsOneWidget);
-    expect(find.text('Painel do Administrador'), findsOneWidget);
-    expect(find.text('Novo Cadastro de Paciente'), findsOneWidget);
-    expect(find.text('Salvar Paciente'), findsOneWidget);
-  });
-
   // Teste de carregamento da tela inicial de início de viagem
   testWidgets(
     'Tela de início de viagem (inicial) carrega com campos e botão iniciar',

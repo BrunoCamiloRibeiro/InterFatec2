@@ -44,10 +44,6 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
 // Linha em branco separadora entre pacotes do framework e imports do projeto
-// Importa a tela administrativa legada arquivada
-import 'Outdated/administrativo.dart';
-// Importa a tela de registro legada arquivada
-import 'Outdated/register.dart';
 // Importa a tela de gestão de veículos
 import 'lista_veiculos.dart';
 // Importa o formulário de início de viagem e tela hospedeira
@@ -66,8 +62,6 @@ import 'routes/route_guard.dart';
 import 'screens/auth_gate.dart';
 // Importa a tela oficial de login
 import 'screens/login_screen.dart';
-// Importa as telas de demonstração e preview visual
-import 'screens/preview_showcase.dart';
 
 // Linha em branco separadora entre imports e função main
 // Função principal assíncrona de inicialização do TransSaúde
@@ -158,57 +152,11 @@ class MyApp extends StatelessWidget {
         // Rota direta para abertura de viagem
         '/inicio-viagem': (context) => const TelaInicioViagem(),
         // Comentário original do autor mantido byte a byte:
-        // Rota com o formulário no estado padrão
-        // Rota de teste com formulário padrão
-        '/formulario-normal': (context) => const Scaffold(
-          backgroundColor: Color(0xFFF7F8FA),
-          body: FormularioInicioViagem(),
-        ),
-        // Comentário original do autor mantido byte a byte:
-        // Rota com o formulário no estado de lista de veículos vazia
-        // Rota de teste simulando ausência de veículos disponíveis
-        '/formulario-vazio': (context) => const Scaffold(
-          backgroundColor: Color(0xFFF7F8FA),
-          body: FormularioInicioViagem(forcarVeiculos: []),
-        ),
-        // Comentário original do autor mantido byte a byte:
-        // Rota com o formulário exibindo mensagem de erro
-        // Rota de teste simulando erro de servidor
-        '/formulario-erro': (context) => const Scaffold(
-          backgroundColor: Color(0xFFF7F8FA),
-          body: FormularioInicioViagem(
-            forcarErro: 'Falha de comunicação com o servidor da frota.',
-          ),
-        ),
-        // Comentário original do autor mantido byte a byte:
-        // Rota com o formulário exibindo mensagem de veículo em uso
-        // Rota de teste simulando conflito de veículo ocupado
-        '/formulario-veiculo-em-uso': (context) => const Scaffold(
-          backgroundColor: Color(0xFFF7F8FA),
-          body: FormularioInicioViagem(
-            forcarErro:
-                'O veículo ABC-1D23 já está em uso por outro motorista.',
-          ),
-        ),
-        // Comentário original do autor mantido byte a byte:
         // Telas de autenticação e registro
         // Rota para a tela de login oficial (Motorista / Gestão)
         '/login': (context) => LoginScreen(),
         // Rota para a tela de login oficial (Paciente / Acompanhante)
         '/login-paciente': (context) => LoginScreen(modoInicial: 1),
-        // Rota para o Gerenciador de Viagens (Horários do Dia)
-        '/gerenciador-viagens': (context) => const GerenciadorViagensPreview(),
-        // Rota para a tela do Motorista em viagem ativa
-        '/motorista-viagem': (context) => const MotoristaViagemPreview(),
-        // Rota para o diálogo de confirmação de finalização
-        '/motorista-confirmacao': (context) => const MotoristaConfirmacaoPreview(),
-        // Rota para o formulário de encerramento da viagem
-        '/motorista-encerramento': (context) => const MotoristaEncerramentoPreview(),
-        // Rota para o painel de acompanhamento do paciente
-        '/paciente-painel': (context) => const PacientePainelPreview(),
-        // Rota para a tela de registro legada
-        '/register': (context) => Register(),
-        // Comentário original do autor mantido byte a byte:
         // Gestão de Pessoas (Issue #34)
         // Rota para o painel de listagem de pessoas
         '/lista-pessoas': (context) => const ListaPessoas(),
@@ -216,10 +164,6 @@ class MyApp extends StatelessWidget {
         // Rota para a tela de gestão de veículos (Issue #33)
         '/veiculos': (context) => const Veiculos(),
         '/lista-veiculos': (context) => const Veiculos(),
-        // Comentário original do autor mantido byte a byte:
-        // Telas antigas arquivadas em Outdated (mantidas com prefixo para consulta dos devs)
-        // Rota para a tela administrativa antiga arquivada
-        '/outdated-administrativo': (context) => Administrativo(),
       },
     );
   }
