@@ -106,6 +106,7 @@ class PessoaItem {
   final String? veiculoModelo;
   final String? veiculoPlaca;
   final String? email;
+  final String? senha;
   final String? nomeAcompanhante;
   final String? cpfAcompanhante;
   final String? telAcompanhante;
@@ -127,6 +128,7 @@ class PessoaItem {
     this.veiculoModelo,
     this.veiculoPlaca,
     this.email,
+    this.senha,
     this.nomeAcompanhante,
     this.cpfAcompanhante,
     this.telAcompanhante,
@@ -184,6 +186,7 @@ class PessoaItem {
     veiculoModelo: m.veiculoModelo,
     veiculoPlaca: m.veiculoPlaca,
     email: m.email,
+    senha: m.senha,
   );
 
   /// Construtor fábrica para converter uma instância de [AdminModel] em [PessoaItem]
@@ -199,6 +202,7 @@ class PessoaItem {
     detalheExtra: a.email.isNotEmpty ? 'E-mail: ${a.email}' : null,
     ativo: a.ativo,
     email: a.email,
+    senha: a.senha,
   );
 }
 

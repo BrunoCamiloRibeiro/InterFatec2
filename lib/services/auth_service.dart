@@ -351,8 +351,9 @@ class FirebaseAuthService implements AuthService {
   // --------------------------------------------------------------------------
   @override
   // Converte cada evento de User emitindo apenas sua String de identificador único (uid)
-  Stream<String?> get authStateChanges =>
-      auth.authStateChanges().map((user) => user?.uid);
+  Stream<String?> get authStateChanges => auth
+      .authStateChanges()
+      .map((user) => user?.uid ?? _usuarioOperacionalLogadoId ?? _pacienteLogadoId);
 
   // Linha em branco separadora entre membros da interface
 
@@ -594,7 +595,7 @@ class FirebaseAuthService implements AuthService {
     if (roleStr == 'motorista') {
       role = UserRole.motorista;
     // Compara se o papel é de administrador
-    } else if (roleStr == 'admin') {
+    } else if (roleStr == 'admin' || roleStr == 'administrador') {
       role = UserRole.admin;
     // Compara se o papel é de paciente
     } else if (roleStr == 'paciente') {
@@ -619,6 +620,154 @@ class FirebaseAuthService implements AuthService {
   // Linha em branco separadora entre resolveUserRole e login
 
   // --------------------------------------------------------------------------
+  // MÉTODO PRIVADO: _autenticarViaFirestoreUsuarios
+  // - O que faz: Valida CPF e senha diretamente contra a coleção 'usuarios'
+  //   do Cloud Firestore quando o registro possui o campo 'senha' (padrão
+  //   utilizado no banco 'trans-saude'), sincronizando qualquer alteração
+  //   manual ou via sistema imediatamente.
+  // --------------------------------------------------------------------------
+  Future<({UserRole? role, bool encontrouUsuarioSemSenha})>
+      _autenticarViaFirestoreUsuarios(
+    String cleanCpf,
+    String rawCpf,
+    String senha,
+  ) async {
+    final formattedCpf = cleanCpf.length == 11
+        ? '${cleanCpf.substring(0, 3)}.${cleanCpf.substring(3, 6)}.${cleanCpf.substring(6, 9)}-${cleanCpf.substring(9, 11)}'
+        : null;
+
+    final candidatosCpf = <String>{
+      if (cleanCpf.isNotEmpty) cleanCpf,
+      ?formattedCpf,
+      if (rawCpf.isNotEmpty) rawCpf,
+    }.toList();
+
+    final docsPorId = <String, Map<String, dynamic>>{};
+
+    if (candidatosCpf.isNotEmpty) {
+      final snap = await firestore
+          .collection('usuarios')
+          .where('cpf', whereIn: candidatosCpf)
+          .get();
+      for (final doc in snap.docs) {
+        docsPorId[doc.id] = doc.data();
+      }
+    }
+
+    final precisaVarreduraCompleta = docsPorId.isEmpty ||
+        !docsPorId.values.any((d) =>
+            (d['senha'] != null && d['senha'].toString().trim().isNotEmpty) ||
+            (d['password'] != null &&
+                d['password'].toString().trim().isNotEmpty)) ||
+        !docsPorId.values.any(
+            (d) => d['role'] != null && d['role'].toString().trim().isNotEmpty);
+
+    if (precisaVarreduraCompleta && cleanCpf.isNotEmpty) {
+      final todosSnap = await firestore.collection('usuarios').get();
+      for (final doc in todosSnap.docs) {
+        final dados = doc.data();
+        final docCpfLimpo =
+            (dados['cpf'] ?? '').toString().replaceAll(RegExp(r'\D'), '');
+        if (docCpfLimpo == cleanCpf) {
+          docsPorId[doc.id] = dados;
+        }
+      }
+    }
+
+    String? uidComRole;
+    String? roleEncontrada;
+    String? uidQualquer;
+    final senhasCadastradas = <String>[];
+    int docsAtivosCount = 0;
+
+    for (final entry in docsPorId.entries) {
+      final dados = entry.value;
+      final ativo = dados['ativo'];
+      final statusStr = dados['status']?.toString().toLowerCase().trim();
+      final situacaoStr = dados['situacao']?.toString().toLowerCase().trim();
+      final isInativo = ativo == false ||
+          ativo == 'false' ||
+          statusStr == 'inativo' ||
+          statusStr == 'excluido' ||
+          situacaoStr == 'inativo' ||
+          situacaoStr == 'excluido';
+
+      if (isInativo) continue;
+
+      docsAtivosCount++;
+      uidQualquer ??= entry.key;
+
+      final r = dados['role']?.toString().trim().toLowerCase();
+      if (r != null && r.isNotEmpty) {
+        if (uidComRole == null ||
+            r == 'motorista' ||
+            r == 'admin' ||
+            r == 'administrador') {
+          uidComRole = entry.key;
+          roleEncontrada = r;
+        }
+      }
+
+      final s1 = dados['senha']?.toString();
+      if (s1 != null && s1.trim().isNotEmpty) {
+        senhasCadastradas.add(s1);
+      }
+      final s2 = dados['password']?.toString();
+      if (s2 != null && s2.trim().isNotEmpty) {
+        senhasCadastradas.add(s2);
+      }
+    }
+
+    if (docsAtivosCount == 0) {
+      return (role: null, encontrouUsuarioSemSenha: false);
+    }
+
+    if (roleEncontrada == 'paciente') {
+      registrarFalhaOperacional(cleanCpf);
+      throw const AuthException(
+        'Acesso restrito a motoristas e administradores.',
+        code: 'access-denied',
+      );
+    }
+
+    if (senhasCadastradas.isNotEmpty) {
+      final senhaConfere = senhasCadastradas.any(
+        (s) => s == senha || s.trim() == senha.trim(),
+      );
+
+      if (!senhaConfere) {
+        registrarFalhaOperacional(cleanCpf);
+        throw const AuthException(
+          'CPF ou senha incorretos.',
+          code: 'invalid-credential',
+        );
+      }
+
+      final uidFinal = uidComRole ?? uidQualquer!;
+      final roleStr = (roleEncontrada ?? 'motorista').toLowerCase().trim();
+      if (roleStr == 'motorista') {
+        resetarTentativasOperacional(cleanCpf);
+        _usuarioOperacionalLogadoId = uidFinal;
+        _roleCache[uidFinal] = UserRole.motorista;
+        return (role: UserRole.motorista, encontrouUsuarioSemSenha: false);
+      } else if (roleStr == 'admin' || roleStr == 'administrador') {
+        resetarTentativasOperacional(cleanCpf);
+        _usuarioOperacionalLogadoId = uidFinal;
+        _roleCache[uidFinal] = UserRole.admin;
+        return (role: UserRole.admin, encontrouUsuarioSemSenha: false);
+      } else {
+        registrarFalhaOperacional(cleanCpf);
+        throw const AuthException(
+          'Acesso restrito a motoristas e administradores.',
+          code: 'access-denied',
+        );
+      }
+    }
+
+    return (role: null, encontrouUsuarioSemSenha: true);
+  }
+
+  // --------------------------------------------------------------------------
   // SOBRESCRITA DO MÉTODO: login
   // - O que faz: Autentica o usuário por CPF e senha e verifica se ele possui papel permitido.
   // - Regra de negócio (RBAC): Apenas 'motorista' e 'admin' têm permissão de acesso a este módulo.
@@ -641,6 +790,25 @@ class FirebaseAuthService implements AuthService {
       );
     }
 
+    // 3. Autenticação prioritária via coleção 'usuarios' do Cloud Firestore (campo 'senha')
+    bool encontrouUsuarioSemSenhaNoFirestore = false;
+    if (customFirestore != null || customAuth == null) {
+      try {
+        final resultadoFirestore = await _autenticarViaFirestoreUsuarios(
+          cleanCpf,
+          cpf.trim(),
+          senha,
+        );
+        if (resultadoFirestore.role != null) {
+          return resultadoFirestore.role!;
+        }
+        encontrouUsuarioSemSenhaNoFirestore =
+            resultadoFirestore.encontrouUsuarioSemSenha;
+      } on AuthException {
+        rethrow;
+      } catch (_) {}
+    }
+
     // Resolve o e-mail correspondente ao CPF
     final email = await _resolveEmail(cleanCpf, cpf.trim());
 
@@ -657,6 +825,21 @@ class FirebaseAuthService implements AuthService {
     // Captura erros específicos de autenticação do FirebaseAuth
     } on FirebaseAuthException catch (e) {
       registrarFalhaOperacional(cleanCpf);
+      if (customAuth == null) {
+        if (encontrouUsuarioSemSenhaNoFirestore) {
+          throw const AuthException(
+            'Usuário sem senha cadastrada no banco. Defina o campo "senha" no cadastro do usuário.',
+            code: 'missing-password',
+          );
+        }
+        final mapped = mapFirebaseAuthException(e);
+        if (mapped == 'Ocorreu um erro ao realizar o login. Tente novamente.') {
+          throw const AuthException(
+            'CPF ou senha incorretos.',
+            code: 'invalid-credential',
+          );
+        }
+      }
       // Lança AuthException com mensagem traduzida via mapFirebaseAuthException
       throw AuthException(mapFirebaseAuthException(e), code: e.code);
     // Captura qualquer outro erro inesperado
@@ -664,6 +847,12 @@ class FirebaseAuthService implements AuthService {
       registrarFalhaOperacional(cleanCpf);
       // Se já for AuthException, propaga
       if (e is AuthException) rethrow;
+      if (customAuth == null && encontrouUsuarioSemSenhaNoFirestore) {
+        throw const AuthException(
+          'Usuário sem senha cadastrada no banco. Defina o campo "senha" no cadastro do usuário.',
+          code: 'missing-password',
+        );
+      }
       // Lança AuthException genérica
       throw const AuthException(
         'Ocorreu um erro ao realizar o login. Tente novamente.',
@@ -694,10 +883,12 @@ class FirebaseAuthService implements AuthService {
       // Se o usuário for motorista, retorna o papel permitindo prosseguimento
       if (role == UserRole.motorista) {
         resetarTentativasOperacional(cleanCpf);
+        _usuarioOperacionalLogadoId = user.uid;
         return UserRole.motorista;
       // Se o usuário for administrador, retorna o papel permitindo prosseguimento
       } else if (role == UserRole.admin) {
         resetarTentativasOperacional(cleanCpf);
+        _usuarioOperacionalLogadoId = user.uid;
         return UserRole.admin;
       // Se for paciente ou outro perfil não operacional, nega acesso à tela de motoristas/admins
       } else {

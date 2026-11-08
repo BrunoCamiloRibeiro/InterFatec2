@@ -299,27 +299,31 @@ class _MotoristaState extends State<Motorista> {
         .collection('usuarios')
         // Filtra os usuários com papel funcional de motorista
         .where('role', isEqualTo: 'motorista')
-        // Limita a consulta ao primeiro documento encontrado
-        .limit(1)
         // Obtém a stream contínua de fotos instantâneas (snapshots) da coleção
         .snapshots()
         // Registra o ouvinte para processar as emissões de snapshots
         .listen((snapshot) {
           // Verifica se existem documentos retornados e se o widget ainda está montado
           if (snapshot.docs.isNotEmpty && mounted) {
+            final uidLogado = FirebaseAuthService().currentUserId;
+            final docSelecionado = (uidLogado != null && uidLogado.isNotEmpty)
+                ? snapshot.docs
+                    .where((d) => d.id == uidLogado)
+                    .firstOrNull ?? snapshot.docs.first
+                : snapshot.docs.first;
             // Converte os dados brutos do documento em um modelo fortemente tipado MotoristaModel
             final motorista = MotoristaModel.fromMap(
-              // Mapa de atributos do primeiro documento retornado
-              snapshot.docs.first.data(),
+              // Mapa de atributos do documento selecionado
+              docSelecionado.data(),
               // Identificador do documento do Firestore
-              docId: snapshot.docs.first.id,
+              docId: docSelecionado.id,
             // Fechamento da chamada de instanciação MotoristaModel.fromMap
             );
             // Atualiza o estado da interface com a capacidade do veículo obtida
             setState(() {
               // Atribui a capacidade numérica de assentos do veículo
               _capacidadeVeiculo = motorista.capacidadeVeiculo;
-              _motoristaId = motorista.id.isNotEmpty ? motorista.id : snapshot.docs.first.id;
+              _motoristaId = motorista.id.isNotEmpty ? motorista.id : docSelecionado.id;
             // Fechamento da função de callback de setState
             });
           // Fechamento do bloco if
