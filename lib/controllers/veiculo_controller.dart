@@ -6,7 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import '../models/veiculo_model.dart';
 
-/// Controller baseado no padrão ChangeNotifier para gerenciar o ciclo de vida do CRUD de Veículos
+/// Controller baseado no padrão ChangeNotifier para gerenciar o ciclo de vida dos Veículos
 /// com sincronização em tempo real no Cloud Firestore (Coleção 'veiculos').
 class VeiculoController extends ChangeNotifier {
   // Singleton para fácil acesso e compartilhamento de estado na aplicação

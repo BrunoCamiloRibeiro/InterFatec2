@@ -61,7 +61,7 @@ class _MascaraTelefoneFormatter extends TextInputFormatter {
   }
 }
 
-/// Diálogo Modal de Formulário para Criação e Edição de Pessoas (Issue #34)
+/// Diálogo Modal de Formulário para Criação e Edição de Pessoas
 class FormularioPessoa extends StatefulWidget {
   /// Pessoa para edição (se nulo, opera em modo de criação)
   final PessoaItem? pessoaParaEditar;
@@ -90,6 +90,10 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
   // Campos específicos de Paciente
   late TextEditingController _enderecoController;
   late TextEditingController _consultaController;
+  bool _temAcompanhante = false;
+  late TextEditingController _nomeAcompController;
+  late TextEditingController _cpfAcompController;
+  late TextEditingController _telAcompController;
 
   // Campos específicos de Motorista
   late TextEditingController _cnhController;
@@ -115,6 +119,12 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
     // Inicializa campos contextuais com os valores já existentes (preservando CNH na edição)
     _enderecoController = TextEditingController(text: p?.endereco ?? '');
     _consultaController = TextEditingController(text: p?.localConsulta ?? '');
+    final temAcompInicial = p?.nomeAcompanhante != null && p!.nomeAcompanhante!.trim().isNotEmpty;
+    _temAcompanhante = temAcompInicial;
+    _nomeAcompController = TextEditingController(text: p?.nomeAcompanhante ?? '');
+    _cpfAcompController = TextEditingController(text: p?.cpfAcompanhante ?? '');
+    _telAcompController = TextEditingController(text: p?.telAcompanhante ?? '');
+
     _cnhController = TextEditingController(text: p?.cnh ?? '');
     _emailController = TextEditingController(text: p?.email ?? '');
 
@@ -138,6 +148,9 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
     _telefoneController.dispose();
     _enderecoController.dispose();
     _consultaController.dispose();
+    _nomeAcompController.dispose();
+    _cpfAcompController.dispose();
+    _telAcompController.dispose();
     _cnhController.dispose();
     _emailController.dispose();
     super.dispose();
@@ -181,6 +194,10 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
     final emailInput = _emailController.text.trim();
     final emailFinal = emailInput.isNotEmpty ? emailInput : (widget.pessoaParaEditar?.email ?? '');
 
+    final nomeAcompFinal = _temAcompanhante ? _nomeAcompController.text.trim() : '';
+    final cpfAcompFinal = _temAcompanhante ? _cpfAcompController.text.trim() : '';
+    final telAcompFinal = _temAcompanhante ? _telAcompController.text.trim() : '';
+
     // Constrói detalhe contextual para exibição no card
     String? detalheExtra;
     Color badgeCor;
@@ -189,7 +206,15 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
     if (role == 'paciente') {
       badgeCor = const Color(0xFF2563EB);
       badgeLabel = 'Paciente';
-      if (consultaFinal.isNotEmpty) detalheExtra = 'Consulta: $consultaFinal';
+      final temConsulta = consultaFinal.isNotEmpty;
+      final temAcomp = nomeAcompFinal.isNotEmpty;
+      if (temConsulta && temAcomp) {
+        detalheExtra = 'Consulta: $consultaFinal • Acomp: $nomeAcompFinal';
+      } else if (temConsulta) {
+        detalheExtra = 'Consulta: $consultaFinal';
+      } else if (temAcomp) {
+        detalheExtra = 'Acomp: $nomeAcompFinal';
+      }
     } else if (role == 'motorista') {
       badgeCor = const Color(0xFF0F172A);
       badgeLabel = 'Motorista';
@@ -223,6 +248,15 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
           if (role == 'paciente') {
             payload['localConsulta'] = consultaFinal;
             payload['enderecoPaciente'] = enderecoFinal;
+            if (nomeAcompFinal.isNotEmpty) {
+              payload['nomeAcompanhante'] = nomeAcompFinal;
+              payload['cpfAcompanhante'] = cpfAcompFinal.isNotEmpty ? cpfAcompFinal : null;
+              payload['telAcompanhante'] = telAcompFinal.isNotEmpty ? telAcompFinal : null;
+            } else {
+              payload['nomeAcompanhante'] = null;
+              payload['cpfAcompanhante'] = null;
+              payload['telAcompanhante'] = null;
+            }
           } else if (role == 'motorista') {
             payload['cnh'] = cnhFinal;
             if (modeloFinal.isNotEmpty) payload['veiculoModelo'] = modeloFinal;
@@ -253,6 +287,11 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
             payload['enderecoPaciente'] = enderecoFinal;
             payload['localSaida'] = 'Residência';
             payload['status'] = 0;
+            if (nomeAcompFinal.isNotEmpty) {
+              payload['nomeAcompanhante'] = nomeAcompFinal;
+              if (cpfAcompFinal.isNotEmpty) payload['cpfAcompanhante'] = cpfAcompFinal;
+              if (telAcompFinal.isNotEmpty) payload['telAcompanhante'] = telAcompFinal;
+            }
           } else if (role == 'motorista') {
             payload['cnh'] = cnhFinal;
             payload['capacidadeVeiculo'] = 4;
@@ -287,6 +326,9 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
         veiculoModelo: modeloFinal.isNotEmpty ? modeloFinal : null,
         veiculoPlaca: placaFinal.isNotEmpty ? placaFinal : null,
         email: emailFinal.isNotEmpty ? emailFinal : null,
+        nomeAcompanhante: nomeAcompFinal.isNotEmpty ? nomeAcompFinal : null,
+        cpfAcompanhante: cpfAcompFinal.isNotEmpty ? cpfAcompFinal : null,
+        telAcompanhante: telAcompFinal.isNotEmpty ? telAcompFinal : null,
       );
 
       widget.onSalvo?.call(pessoaResultante);
@@ -329,9 +371,9 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
           ),
         ],
       ),
-      content: SingleChildScrollView(
-        child: SizedBox(
-          width: 420,
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420),
+        child: SingleChildScrollView(
           child: Form(
             key: _formKey,
             child: Column(
@@ -513,6 +555,84 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
                       border: OutlineInputBorder(),
                     ),
                   ),
+                  const SizedBox(height: 12),
+                  CheckboxListTile(
+                    key: const Key('checkboxAcompanhante'),
+                    title: const Text('Possui Acompanhante', style: TextStyle(fontSize: 14)),
+                    subtitle: const Text('Reserva 1 assento adicional no veículo', style: TextStyle(fontSize: 11)),
+                    value: _temAcompanhante,
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    activeColor: const Color(0xFF0F172A),
+                    onChanged: (val) {
+                      setState(() {
+                        _temAcompanhante = val ?? false;
+                      });
+                    },
+                  ),
+                  if (_temAcompanhante) ...[
+                    const SizedBox(height: 6),
+                    TextFormField(
+                      key: const Key('campoNomeAcompanhante'),
+                      controller: _nomeAcompController,
+                      decoration: const InputDecoration(
+                        labelText: 'Nome do Acompanhante *',
+                        hintText: 'Ex: Carlos Silva Santos',
+                        prefixIcon: Icon(Icons.person_add_alt_outlined, size: 20),
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (val) {
+                        if (_temAcompanhante && (val == null || val.trim().length < 3)) {
+                          return 'Informe o nome do acompanhante (mín. 3 letras)';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      key: const Key('campoCpfAcompanhante'),
+                      controller: _cpfAcompController,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        _MascaraCpfFormatter(),
+                      ],
+                      decoration: const InputDecoration(
+                        labelText: 'CPF do Acompanhante (opcional)',
+                        hintText: '000.000.000-00',
+                        prefixIcon: Icon(Icons.badge_outlined, size: 20),
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (val) {
+                        if (val != null && val.trim().isNotEmpty) {
+                          if (!ValidacaoPessoa.isCpfValido(val)) {
+                            return 'CPF do acompanhante inválido';
+                          }
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      key: const Key('campoTelAcompanhante'),
+                      controller: _telAcompController,
+                      keyboardType: TextInputType.phone,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        _MascaraTelefoneFormatter(),
+                      ],
+                      decoration: const InputDecoration(
+                        labelText: 'Telefone do Acompanhante (opcional)',
+                        hintText: '(14) 99876-5432',
+                        prefixIcon: Icon(Icons.phone_outlined, size: 20),
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ],
                 ] else if (_roleSelecionado == 'motorista') ...[
                   TextFormField(
                     controller: _cnhController,

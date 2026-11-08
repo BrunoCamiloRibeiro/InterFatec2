@@ -262,7 +262,7 @@ class MotoristaConfirmacaoPreview extends StatelessWidget {
       children: [
         const MotoristaViagemPreview(),
         Container(
-          color: Colors.black.withOpacity(0.54),
+          color: Colors.black.withValues(alpha: 0.54),
           alignment: Alignment.center,
           child: AlertDialog(
             title: const Row(
@@ -328,7 +328,7 @@ class MotoristaEncerramentoPreview extends StatelessWidget {
       children: [
         const MotoristaViagemPreview(),
         Container(
-          color: Colors.black.withOpacity(0.54),
+          color: Colors.black.withValues(alpha: 0.54),
           alignment: Alignment.center,
           child: FormularioEncerramento(
             viagem: viagem,

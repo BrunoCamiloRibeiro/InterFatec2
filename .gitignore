@@ -19,6 +19,8 @@ coverage/
 
 # --- Android ---
 **/android/.gradle/
+**/android/.kotlin/
+.kotlin/
 **/android/captures/
 **/android/gradlew
 **/android/gradlew.bat

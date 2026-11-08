@@ -8,7 +8,7 @@
 // Painel Administrativo Oficial do TransSaúde.
 // Herda e disponibiliza diretamente o Gerenciador de Horários e Grade Diária de
 // Viagens (GerenciadorViagensScreen), com menu lateral retrátil (Drawer) para
-// Gestão de Pessoas (CRUD), frota e encerramento de sessão.
+// Gestão de Pessoas, frota e encerramento de sessão.
 // Mantido para compatibilidade com o histórico de rotas e testes automatizados.
 // ============================================================================
 

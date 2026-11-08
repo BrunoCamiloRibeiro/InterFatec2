@@ -34,7 +34,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 
-import '../Outdated/administrativo.dart';
 import '../lista_pessoas.dart';
 import '../lista_veiculos.dart';
 import '../models/motorista_model.dart';
@@ -78,7 +77,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
   String _filtroTexto = '';
   String _filtroStatus = 'todos'; // todos, planejada, ativa, concluida, cancelada
 
-  bool _carregando = false;
+  final bool _carregando = false;
 
   @override
   void initState() {
@@ -351,7 +350,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
           IconButton(
             key: const Key('botaoGestaoPessoasAppBar'),
             icon: const Icon(Icons.people_alt_outlined),
-            tooltip: 'Gestão de Pessoas (CRUD)',
+            tooltip: 'Gestão de Pessoas',
             onPressed: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const ListaPessoas()),
@@ -1843,7 +1842,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
               children: [
                 CircleAvatar(
                   radius: 30,
-                  backgroundColor: const Color(0xFF0284C7).withOpacity(0.25),
+                  backgroundColor: const Color(0xFF0284C7).withValues(alpha: 0.25),
                   child: const Icon(
                     Icons.admin_panel_settings,
                     size: 34,
@@ -1895,7 +1894,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                   ),
                   subtitle: const Text('Escala e grade diária de viagens'),
                   selected: true,
-                  selectedTileColor: const Color(0xFF0284C7).withOpacity(0.08),
+                  selectedTileColor: const Color(0xFF0284C7).withValues(alpha: 0.08),
                   onTap: () {
                     Navigator.of(context).pop();
                   },
@@ -1904,7 +1903,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                   key: const Key('menuItemGestaoPessoas'),
                   leading: const Icon(Icons.people_alt_outlined, color: Color(0xFF334155)),
                   title: const Text(
-                    'Gestão de Pessoas (CRUD)',
+                    'Gestão de Pessoas',
                     style: TextStyle(fontWeight: FontWeight.w600),
                   ),
                   subtitle: const Text('Pacientes, Motoristas e Admins'),
@@ -1919,7 +1918,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                   key: const Key('menuItemGestaoVeiculos'),
                   leading: const Icon(Icons.directions_car_outlined, color: Color(0xFF334155)),
                   title: const Text(
-                    'Gestão de Veículos (Frota)',
+                    'Gestão de Veículos',
                     style: TextStyle(fontWeight: FontWeight.w600),
                   ),
                   subtitle: const Text('Controle da frota municipal'),
@@ -1927,19 +1926,6 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                     Navigator.of(context).pop();
                     Navigator.of(context).push(
                       MaterialPageRoute(builder: (_) => const Veiculos()),
-                    );
-                  },
-                ),
-                const Divider(),
-                ListTile(
-                  key: const Key('menuItemAdminLegado'),
-                  leading: const Icon(Icons.playlist_add_check_rounded, color: Color(0xFF64748B)),
-                  title: const Text('Cadastro Rápido de Viagem'),
-                  subtitle: const Text('Formulário simplificado de agendamento'),
-                  onTap: () {
-                    Navigator.of(context).pop();
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => Administrativo()),
                     );
                   },
                 ),
