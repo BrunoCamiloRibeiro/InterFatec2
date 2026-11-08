@@ -1222,7 +1222,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                       DropdownButtonFormField<String>(
                         key: const Key('dropdownVeiculo'),
                         isExpanded: true,
-                        value: veiculoId,
+                        initialValue: veiculoId,
                         decoration: const InputDecoration(
                           labelText: 'Veículo Municipal *',
                           isDense: true,
@@ -1250,7 +1250,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                       DropdownButtonFormField<String>(
                         key: const Key('dropdownMotorista'),
                         isExpanded: true,
-                        value: motoristaId,
+                        initialValue: motoristaId,
                         decoration: const InputDecoration(
                           labelText: 'Motorista Responsável *',
                           isDense: true,
@@ -1489,7 +1489,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                       DropdownButtonFormField<String>(
                         key: const Key('dropdownSelecionarPaciente'),
                         isExpanded: true,
-                        value: pacienteIdSelecionado,
+                        initialValue: pacienteIdSelecionado,
                         decoration: const InputDecoration(
                           labelText: 'Selecione o Paciente *',
                           isDense: true,
