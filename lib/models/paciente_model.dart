@@ -59,6 +59,8 @@
 // ----------------------------------------------------------------------------
 import 'package:flutter/material.dart';
 
+import 'janela_reversao_model.dart';
+
 // Linha em branco separadora entre os imports e a declaração da classe principal
 // ----------------------------------------------------------------------------
 // DECLARAÇÃO DA CLASSE DE MODELO DE DOMÍNIO: PacienteModel
@@ -188,6 +190,15 @@ class PacienteModel {
   // --------------------------------------------------------------------------
   final DateTime? criadoEm;
 
+  // Indicador se o paciente está pronto para o retorno da consulta (Issue #19)
+  final bool prontoRetorno;
+
+  // Janela de reversão de ação ativa (Undo) (Issue #19)
+  final JanelaReversaoModel? janelaReversao;
+
+  // Última chave de idempotência processada (Issue #19)
+  final String? ultimaIdempotencyKey;
+
   // Linha em branco separadora entre a declaração dos campos e o construtor principal
 
   // --------------------------------------------------------------------------
@@ -224,6 +235,9 @@ class PacienteModel {
     this.ativo = true,
     // Parâmetro opcional: Data e hora de criação do registro
     this.criadoEm,
+    this.prontoRetorno = false,
+    this.janelaReversao,
+    this.ultimaIdempotencyKey,
   // Fecha a lista de parâmetros formais nomeados do construtor
   });
 
@@ -387,6 +401,9 @@ class PacienteModel {
       'ativo': ativo,
       // Mapeia a data de criação convertida para string ISO-8601 se não for nula
       'criadoEm': criadoEm?.toIso8601String(),
+      'prontoRetorno': prontoRetorno,
+      if (janelaReversao != null) 'janelaReversao': janelaReversao!.toMap(),
+      if (ultimaIdempotencyKey != null) 'ultimaIdempotencyKey': ultimaIdempotencyKey,
     // Fecha o dicionário de pares chave/valor
     };
   // Fecha o bloco de instruções do método toMap
@@ -445,6 +462,15 @@ class PacienteModel {
 
     // Linha em branco separadora entre a conversão de status e a instanciação
 
+    // Extração flexível de acompanhante (suporta objeto aninhado ou campos planos)
+    String? nomeAcomp = map['nomeAcompanhante']?.toString();
+    String? telAcomp = map['telAcompanhante']?.toString();
+    if (map['acompanhante'] is Map) {
+      final acompMap = map['acompanhante'] as Map;
+      nomeAcomp ??= acompMap['nome']?.toString();
+      telAcomp ??= acompMap['telefone']?.toString();
+    }
+
     // ------------------------------------------------------------------------
     // Instancia e retorna o PacienteModel aplicando sanitização e fallbacks defensivos:
     // ------------------------------------------------------------------------
@@ -457,30 +483,76 @@ class PacienteModel {
       cpf: (map['cpf'] ?? '').toString(),
       // Atribui o telefone recuperado ou string vazia se nulo
       telefone: (map['telefone'] ?? '').toString(),
-      // Atribui o endereço residencial recuperado ou string vazia se nulo
-      enderecoPaciente: (map['enderecoPaciente'] ?? '').toString(),
+      // Atribui o endereço residencial recuperado (ou localEmbarque como alias)
+      enderecoPaciente: (map['enderecoPaciente'] ?? map['localEmbarque'] ?? '').toString(),
       // Atribui a unidade médica de consulta ou string vazia se nulo
       localConsulta: (map['localConsulta'] ?? '').toString(),
-      // Atribui o ponto de saída, assumindo 'Residência' como padrão amigável caso nulo
-      localSaida: (map['localSaida'] ?? 'Residência').toString(),
-      // Atribui o horário agendado da consulta ou string vazia se nulo
-      horarioConsulta: (map['horarioConsulta'] ?? '').toString(),
+      // Atribui o ponto de saída/embarque (suporta localEmbarque ou localSaida)
+      localSaida: (map['localEmbarque'] ?? map['localSaida'] ?? 'Residência').toString(),
+      // Atribui o horário agendado da consulta (suporta horarioPrevisto ou horarioConsulta)
+      horarioConsulta: (map['horarioPrevisto'] ?? map['horarioConsulta'] ?? '').toString(),
       // Atribui o código de status validado e convertido em inteiro
       status: statusInt,
       // Converte o nome do acompanhante para String ou preserva null se ausente
-      nomeAcompanhante: map['nomeAcompanhante']?.toString(),
+      nomeAcompanhante: nomeAcomp,
       // Converte o telefone do acompanhante para String ou preserva null se ausente
-      telAcompanhante: map['telAcompanhante']?.toString(),
+      telAcompanhante: telAcomp,
       // Atribui o papel de permissão com fallback padrão para 'paciente'
       role: (map['role'] ?? 'paciente').toString(),
       // Avalia 'ativo' com tolerância a booleano verdadeiro, nulo (ativo por padrão) ou 'true'
       ativo: map['ativo'] == true || map['ativo'] == null || map['ativo'] == 'true',
       // Desserializa a data de criação através da função resiliente '_parsearData'
       criadoEm: _parsearData(map['criadoEm']),
-    // Fecha a chamada do construtor de PacienteModel
+      prontoRetorno: map['prontoRetorno'] == true || map['prontoRetorno'] == 'true',
+      janelaReversao: map['janelaReversao'] is Map<String, dynamic>
+          ? JanelaReversaoModel.fromMap(map['janelaReversao'] as Map<String, dynamic>)
+          : (map['janelaReversao'] is Map
+              ? JanelaReversaoModel.fromMap(
+                  Map<String, dynamic>.from(map['janelaReversao'] as Map))
+              : null),
+      ultimaIdempotencyKey: map['ultimaIdempotencyKey']?.toString(),
     );
-  // Fecha o bloco de instruções do construtor factory fromMap
   }
 
-// Fecha a declaração do corpo da classe PacienteModel
+  // Cria uma copia imutavel com campos substituidos
+  PacienteModel copyWith({
+    String? id,
+    String? nome,
+    String? cpf,
+    String? telefone,
+    String? enderecoPaciente,
+    String? localConsulta,
+    String? localSaida,
+    String? horarioConsulta,
+    int? status,
+    String? nomeAcompanhante,
+    String? telAcompanhante,
+    String? role,
+    bool? ativo,
+    DateTime? criadoEm,
+    bool? prontoRetorno,
+    JanelaReversaoModel? janelaReversao,
+    bool limparJanelaReversao = false,
+    String? ultimaIdempotencyKey,
+  }) {
+    return PacienteModel(
+      id: id ?? this.id,
+      nome: nome ?? this.nome,
+      cpf: cpf ?? this.cpf,
+      telefone: telefone ?? this.telefone,
+      enderecoPaciente: enderecoPaciente ?? this.enderecoPaciente,
+      localConsulta: localConsulta ?? this.localConsulta,
+      localSaida: localSaida ?? this.localSaida,
+      horarioConsulta: horarioConsulta ?? this.horarioConsulta,
+      status: status ?? this.status,
+      nomeAcompanhante: nomeAcompanhante ?? this.nomeAcompanhante,
+      telAcompanhante: telAcompanhante ?? this.telAcompanhante,
+      role: role ?? this.role,
+      ativo: ativo ?? this.ativo,
+      criadoEm: criadoEm ?? this.criadoEm,
+      prontoRetorno: prontoRetorno ?? this.prontoRetorno,
+      janelaReversao: limparJanelaReversao ? null : (janelaReversao ?? this.janelaReversao),
+      ultimaIdempotencyKey: ultimaIdempotencyKey ?? this.ultimaIdempotencyKey,
+    );
+  }
 }
