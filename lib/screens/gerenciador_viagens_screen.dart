@@ -42,7 +42,6 @@ import '../models/user_role.dart';
 import '../models/veiculo_model.dart';
 import '../models/viagem_model.dart';
 import '../services/auth_service.dart';
-import '../services/validacao_viagem.dart';
 import '../services/viagem_service.dart';
 
 /// Tela principal do Gerenciador de Horários do Dia (Perfil Administrador).
@@ -331,14 +330,19 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
         elevation: 0,
         title: const Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Text(
               'Gerenciador de Horários',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
             ),
             Text(
-              'Escala e Grade Diária de Viagens do Transporte Municipal',
+              'Escala e Grade Diária',
               style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
             ),
           ],
         ),
@@ -450,35 +454,44 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
               IconButton(
                 key: const Key('botaoDiaAnterior'),
                 icon: const Icon(Icons.chevron_left),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                 tooltip: 'Dia Anterior',
                 onPressed: () => _mudarDia(-1),
               ),
-              InkWell(
-                key: const Key('botaoSeletorDataCalendario'),
-                borderRadius: BorderRadius.circular(8),
-                onTap: _selecionarDataCalendario,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.calendar_today, size: 18, color: Color(0xFF0F172A)),
-                      const SizedBox(width: 8),
-                      Text(
-                        textoData,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF0F172A),
+              Flexible(
+                child: InkWell(
+                  key: const Key('botaoSeletorDataCalendario'),
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: _selecionarDataCalendario,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.calendar_today, size: 16, color: Color(0xFF0F172A)),
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            textoData,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF0F172A),
+                            ),
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
               IconButton(
                 key: const Key('botaoProximoDia'),
                 icon: const Icon(Icons.chevron_right),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                 tooltip: 'Próximo Dia',
                 onPressed: () => _mudarDia(1),
               ),

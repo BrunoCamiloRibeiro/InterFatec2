@@ -1,198 +1,182 @@
 # 🚑 TransSaúde - Gestão Integrada de Transporte Sanitário
 
 > **Projeto Interdisciplinar - FATEC**  
-> Aplicativo Android multiplataforma desenvolvido em **Flutter** integrado com **Firebase**, focado em otimizar a logística do transporte sanitário municipal, eliminando listas de papel e conectando motoristas, pacientes e administração em tempo real.
+> Sistema multiplataforma desenvolvido em **Flutter** com arquitetura reativa integrada ao **Cloud Firestore** e **Firebase Auth**, concebido para modernizar, digitalizar e dar transparência operacional ao Tratamento Fora de Domicílio (TFD) da saúde pública municipal.
 
 ---
 
 ## 📋 Sumário
-- [Sobre o Projeto](#-sobre-o-projeto)
-- [Problema vs Solução](#-problema-vs-solução)
-- [Frentes de Atuação (Módulos)](#-frentes-de-atuação-módulos)
-  - [1. Motoristas da Saúde](#1-módulo-motoristas-da-saúde)
-  - [2. Pacientes](#2-módulo-pacientes)
-  - [3. Administrativo](#3-módulo-administrativo)
-- [Tecnologias Utilizadas](#-tecnologias-utilizadas)
-- [Arquitetura de Pastas Recomendada](#-arquitetura-de-pastas-recomendada)
-- [Pré-requisitos e Instalação](#-pré-requisitos-e-instalação)
-- [Configuração do Firebase](#-configuração-do-firebase)
-- [Padrão de Commits e Fluxo Git](#-padrão-de-commits-e-fluxo-git)
-- [Membros da Equipe](#-membros-da-equipe)
+- [Visão Geral](#-visão-geral)
+- [Cenário Analógico vs. TransSaúde](#-cenário-analógico-vs-transsaúde)
+- [Módulos e Funcionalidades](#-módulos-e-funcionalidades)
+  - [1. Módulo do Administrador e Gestão](#1-módulo-do-administrador-e-gestão)
+  - [2. Módulo do Motorista](#2-módulo-do-motorista)
+  - [3. Módulo do Paciente e Acompanhante](#3-módulo-do-paciente-e-acompanhante)
+  - [4. Autenticação e Segurança](#4-autenticação-e-segurança)
+- [Arquitetura do Código-Fonte](#-arquitetura-do-código-fonte)
+- [Credenciais de Demonstração e Homologação](#-credenciais-de-demonstração-e-homologação)
+- [Bateria de Testes Automatizados](#-bateria-de-testes-automatizados)
+- [Tecnologias e Dependências Principais](#-tecnologias-e-dependências-principais)
 
 ---
 
-## 🎯 Sobre o Projeto
+## 🎯 Visão Geral
 
-O **TransSaúde** nasceu para modernizar a gestão do transporte de pacientes da rede pública de saúde para consultas, exames e procedimentos em hospitais e clínicas da região. O sistema unifica as operações em tempo real através de 3 frentes de acesso (perfis de usuário), trazendo previsibilidade, transparência e agilidade tanto para quem transporta quanto para quem é transportado.
+O **TransSaúde** informatiza a logística diária de transporte de pacientes da rede pública municipal para consultas, exames especializados e procedimentos de alta complexidade em polos hospitalares regionais (como Hospital de Base de São José do Rio Preto, Hospital de Amor de Barretos, entre outros).
+
+O sistema substitui formulários e pranchetas físicas por uma operação digital integrada e sincronizada em tempo real entre a **Central de Regulação da Secretaria de Saúde**, os **Motoristas Municipais** e os **Munícipes / Passageiros**.
 
 ---
 
-## ⚖️ Problema vs Solução
+## ⚖️ Cenário Analógico vs. TransSaúde
 
-| Cenário Atual (Analógico / Papel) | Cenário com o TransSaúde (Digital / Tempo Real) |
+| Fluxo Tradicional (Pranchetas de Papel) | Fluxo Informatizado (TransSaúde) |
 | :--- | :--- |
-| **Listas em pranchetas de papel** impressas no início do dia, sujeitas a rasuras, perdas e desatualização. | **Lista digital sincronizada** em tempo real via Cloud Firestore entre todos os motoristas e a central. |
-| Motoristas esperam horas em pontos de encontro sem saber se o paciente já foi embora com outro veículo ou familiar. | **Status de Ida e Volta atualizado instantaneamente**; se um motorista dá a baixa, todos os demais são notificados. |
-| Pacientes aguardam nas calçadas sem saber onde está a condução e que horas ela passará. | **Mapa com rastreamento ao vivo** do veículo e estimativa de tempo de chegada (ETA). |
-| Pacientes que conseguem carona não têm como avisar, gerando viagens perdidas e ligações telefônicas. | **Botão "Não preciso de retorno"** no app do paciente, liberando a vaga imediatamente para outro munícipe. |
-| Fechamento mensal manual e burocrático de adicionais de transporte para pagamento dos motoristas. | **Geração automática de relatório em PDF** com a lista oficial de transportados e campo de assinatura física/digital. |
+| **Listas impressas no início da manhã**, sujeitas a rasuras, perdas e falta de atualização quando há desistências. | **Grade digital sincronizada em tempo real** via Cloud Firestore, atualizada instantaneamente para todos os envolvidos. |
+| **Falta de visibilidade da frota**, pacientes esperando sem saber se os motoristas já saíram ou estão em trânsito. | **Painel do Paciente com Mapa ao Vivo**, exibindo a posição geográfica de todos os motoristas com viagens ativas na região. |
+| **Conferência manual de hodômetro e veículos**, gerando divergências em prestações de contas de combustível. | **Fluxo diário de início de viagem**, exigindo declaração do veículo disponível e registro do KM inicial no primeiro acesso. |
+| **Incerteza sobre o retorno do passageiro**, causando viagens com veículos vazios ou paradas desnecessárias. | **Sinalização rápida no aplicativo** ("Estou Pronto" ou "Fui embora / Carona"), otimizando as vagas dos veículos. |
+| **Fechamento burocrático de adicionais de viagem**, com compilação manual e demorada de fichas físicas. | **Geração instantânea e em lote de Relatórios em PDF** com a lista oficial de transportados, KM rodado e campo para assinatura. |
 
 ---
 
-## 👥 Frentes de Atuação (Módulos)
+## 👥 Módulos e Funcionalidades
 
-### 1. Módulo Motoristas da Saúde
-Desenvolvido para uso dinâmico durante a condução e paradas:
-* **Lista Digital de Passageiros:** Exibição detalhada de cada paciente, destino (hospital/clínica), horário da consulta e necessidades especiais de locomoção.
-* **Baixa em Tempo Real (Ida e Volta):** Ao embarcar ou desembarcar o paciente, o motorista registra a baixa. Toda a frota tem ciência instantânea de quem já foi transportado, evitando ligações e esperas desnecessárias.
-* **Geração de Relatório em PDF com Assinatura:** Ao término do turno/jornada, o aplicativo gera automaticamente um documento PDF consolidado contendo a relação de todos os pacientes transportados, com área para assinatura (digital na tela ou física após impressão). Este relatório é a comprovação oficial para o cálculo do **adicional por número de pacientes transportados**.
+### 1. Módulo do Administrador e Gestão
+Painel de controle voltado à equipe de regulação e agendamento da Secretaria de Saúde:
+* **Gerenciador Diário de Horários de Saída:**
+  - Navegação dia a dia com atalhos de data e seletor por calendário;
+  - Painel de indicadores consolidado: total de horários, viagens ativas, planejadas, concluídas e ocupação de assentos da frota;
+  - Filtros dinâmicos por texto (cidade, motorista, veículo) e por status do itinerário;
+  - Criação de novos horários com validação estrita contra conflitos de agenda, sobreposição de motoristas e choque de veículos;
+  - Ordenação sequencial dos pontos de embarque de passageiros e acompanhantes;
+  - Duplicação em lote da grade de viagens de outro dia para otimização de rotina.
+* **CRUD Completo de Pessoas:**
+  - Cadastro, visualização detalhada, filtragem por categoria e edição de registros de **Motoristas** (CNH, contato, veículo vinculado), **Administradores** e **Pacientes / Acompanhantes** (endereço residencial, telefone, hospital habitual de atendimento e necessidades especiais).
+* **Emissão de Relatórios em Lote:**
+  - Exportação e download em lote de documentos PDF oficiais das viagens do dia, formatados conforme as exigências da prestação de contas do SUS.
 
-### 2. Módulo Pacientes
-Interface simplificada e acessível, focada em três ações essenciais:
-* **Mapa com Localização da Condução:** Rastreamento em tempo real do veículo em trânsito para saber a proximidade e o tempo estimado até o ponto de embarque.
-* **Botão "Já consegui carona / Não preciso de volta":** Informa à central e aos motoristas que o paciente foi embora por meios próprios, evitando buscas e ligações desnecessárias.
-* **Botão "Consulta Realizada / Disponível para Retorno":** Notifica a equipe de motoristas que o atendimento médico foi concluído e que o paciente já está aguardando no ponto para o próximo horário/veículo disponível.
+### 2. Módulo do Motorista
+Interface operacional ágil desenvolvida para uso em smartphones e tablets durante o serviço:
+* **Abertura Obrigatória de Turno:**
+  - No primeiro acesso do dia, o motorista declara o veículo disponível selecionado na frota e registra a quilometragem inicial do hodômetro;
+  - Após iniciado, o painel assume o modo operacional em trânsito, exibindo a identificação do veículo e rota no cabeçalho.
+* **Controle de Embarque e Passageiros:**
+  - Lista de passageiros associados ao horário com detalhes do hospital e acompanhante;
+  - Gestão de status de embarque por gestos de deslize lateral (swipe/Dismissible) em tempo real.
+* **Encerramento Seguro de Viagem:**
+  - Diálogo de segurança modal ("Você tem certeza que quer finalizar a viagem?") antes da conclusão do trajeto;
+  - Formulário de encerramento com registro do KM de retorno, cálculo automático da distância percorrida e geração do Relatório de Viagem oficial em PDF com área para assinatura física ou digital.
 
-### 3. Módulo Administrativo
-Painel de controle para a equipe da Secretaria de Saúde:
-* **Gestão Diária de Viagens:** Visualização da grade de pacientes do dia, locais de atendimento, horários agendados e alocação nas rotas.
-* **Escala de Motoristas:** Controle dos motoristas ativos por turno, vinculando-os aos veículos disponíveis.
-* **Cadastros (CRUD):** Inserção, edição e importação de dados de pacientes (endereço, telefone, local habitual de consulta) e motoristas (CNH, contato, veículo).
+### 3. Módulo do Paciente e Acompanhante
+Interface clara e acessível focada no munícipe que utiliza o serviço de saúde:
+* **Identificação e Consulta:** Exibição clara do nome do paciente, hospital/clínica de destino, horário agendado da consulta, endereço de saída e dados do acompanhante cadastrado.
+* **Ações de Prontidão:** Botões rápidos de aviso à central ("Estou Pronto" e "Fui embora / Carona").
+* **Mapa de Rastreamento em Tempo Real da Frota Ativa:**
+  - Exibe a todos os pacientes a localização geográfica de **todos os motoristas municipais que estiverem em viagem ativa no momento**;
+  - Pins veiculares estilizados com pulso de sinal ativo, identificação do condutor, modelo/placa do veículo e município polo de atendimento;
+  - Controles de zoom interativo (+ / -) e centralização de frota;
+  - Chips de seleção rápida para focar em qualquer condutor em trânsito;
+  - *Em estrita conformidade com a especificação, a funcionalidade limita-se a exibir as posições ativas dos motoristas no mapa, sem realizar estimativas de tempo de chegada (ETA) e sem traçar rotas.*
+
+### 4. Autenticação e Segurança
+* **Login Unificado por Perfil:**
+  - Acesso de Motoristas e Administradores via CPF ou E-mail com senha;
+  - Acesso de Pacientes e Acompanhantes via CPF e Código de Acesso numérico (4 a 5 dígitos gerado pelo sistema para o Horário do dia, com validação criptográfica);
+* **Guarda de Rotas (RouteGuard):** Proteção reativa contra acessos indevidos ou cruzados entre perfis (redirecionamento automático e bloqueio de navegação).
 
 ---
 
-## 🛠️ Tecnologias Utilizadas
+## 📂 Arquitetura do Código-Fonte
 
-- **Linguagem & Framework:** [Dart](https://dart.dev/) / [Flutter](https://flutter.dev/) (Alvo principal: Android)
-- **Backend as a Service (BaaS):** [Firebase](https://firebase.google.com/)
-  - **Firebase Authentication:** Controle de acesso seguro e papéis de usuário (Motorista, Paciente, Admin).
-  - **Cloud Firestore:** Banco NoSQL com sincronização em tempo real das listas e status.
-  - **Firebase Storage:** Armazenamento seguro dos relatórios PDF gerados.
-  - **Firebase Cloud Messaging (FCM):** Notificações push para avisos de chegada e alertas de carona.
-- **Geolocalização & Mapas:** `geolocator` e `google_maps_flutter` (ou `flutter_map` / OpenStreetMap).
-- **Relatórios & PDF:** Pacotes `pdf` e `printing` para geração e compartilhamento de relatórios assináveis.
-- **Gerenciamento de Estado:** Provider / Riverpod / Bloc (a definir pela equipe).
-
----
-
-## 📂 Arquitetura de Pastas Recomendada
-
-Organização baseada em recursos (*Feature-First*), ideal para equipes de 4 pessoas trabalharem em paralelo sem gerar conflitos de merge:
+O projeto adota uma arquitetura limpa e modular com separação de responsabilidades em camadas no diretório `lib/`:
 
 ```text
 lib/
-├── core/                       # Componentes globais e compartilhados
-│   ├── constants/              # Cores, estilos, constantes de API
-│   ├── theme/                  # Configuração de temas claro e escuro
-│   ├── utils/                  # Formatadores (datas, CPF, telefone)
-│   └── widgets/                # Botões, inputs e cards reutilizáveis
-├── features/                   # Módulos organizados por frente de trabalho
-│   ├── auth/                   # Telas de login, cadastro e controle de perfis
-│   ├── motorista/              # Lista de passageiros, baixas de ida/volta e PDF
-│   │   ├── models/
-│   │   ├── controllers/
-│   │   ├── views/
-│   │   └── services/           # Serviço de exportação de PDF com assinatura
-│   ├── paciente/               # Mapa ao vivo, botão de carona e retorno
-│   │   ├── controllers/
-│   │   ├── views/
-│   │   └── services/
-│   └── admin/                  # Gestão de viagens do dia, turnos e cadastros
-│       ├── controllers/
-│       ├── views/
-│       └── services/
-├── services/                   # Serviços de infraestrutura (Firebase, GPS)
-│   ├── firebase_auth_service.dart
-│   ├── firestore_service.dart
-│   └── location_service.dart
-└── main.dart                   # Ponto de entrada da aplicação
+├── components/                      # Componentes reutilizáveis de interface gráfica
+│   ├── card_dados_consulta.dart     # Detalhamento médico da consulta do paciente
+│   ├── card_identificacao_paciente.dart # Avatar e dados civis do paciente
+│   ├── card_paciente.dart           # Card do passageiro com swipe para o motorista
+│   ├── card_tracking_paciente.dart  # Mapa interativo com pins de motoristas ativos
+│   ├── footer_pacientes.dart        # Rodapé de capacidade e ações de encerramento
+│   ├── formulario_encerramento.dart # Modal de KM final e relatório de retorno
+│   ├── formulario_inicio_viagem.dart # Declaração obrigatória de veículo e KM inicial
+│   ├── motorista_header.dart        # Cabeçalho da rota do condutor
+│   └── timeline_viagem.dart         # Linha do tempo visual do status do itinerário
+├── models/                          # Entidades imutáveis de domínio (Data Transfer Objects)
+│   ├── admin_model.dart             # Perfil do gestor municipal
+│   ├── localizacao_motorista_model.dart # Coordenadas GPS e metadados da frota ativa
+│   ├── motorista_model.dart         # Perfil do condutor e dados de CNH
+│   ├── paciente_model.dart          # Perfil do paciente, consulta e endereço
+│   ├── passageiro_viagem_model.dart # Vínculo passageiro/acompanhante na escala
+│   ├── sessao_veiculo_model.dart    # Sessão diária de veículo do condutor
+│   ├── user_role.dart               # Enum de papéis (admin, motorista, paciente)
+│   ├── veiculo_model.dart           # Frota municipal, capacidade e hodômetro
+│   └── viagem_model.dart            # Rota, horário, status e lista de passageiros
+├── routes/                          # Mecanismos de roteamento e segurança
+│   └── route_guard.dart             # Interceptador e guarda de rotas por perfil
+├── screens/                         # Telas centrais e gerenciadores de estado
+│   ├── auth_gate.dart               # Despachante reativo de sessão (Firebase Auth)
+│   ├── gerenciador_viagens_screen.dart # Painel administrativo de grade de horários
+│   ├── login_screen.dart            # Tela oficial unificada de login e código
+│   └── preview_showcase.dart        # Rotas estáticas para visualização e testes
+├── services/                        # Regras de negócio e comunicação com Firebase
+│   ├── auth_service.dart            # Abstração e implementação do Firebase Auth
+│   ├── codigo_acesso_service.dart   # Emissão e conferência de códigos de acesso
+│   ├── localizacao_motorista_service.dart # Stream de posições dos motoristas em trânsito
+│   ├── relatorio_pdf_service.dart   # Geração unitária e em lote de relatórios PDF
+│   ├── validacao_viagem.dart        # Validações de conflitos de horário e capacidade
+│   └── viagem_service.dart          # Ciclo de vida das viagens, sessões e frotas
+├── gerenciador_viagens.dart          # Ponto de entrada do módulo de horários
+├── lista_pessoas.dart                # Painel CRUD de Pessoas (Motoristas, Admins, Pacientes)
+├── motorista.dart                    # Painel principal do condutor em viagem ativa
+├── paciente.dart                     # Painel principal de acompanhamento do paciente
+└── main.dart                         # Inicialização do app, tema Material 3 e rotas
 ```
 
 ---
 
-## 💻 Pré-requisitos e Instalação
+## 🔑 Credenciais de Demonstração e Homologação
 
-### Requisitos da Máquina:
-- **Flutter SDK:** >= 3.x ([Guia oficial de instalação](https://docs.flutter.dev/get-started/install))
-- **Java JDK:** OpenJDK 17
-- **Android Studio / Android SDK:** com ferramentas de linha de comando e emulador configurado (ou smartphone Android físico com depuração USB ativada)
-- **VS Code:** com extensões oficiais do Dart e Flutter instaladas
-- **Git:** instalado e configurado
+Para testes funcionais e homologação das telas:
 
-### Executando o Projeto:
-
-1. **Clone o repositório:**
-   ```bash
-   git clone <URL_DO_REPOSITORIO_GITHUB>
-   cd Interdisciplinar
-   ```
-
-2. **Instale as dependências do Flutter:**
-   ```bash
-   flutter pub get
-   ```
-
-3. **Conecte um dispositivo Android ou inicie um emulador:**
-   ```bash
-   flutter devices
-   ```
-
-4. **Inicie o aplicativo em modo de depuração:**
-   ```bash
-   flutter run
-   ```
+| Perfil | Identificador / E-mail | Senha / Código | Destino no Sistema |
+| :--- | :--- | :--- | :--- |
+| **Administrador / Gestão** | `admin@transsaude.gov.br`<br>*(ou CPF: `111.111.111-11`)* | `admin123` | Painel do Gerenciador de Horários do Dia e CRUD de Pessoas |
+| **Motorista da Saúde** | `motorista@transsaude.gov.br`<br>*(ou CPF: `222.222.222-22`)* | `motorista123` | Formulário de Início (1º acesso) ou Painel em Viagem Ativa |
+| **Paciente / Acompanhante** | CPF: `123.456.789-00` | Código emitido no Horário *(ex.: `12345` / `8420`)* | Painel do Paciente com Mapa de Rastreamento ao Vivo |
 
 ---
 
-## 🔥 Configuração do Firebase
+## 🧪 Bateria de Testes Automatizados
 
-Para que o aplicativo se conecte ao Firebase:
-1. Um integrante da equipe cria o projeto no [Console do Firebase](https://console.firebase.google.com/).
-2. Ativação dos serviços:
-   - **Authentication:** Ativar provedor de Email/Senha.
-   - **Firestore Database:** Criar base no modo de teste ou configurar regras de segurança por perfil.
-   - **Storage:** Ativar bucket de armazenamento para os PDFs.
-3. Obtenção do arquivo `google-services.json` no console do Firebase (Configurações do Projeto > Seus aplicativos Android).
-4. Posicione o arquivo em: `android/app/google-services.json` *(observar as diretrizes de segurança no `.gitignore`)*.
-5. Alternativamente, utilize o comando oficial:
-   ```bash
-   flutterfire configure
-   ```
+O repositório conta com uma suíte de testes automatizados com cobertura rigorosa de regras de negócio, testes de widget e validação de responsividade multiplataforma (viewport mobile de 360x640 e desktop de 1280x800):
 
----
+* **173 testes automatizados** passando com 100% de sucesso;
+* Cobertura completa de:
+  - Máquina de estados do `AuthGate` e redirecionamentos seguros do `RouteGuard`;
+  - Responsividade e ausência de overflows de layout em telas mobile e desktop;
+  - Fluxo diário do motorista: abertura de veículo/KM, swipe de passageiros, confirmação antes do encerramento e emissão do PDF;
+  - Gerenciador de horários: criação com validação de conflitos, duplicação e exclusão lógica;
+  - Rastreamento veicular no painel do paciente: exibição dos motoristas ativos no mapa, chips interativos e ausência estrita de estimativas de rotas/tempo;
+  - Geração de relatórios PDF unitários e em lote com idempotência e atomicidade;
+  - Criptografia e determinismo de códigos de acesso de passageiros.
 
-## 🤝 Padrão de Commits e Fluxo Git
-
-Este projeto segue o padrão internacional de **Conventional Commits** e fluxo de trabalho em equipe com branches protegidas.  
-Antes de enviar qualquer código, consulte o nosso guia detalhado:
-
-👉 **[Leia o Guia de Contribuição e Padrões de Commit (CONTRIBUTING.md)](CONTRIBUTING.md)**
-
-Resumo rápido dos tipos de commit:
-- `feat(modulo):` nova funcionalidade
-- `fix(modulo):` correção de erro
-- `docs:` melhorias na documentação
-- `style:` ajustes de formatação e lint
-- `refactor:` melhoria de código sem alterar regra de negócio
-
-### ⚠️ Regras de Integração e Pull Request:
-- **NUNCA dê push direto na `develop` ou `main`:** É proibido push direto. Todo código entra exclusivamente via PR a partir da sua branch.
-- **Só abra a PR se tiver certeza absoluta do que fez:** Teste a tela/funcionalidade localmente e rode `flutter analyze`. Não abra PR com código não testado ou incompleto.
-- **Sempre abra uma Pull Request (PR) direcionada para `develop`:** Após commitar na sua branch e dar `git push`, abra a PR para `develop` para revisão em equipe.
-- **Informe se a branch deve ser deletada ou mantida:** Na descrição do PR, deixe explícito se a branch pode ser excluída após o merge ou se você ainda continuará trabalhando nela.
-- **Padrão para commit de merge da PR:**
-  ```text
-  merge(<escopo>): <descrição sucinta da entrega> (PR #<número>)
-  ```
-- **Como vai para a `main` (Produção)?** No fechamento da versão estável/sprint, abre-se uma PR de Release: `develop` $\rightarrow$ `main` com commit `release(sprint-X): ...`.
+Para executar toda a suíte de testes:
+```bash
+flutter test
+```
 
 ---
 
-## 👨‍💻 Membros da Equipe
+## 🛠️ Tecnologias e Dependências Principais
 
-Projeto desenvolvido para o Trabalho Interdisciplinar do curso de Tecnologia em Análise e Desenvolvimento de Sistemas / Gestão de TI da **FATEC**:
-
-1. **Integrante 1** - *Responsável pelo Módulo do Motorista & Relatórios PDF*
-2. **Integrante 2** - *Responsável pelo Módulo do Paciente & Geolocalização/Mapas*
-3. **Integrante 3** - *Responsável pelo Módulo Administrativo & Regras de Negócio*
-4. **Integrante 4** - *Responsável pelo Backend (Firebase), Autenticação & Infraestrutura*
+* **Framework:** [Flutter](https://flutter.dev/) (Material 3 habilitado com design system uniforme);
+* **Linguagem:** [Dart](https://dart.dev/);
+* **Serviços Backend:** [Firebase](https://firebase.google.com/):
+  - **Firebase Authentication:** Sessão de usuários e controle de credenciais;
+  - **Cloud Firestore:** Sincronização NoSQL em tempo real das viagens, frotas e posições;
+  - **Firebase Storage:** Repositório de documentos e relatórios;
+* **Geolocalização:** `geolocator` e renderização vetorial regional via `CustomPainter`;
+* **Emissão de Relatórios:** `pdf` e `printing` para geração programática e impressão de fichas TFD;
+* **Internacionalização:** `intl` para formatação monetária, de datas e calendários brasileiros.

@@ -8,10 +8,8 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:trans_saude/models/paciente_model.dart';
-import 'package:trans_saude/models/sessao_veiculo_model.dart';
 import 'package:trans_saude/models/user_role.dart';
 import 'package:trans_saude/models/veiculo_model.dart';
-import 'package:trans_saude/models/viagem_model.dart';
 import 'package:trans_saude/services/auth_service.dart';
 import 'package:trans_saude/services/codigo_acesso_service.dart';
 import 'package:trans_saude/services/viagem_service.dart';

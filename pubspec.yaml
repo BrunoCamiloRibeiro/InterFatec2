@@ -27,7 +27,7 @@
 # Nome único do pacote/módulo Dart utilizado nos imports internos
 name: trans_saude
 # Descrição concisa do projeto
-description: "A new Flutter project."
+description: "TransSaúde - Gestão Integrada de Transporte Sanitário Municipal (TFD)."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 # Bloqueia publicação acidental no repositório público do pub.dev
@@ -90,6 +90,8 @@ dependencies:
   provider: ^6.1.5+1
   # Utilitários de internacionalização e formatação de datas e moedas
   intl: ^0.20.3
+  # Hashing criptográfico para códigos de acesso
+  crypto: ^3.0.7
   # Componente de timeline e etapas sequenciais
   timeline_tile: ^2.0.0
   # Extensão de timelines para interface gráfica

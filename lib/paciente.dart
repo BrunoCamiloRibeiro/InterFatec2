@@ -60,8 +60,10 @@ import 'package:flutter/material.dart';
 import 'components/card_dados_consulta.dart';
 // Importa o componente visual de identificação do paciente com avatar e status
 import 'components/card_identificacao_paciente.dart';
-// Importa o componente de espaço reservado para mapa e rastreamento da viagem
+// Importa o componente de mapa e rastreamento da viagem em tempo real
 import 'components/card_tracking_paciente.dart';
+// Importa o modelo de localização dos motoristas em trânsito
+import 'models/localizacao_motorista_model.dart';
 // Importa o modelo de dados representativo da entidade Paciente
 import 'models/paciente_model.dart';
 // Importa o serviço de autenticação para logout
@@ -77,9 +79,16 @@ class Paciente extends StatefulWidget {
   // Stream customizada de paciente injetada externamente (útil para testes unitários)
   // Fluxo reativo injetável para testes automatizados sem dependência de backend real
   final Stream<PacienteModel?>? pacienteStreamOverride;
+  // Stream customizada de motoristas ativos em trânsito para testes unitários
+  final Stream<List<LocalizacaoMotoristaModel>>? motoristasStreamOverride;
 
   // Construtor constante da classe Paciente que aceita propriedades opcionais de injeção
-  const Paciente({super.key, this.pacienteId, this.pacienteStreamOverride});
+  const Paciente({
+    super.key,
+    this.pacienteId,
+    this.pacienteStreamOverride,
+    this.motoristasStreamOverride,
+  });
 
   // Sobrescrita que cria o estado mutável associado a este widget
   @override
@@ -496,9 +505,11 @@ class _PacienteState extends State<Paciente> {
                   // Espaçamento vertical entre os botões e o card de rastreamento
                   const SizedBox(height: 16),
 
-                  // 4. COMPONENTE: Card com Espaço Reservado para o Tracking
-                  // Exibe a seção reservada para o mapa de rastreamento da viagem
-                  const CardTrackingPaciente(),
+                  // 4. COMPONENTE: Card com Mapa de Rastreamento dos Motoristas Ativos
+                  // Exibe a localização em tempo real de todos os motoristas em trânsito
+                  CardTrackingPaciente(
+                    motoristasStreamOverride: widget.motoristasStreamOverride,
+                  ),
                 // Fechamento da lista children da Column
                 ],
               // Fechamento da Column

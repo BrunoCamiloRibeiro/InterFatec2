@@ -30,9 +30,7 @@
 // - copyWith() para clonagem imutável com parâmetros atualizados
 // ============================================================================
 
-import 'dart:convert';
-
-/// Modelo de dados que representa a Sessão de Veículo do Motorista.
+// Modelo de dados que representa a Sessão de Veículo do Motorista.
 ///
 /// Estrutura a relação:
 /// 1 Motorista + 1 Veículo Declarado -> N Viagens Ativas na jornada.
