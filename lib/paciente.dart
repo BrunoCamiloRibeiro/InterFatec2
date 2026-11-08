@@ -510,20 +510,6 @@ class _PacienteState extends State<Paciente> {
               ),
             ),
             actions: [
-              TextButton.icon(
-                key: const Key('botao_abrir_visao_motorista'),
-                style: TextButton.styleFrom(
-                  foregroundColor: Colors.white,
-                ),
-                icon: const Icon(Icons.drive_eta, size: 20, color: Colors.white),
-                label: const Text(
-                  'Visão Motorista',
-                  style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
-                ),
-                onPressed: () {
-                  Navigator.of(context).pushNamed('/motorista');
-                },
-              ),
               IconButton(
                 key: const Key('botaoLogoutPaciente'),
                 icon: const Icon(Icons.logout),

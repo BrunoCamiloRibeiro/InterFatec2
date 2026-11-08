@@ -581,12 +581,10 @@ class _ListaPessoasState extends State<ListaPessoas> {
                 'atualizadoEm': FieldValue.serverTimestamp(),
               });
         } catch (e) {
-          // Para mocks iniciais locais, apenas registra debug sem poluir a interface
-          if (pessoa.id.startsWith('pac_') ||
+          final isMockLocal = pessoa.id.startsWith('pac_') ||
               pessoa.id.startsWith('mot_') ||
-              pessoa.id.startsWith('adm_')) {
-            debugPrint('Mock excluído localmente: ${pessoa.nome}');
-          } else if (mounted) {
+              pessoa.id.startsWith('adm_');
+          if (!isMockLocal && mounted) {
             setState(() {
               _erroGeral = 'Falha ao excluir no Firebase: $e';
             });

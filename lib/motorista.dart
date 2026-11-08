@@ -704,7 +704,6 @@ class _MotoristaState extends State<Motorista> {
               padding: const EdgeInsets.all(16),
               // Filhos organizados sequencialmente na rolagem
               children: [
-                // TODO(#13): ligar ao ViagemModel
                 // Componente de cabeçalho da viagem mostrando o título da viagem e controles de navegação
                 MotoristaHeader(
                   // Título dinâmico da viagem baseado no ID da viagem ativa ou fallback
