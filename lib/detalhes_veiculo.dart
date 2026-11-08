@@ -56,10 +56,9 @@ class _DetalhesVeiculoState extends State<DetalhesVeiculo> {
   @override
   Widget build(BuildContext context) {
     final veiculo = widget.veiculo;
-    final String placa = (veiculo['placa'] ?? 'XXX-1234').toString();
-    final String criadoEm = (veiculo['criadoEm'] ?? '01/10/2026').toString();
-    final String atualizadoEm = (veiculo['atualizadoEm'] ?? '20/10/2026').toString();
-    // final String? motoristaFixo = veiculo['motoristaResponsavelId']?.toString(); // Desativado a pedido do PO (não há motorista fixo)
+    final String placa = (veiculo['placa'] ?? '-').toString();
+    final String criadoEm = (veiculo['criadoEm'] ?? '-').toString();
+    final String atualizadoEm = (veiculo['atualizadoEm'] ?? '-').toString();
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -122,68 +121,65 @@ class _DetalhesVeiculoState extends State<DetalhesVeiculo> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // REMOVIDO A PEDIDO DO PO: Não existe motorista fixo/responsável por veículo
-                      // Row(
-                      //   children: [
-                      //     Icon(Icons.person_pin_outlined, color: Colors.grey[700], size: 20),
-                      //     const SizedBox(width: 10),
-                      //     Column(
-                      //       crossAxisAlignment: CrossAxisAlignment.start,
-                      //       children: [
-                      //         Text(
-                      //           'Motorista Fixo Responsável',
-                      //           style: TextStyle(
-                      //             fontSize: 12,
-                      //             color: Color.lerp(Colors.grey, Colors.black, 0.5),
-                      //           ),
-                      //         ),
-                      //         Text(
-                      //           motoristaFixo ?? 'Nenhum motorista fixo vinculado',
-                      //           style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                      //         ),
-                      //       ],
-                      //     ),
-                      //   ],
-                      // ),
-                      // const SizedBox(height: 14),
                       Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Icon(Icons.calendar_today_outlined, color: Colors.grey[700], size: 20),
-                          const SizedBox(width: 10),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Data de Cadastro',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Color.lerp(Colors.grey, Colors.black, 0.5),
+                          Expanded(
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Icon(Icons.calendar_today_outlined, color: Colors.grey[700], size: 20),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Data de Cadastro',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Color.lerp(Colors.grey, Colors.black, 0.5),
+                                        ),
+                                      ),
+                                      Text(
+                                        criadoEm,
+                                        style: const TextStyle(fontSize: 13),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                              Text(
-                                criadoEm,
-                                style: const TextStyle(fontSize: 14),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                          const SizedBox(width: 24),
-                          Icon(Icons.update_outlined, color: Colors.grey[700], size: 20),
-                          const SizedBox(width: 10),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Última Atualização',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Color.lerp(Colors.grey, Colors.black, 0.5),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Icon(Icons.update_outlined, color: Colors.grey[700], size: 20),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Última Atualização',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Color.lerp(Colors.grey, Colors.black, 0.5),
+                                        ),
+                                      ),
+                                      Text(
+                                        atualizadoEm,
+                                        style: const TextStyle(fontSize: 13),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                              Text(
-                                atualizadoEm,
-                                style: const TextStyle(fontSize: 14),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ],
                       ),

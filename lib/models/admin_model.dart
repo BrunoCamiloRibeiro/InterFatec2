@@ -131,6 +131,9 @@ class AdminModel {
   // --------------------------------------------------------------------------
   final DateTime? criadoEm;
 
+  // Senha de acesso operacional persistida no documento da coleção 'usuarios'
+  final String? senha;
+
   // Linha em branco separadora entre a declaração dos atributos e o construtor principal
 
   // --------------------------------------------------------------------------
@@ -196,6 +199,7 @@ class AdminModel {
     // - Tipo: 'DateTime?' (permite ausência de valor na criação inicial).
     // ------------------------------------------------------------------------
     this.criadoEm,
+    this.senha,
 
   // Fecha a lista de parâmetros formais nomeados do construtor AdminModel
   });
@@ -232,6 +236,7 @@ class AdminModel {
       'ativo': ativo,
       // Chave 'criadoEm' serializada em formato de texto ISO-8601 (ex.: 2026-11-06T10:00:00Z) se não for nula
       'criadoEm': criadoEm?.toIso8601String(),
+      if (senha != null && senha!.isNotEmpty) 'senha': senha,
     // Fecha a declaração do mapa literal de pares chave/valor
     };
   // Fecha o corpo de instruções do método de serialização toMap
@@ -325,6 +330,7 @@ class AdminModel {
       ativo: map['ativo'] == true || map['ativo'] == null || map['ativo'] == 'true',
       // Converte o campo 'criadoEm' utilizando a função estática defensiva '_parsearData'
       criadoEm: _parsearData(map['criadoEm']),
+      senha: map['senha']?.toString(),
     // Fecha a lista de argumentos passados ao construtor AdminModel
     );
   // Fecha o bloco de execução do construtor de fábrica fromMap

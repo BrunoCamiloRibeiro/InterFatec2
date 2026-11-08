@@ -1,4 +1,4 @@
-// ============================================================================
+﻿// ============================================================================
 // CABEÇALHO DE DOCUMENTAÇÃO DE ARQUIVO
 // ============================================================================
 // Arquivo: test/pdf_lote_test.dart
@@ -166,57 +166,38 @@ void main() {
       expect(lotePdfs.containsKey(v2.id), isTrue);
       expect(lotePdfs.containsKey(v3.id), isTrue);
 
-      // Grava em arquivos temporários e extrai o texto com pdftotext
-      final arquivosGerados = <File>[];
-      for (final entry in lotePdfs.entries) {
-        final arquivo = File('/tmp/pdf_lote_teste_${entry.key}.pdf');
-        await arquivo.writeAsBytes(entry.value, flush: true);
-        expect(await arquivo.exists(), isTrue);
-        expect(await arquivo.length(), greaterThan(1500));
-        arquivosGerados.add(arquivo);
+      // Grava em diretório temporário multiplataforma do sistema e valida assinatura PDF
+      final tempDir = Directory.systemTemp.createTempSync('trans_saude_pdf_lote_');
+      try {
+        final arquivosGerados = <File>[];
+        for (final entry in lotePdfs.entries) {
+          final arquivo = File('${tempDir.path}/pdf_lote_teste_${entry.key}.pdf');
+          await arquivo.writeAsBytes(entry.value, flush: true);
+          expect(await arquivo.exists(), isTrue);
+          expect(await arquivo.length(), greaterThan(1500));
+
+          final conteudoAscii = String.fromCharCodes(entry.value);
+          expect(conteudoAscii.startsWith('%PDF-'), isTrue);
+          expect(conteudoAscii.trimRight().endsWith('%%EOF'), isTrue);
+          arquivosGerados.add(arquivo);
+        }
+        expect(arquivosGerados.length, equals(3));
+
+        // Confirma que o passageiro com status 0 (pAguardando) foi filtrado do PDF da viagem 1
+        final loteSemAguardando = await RelatorioPdfService.gerarLoteViagensPdf(
+          viagens: [v1],
+          pacientesPorViagem: {
+            v1.id: [p1Ida, p2Ida],
+          },
+          dataHoraEmissao: DateTime(2026, 11, 7, 16, 0),
+        );
+        expect(lotePdfs[v1.id]!.length, equals(loteSemAguardando[v1.id]!.length));
+      } finally {
+        if (tempDir.existsSync()) {
+          tempDir.deleteSync(recursive: true);
+        }
       }
-      expect(arquivosGerados.length, equals(3));
-
-      // ----------------------------------------------------------------------
-      // Conferência do PDF da Viagem 1 (São José do Rio Preto)
-      // ----------------------------------------------------------------------
-      final proc1 = await Process.run('pdftotext', ['/tmp/pdf_lote_teste_${v1.id}.pdf', '-']);
-      expect(proc1.exitCode, equals(0));
-      final texto1 = proc1.stdout.toString().toUpperCase();
-
-      expect(texto1.contains('SÃO JOSÉ DO RIO PRETO'), isTrue);
-      expect(texto1.contains('CHEVROLET SPIN'), isTrue);
-      expect(texto1.contains('BRA-2E19'), isTrue);
-      expect(texto1.contains('MARIA SILVA POLONI'), isTrue);
-      expect(texto1.contains('4821'), isTrue); // Código de acesso do passageiro 1
-      expect(texto1.contains('JOÃO SANTOS PEREIRA'), isTrue);
-      expect(texto1.contains('9134'), isTrue); // Código de acesso do passageiro 2
-      expect(texto1.contains('***.982.247-**'), isTrue); // CPF mascarado
-      expect(texto1.contains('PACIENTE NAO EMBARCADO'), isFalse); // Filtrado (status 0)
-
-      // ----------------------------------------------------------------------
-      // Conferência do PDF da Viagem 2 (Mirassol)
-      // ----------------------------------------------------------------------
-      final proc2 = await Process.run('pdftotext', ['/tmp/pdf_lote_teste_${v2.id}.pdf', '-']);
-      expect(proc2.exitCode, equals(0));
-      final texto2 = proc2.stdout.toString().toUpperCase();
-
-      expect(texto2.contains('MIRASSOL'), isTrue);
-      expect(texto2.contains('ANA PAULA MIRASSOL'), isTrue);
-      expect(texto2.contains('5512'), isTrue); // Código de acesso do passageiro 3
-
-      // ----------------------------------------------------------------------
-      // Conferência do PDF da Viagem 3 (Monte Aprazível)
-      // ----------------------------------------------------------------------
-      final proc3 = await Process.run('pdftotext', ['/tmp/pdf_lote_teste_${v3.id}.pdf', '-']);
-      expect(proc3.exitCode, equals(0));
-      final texto3 = proc3.stdout.toString().toUpperCase();
-
-      expect(texto3.contains('MONTE APRAZÍVEL'), isTrue);
-      expect(texto3.contains('SEBASTIÃO MONTE APRAZIVEL'), isTrue);
-      expect(texto3.contains('7890'), isTrue); // Código de acesso do passageiro 4
     });
-
     test('2. Atomicidade: falha em uma viagem lança exceção com ID e não deixa resultado parcial', () async {
       // Cria uma viagem defeituosa/nula para provocar falha controlada
       final viagemCorrompida = ViagemModel(

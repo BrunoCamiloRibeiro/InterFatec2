@@ -1,4 +1,4 @@
-import 'package:flutter_test/flutter_test.dart';
+﻿import 'package:flutter_test/flutter_test.dart';
 import 'package:trans_saude/controllers/veiculo_controller.dart';
 import 'package:trans_saude/models/veiculo_model.dart';
 
@@ -74,7 +74,32 @@ void main() {
 
     setUp(() {
       controller = VeiculoController();
-      controller.resetParaTestes();
+      controller.resetParaTestes(
+        veiculosIniciais: const [
+          VeiculoModel(
+            id: 'veiculo001',
+            placa: 'ABC1D23',
+            tipo: TipoVeiculo.van,
+            marca: 'Renault',
+            modelo: 'Master',
+            ano: 2023,
+            qtdAssentos: 15,
+            status: StatusVeiculo.disponivel,
+            quilometragemAtual: 45280,
+          ),
+          VeiculoModel(
+            id: 'veiculo002',
+            placa: 'DEF4G56',
+            tipo: TipoVeiculo.ambulancia,
+            marca: 'Fiat',
+            modelo: 'Ducato',
+            ano: 2022,
+            qtdAssentos: 4,
+            status: StatusVeiculo.emManutencao,
+            quilometragemAtual: 62150,
+          ),
+        ],
+      );
     });
 
     tearDown(() {

@@ -72,7 +72,6 @@ linter:
   # producing the lint.
   # Mapeamento de regras customizadas
   rules:
-    # o professor não usa const então ignora tudo
     # Desativa exigência de construtores const em instâncias imutáveis
     prefer_const_constructors: false
     # Desativa exigência de const em coleções e literais imutáveis

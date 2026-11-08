@@ -12,12 +12,17 @@
 // 7. Logout limpa a sessão, o cache de papéis e o identificador de paciente.
 // ============================================================================
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:trans_saude/models/paciente_model.dart';
 import 'package:trans_saude/models/user_role.dart';
+import 'package:trans_saude/models/viagem_model.dart';
 import 'package:trans_saude/routes/route_guard.dart';
 import 'package:trans_saude/services/auth_service.dart';
+import 'package:trans_saude/services/codigo_acesso_service.dart';
+import 'package:trans_saude/services/viagem_service.dart';
 
 // Simulação de User do Firebase
 class _FakeUser implements User {
@@ -83,11 +88,128 @@ class _FakeFirebaseAuth implements FirebaseAuth {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+// Simulação leve de Firestore em memória para testes de login via coleção 'usuarios'
+// ignore: subtype_of_sealed_class
+class _FakeQueryDocumentSnapshot
+    implements QueryDocumentSnapshot<Map<String, dynamic>> {
+  @override
+  final String id;
+  final Map<String, dynamic> _data;
+  _FakeQueryDocumentSnapshot(this.id, this._data);
+
+  @override
+  Map<String, dynamic> data() => _data;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _FakeQuerySnapshot implements QuerySnapshot<Map<String, dynamic>> {
+  @override
+  final List<QueryDocumentSnapshot<Map<String, dynamic>>> docs;
+  _FakeQuerySnapshot(this.docs);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+// ignore: subtype_of_sealed_class
+class _FakeCollectionReference
+    implements CollectionReference<Map<String, dynamic>> {
+  final Map<String, Map<String, dynamic>> _store;
+  final List<Object?>? _whereInValues;
+  _FakeCollectionReference(this._store, [this._whereInValues]);
+
+  @override
+  Query<Map<String, dynamic>> where(
+    Object field, {
+    Object? isEqualTo,
+    Object? isNotEqualTo,
+    Object? isLessThan,
+    Object? isLessThanOrEqualTo,
+    Object? isGreaterThan,
+    Object? isGreaterThanOrEqualTo,
+    Object? arrayContains,
+    Iterable<Object?>? arrayContainsAny,
+    Iterable<Object?>? whereIn,
+    Iterable<Object?>? whereNotIn,
+    bool? isNull,
+  }) {
+    return _FakeCollectionReference(_store, whereIn?.toList());
+  }
+
+  @override
+  Query<Map<String, dynamic>> limit(int limit) => this;
+
+  @override
+  Future<QuerySnapshot<Map<String, dynamic>>> get([GetOptions? options]) async {
+    final docs = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+    for (final entry in _store.entries) {
+      if (_whereInValues == null ||
+          _whereInValues.contains(entry.value['cpf'])) {
+        docs.add(_FakeQueryDocumentSnapshot(entry.key, entry.value));
+      }
+    }
+    return _FakeQuerySnapshot(docs);
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _FakeFirebaseFirestore implements FirebaseFirestore {
+  final Map<String, Map<String, dynamic>> usuariosStore = {};
+
+  @override
+  CollectionReference<Map<String, dynamic>> collection(String collectionPath) {
+    return _FakeCollectionReference(usuariosStore);
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  final pacienteTeste = PacienteModel(
+    id: 'nhkT53OclKj552MmiMN5',
+    nome: 'Sebastião Ferreira de Souza',
+    cpf: '571.098.984-31',
+    enderecoPaciente: 'Rua Sete de Setembro, 340 - Centro',
+    telefone: '(14) 99765-4321',
+    localConsulta: 'Hospital das Clínicas de Botucatu - Unesp',
+    localSaida: 'Residência',
+    status: 1,
+  );
+
   setUp(() {
     FirebaseAuthService.resetarRateLimitParaTestes();
+    CodigoAcessoService.resetarRateLimitParaTestes();
+    ViagemService().resetParaTestes(
+      viagensAtivasIniciais: [
+        ViagemModel(
+          id: 'viagem_teste_auth',
+          motoristaId: 'mot_teste',
+          motoristaNome: 'Motorista Teste',
+          veiculoId: 'v1',
+          veiculoPlaca: 'BRA-2E19',
+          veiculoModelo: 'Spin',
+          kmInicial: 50000,
+          cidadeDestino: 'São José do Rio Preto',
+          dataHoraInicio: DateTime(2026, 11, 7, 16),
+          status: 'ativa',
+          passageirosIds: const ['nhkT53OclKj552MmiMN5'],
+          codigosAcesso: const {'nhkT53OclKj552MmiMN5': '7890'},
+          codigosHash: {
+            'nhkT53OclKj552MmiMN5': CodigoAcessoService.calcularHash(
+              '7890',
+              'viagem_teste_auth',
+            ),
+          },
+        ),
+      ],
+    );
   });
 
   group('Fase 2 - Correção do Login de Motorista e Administrador', () {
@@ -112,6 +234,7 @@ void main() {
       await authService.loginPacienteComCodigo(
         documento: '571.098.984-31',
         codigoAcesso: '7890',
+        pacientesParaTestes: [pacienteTeste],
       );
       expect(authService.currentUserId, equals('nhkT53OclKj552MmiMN5'));
       expect(authService.getCachedRole(authService.currentUserId!), equals(UserRole.paciente));
@@ -158,6 +281,7 @@ void main() {
       await authService.loginPacienteComCodigo(
         documento: '571.098.984-31',
         codigoAcesso: '7890',
+        pacientesParaTestes: [pacienteTeste],
       );
 
       // Admin entra
@@ -186,6 +310,7 @@ void main() {
       final role = await authService.loginPacienteComCodigo(
         documento: '571.098.984-31',
         codigoAcesso: '7890',
+        pacientesParaTestes: [pacienteTeste],
       );
 
       expect(role, equals(UserRole.paciente));
@@ -304,6 +429,49 @@ void main() {
 
       expect(authService.currentUserId, isNull);
       expect(fakeAuth.currentUser, isNull);
+    });
+
+    test('8. Login via campo senha na coleção usuarios do Firestore reconhece alteração manual imediatamente', () async {
+      final fakeFirestore = _FakeFirebaseFirestore();
+      fakeFirestore.usuariosStore['mot_inicial_01'] = {
+        'nome': 'Roberto Almeida Prado',
+        'cpf': '390.533.447-05',
+        'role': 'motorista',
+        'ativo': true,
+        'senha': '12345',
+      };
+
+      final fakeAuth = _FakeFirebaseAuth(credentialsValidas: {});
+      final authService = FirebaseAuthService(
+        auth: fakeAuth,
+        firestore: fakeFirestore,
+      );
+
+      // Autentica com a senha gravada no Firestore
+      final role1 = await authService.login('390.533.447-05', '12345');
+      expect(role1, equals(UserRole.motorista));
+      expect(authService.currentUserId, equals('mot_inicial_01'));
+      expect(authService.getCachedRole('mot_inicial_01'), equals(UserRole.motorista));
+
+      // Simula alteração manual da senha diretamente no documento do Firestore
+      fakeFirestore.usuariosStore['mot_inicial_01']!['senha'] = 'novaSenha99';
+
+      // Senha antiga deve ser rejeitada imediatamente
+      await expectLater(
+        () => authService.login('390.533.447-05', '12345'),
+        throwsA(
+          isA<AuthException>().having(
+            (e) => e.code,
+            'code',
+            'invalid-credential',
+          ),
+        ),
+      );
+
+      // Nova senha alterada manualmente no Firestore deve autenticar com sucesso
+      final role2 = await authService.login('39053344705', 'novaSenha99');
+      expect(role2, equals(UserRole.motorista));
+      expect(authService.currentUserId, equals('mot_inicial_01'));
     });
   });
 }

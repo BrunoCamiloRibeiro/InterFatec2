@@ -182,6 +182,9 @@ class MotoristaModel {
   // --------------------------------------------------------------------------
   final DateTime? criadoEm;
 
+  // Senha de acesso operacional persistida no documento da coleção 'usuarios'
+  final String? senha;
+
   // Linha em branco separadora entre a declaração dos atributos e o construtor principal
 
   // --------------------------------------------------------------------------
@@ -217,6 +220,8 @@ class MotoristaModel {
     this.ativo = true,
     // Parâmetro opcional: Data e hora de criação do registro no Firestore
     this.criadoEm,
+    // Parâmetro opcional: Senha de acesso operacional
+    this.senha,
   // Fecha a lista de parâmetros formais nomeados do construtor
   });
 
@@ -260,6 +265,7 @@ class MotoristaModel {
       'ativo': ativo,
       // Mapeia a data de criação convertida para ISO-8601 se não for nula
       'criadoEm': criadoEm?.toIso8601String(),
+      if (senha != null && senha!.isNotEmpty) 'senha': senha,
     // Fecha a declaração do mapa literal
     };
   // Fecha o bloco de instruções do método toMap
@@ -352,6 +358,7 @@ class MotoristaModel {
       ativo: map['ativo'] == true || map['ativo'] == null || map['ativo'] == 'true',
       // Desserializa a data de criação através da função resiliente '_parsearData'
       criadoEm: _parsearData(map['criadoEm']),
+      senha: map['senha']?.toString(),
     // Fecha a lista de argumentos passados ao construtor MotoristaModel
     );
   // Fecha o bloco de instruções do construtor factory fromMap

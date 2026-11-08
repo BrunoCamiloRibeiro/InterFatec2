@@ -392,6 +392,9 @@ class ViagemService {
   // --------------------------------------------------------------------------
   Stream<List<VeiculoModel>> get veiculosStream => _veiculosController.stream;
 
+
+  /// Retorna lista imutável com todos os veículos em memória
+  List<VeiculoModel> get todosVeiculos => List.unmodifiable(_veiculosMemoria);
   // Linha em branco separadora entre getters e métodos privados
   // ----------------------------------------------------------------------------
   // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
@@ -403,112 +406,119 @@ class ViagemService {
   void _inicializarDadosBase() {
     // Interrompe se a lista já tiver sido inicializada anteriormente
     if (_inicializado) return;
-    // Popula a memória com 4 veículos representativos da prefeitura
-    _veiculosMemoria.addAll([
-      // Veículo 1: Chevrolet Spin de 7 lugares
-      const VeiculoModel(
-        id: 'v1',
-        placa: 'ABC-1D23',
-        modelo: 'Chevrolet Spin 1.8 LTZ',
-        capacidade: 7,
-        quilometragemAtual: 85420,
-        emUso: false,
-      ),
-      // Veículo 2: Van Renault Master de 16 lugares
-      const VeiculoModel(
-        id: 'v2',
-        placa: 'BRA-2E45',
-        modelo: 'Renault Master Minibus',
-        capacidade: 16,
-        quilometragemAtual: 142100,
-        emUso: false,
-      ),
-      // Veículo 3: Fiat Ducato Ambulância de 4 lugares
-      const VeiculoModel(
-        id: 'v3',
-        placa: 'POL-3F67',
-        modelo: 'Fiat Ducato Ambulância',
-        capacidade: 4,
-        quilometragemAtual: 63250,
-        emUso: false,
-      ),
-      // Veículo 4: Fiat Cronos de 5 lugares ocupado por mot_antonio
-      const VeiculoModel(
-        id: 'v4',
-        placa: 'XYZ-9K88',
-        modelo: 'Fiat Cronos Drive 1.3',
-        capacidade: 5,
-        quilometragemAtual: 41900,
-        emUso: true,
-        motoristaAtualId: 'mot_antonio',
-      ),
-    // Fecha a lista literal de veículos
-    ]);
+    // Quando o Firebase está disponível, sincroniza frota e viagens diretamente do Firestore
+    if (_isFirebaseDisponivel()) {
+      try {
+        FirebaseFirestore.instance.collection('veiculos').snapshots().listen((snap) {
+          _veiculosMemoria
+            ..clear()
+            ..addAll(snap.docs.map((d) => VeiculoModel.fromMap(d.data(), docId: d.id)));
+          if (!_veiculosController.isClosed) {
+            _veiculosController.add(ValidacaoViagem.filtrarVeiculosDisponiveis(_veiculosMemoria));
+          }
+        });
+        FirebaseFirestore.instance.collection('viagens').snapshots().listen((snap) {
+          final viagensCarregadas = <ViagemModel>[];
+          for (final d in snap.docs) {
+            var v = ViagemModel.fromMap(d.data(), docId: d.id);
+            // Garante que toda viagem ativa ou planejada possua códigos e hashes sincronizados para seus passageiros
+            if ((v.isAtiva || v.isPlanejada) && !v.isCancelada && !v.isConcluida) {
+              final (codigos, hashes, alterou) = _sincronizarCodigosDaViagem(
+                viagemId: v.id,
+                passageiros: v.passageiros,
+                passageirosIds: v.passageirosIds,
+                codigosExistentes: v.codigosAcesso,
+                hashesExistentes: v.codigosHash,
+              );
+              if (alterou) {
+                v = v.copyWith(codigosAcesso: codigos, codigosHash: hashes);
+                try {
+                  FirebaseFirestore.instance
+                      .collection('viagens')
+                      .doc(v.id)
+                      .set({
+                        'codigosAcesso': codigos,
+                        'codigosHash': hashes,
+                      }, SetOptions(merge: true));
+                } catch (_) {}
+              }
+            }
+            viagensCarregadas.add(v);
+          }
 
-    // Inicializa viagens e horários padrão em memória (FASE 1: Horários do Dia)
-    final hoje = DateTime.now();
-    final dataHoje = DateTime(hoje.year, hoje.month, hoje.day);
-    if (_todasViagensMemoria.isEmpty) {
-      _todasViagensMemoria.addAll([
-        ViagemModel(
-          id: 'horario_${dataHoje.year}_${dataHoje.month}_${dataHoje.day}_1',
-          motoristaId: 'mot_antonio',
-          motoristaNome: 'Antônio Carlos da Silva',
-          veiculoId: 'v1',
-          veiculoPlaca: 'ABC-1D23',
-          veiculoModelo: 'Chevrolet Spin 1.8 LTZ',
-          kmInicial: 85420,
-          cidadeDestino: 'BARRETOS',
-          nomeHorario: '06:00 - Barretos (Hospital de Amor)',
-          dataViagem: dataHoje,
-          dataHoraInicio: DateTime(dataHoje.year, dataHoje.month, dataHoje.day, 6, 0),
-          status: 'planejada',
-          passageiros: const [
-            PassageiroViagemModel(
-              pacienteId: 'p1',
-              pacienteNome: 'Maria das Graças Aparecida',
-              localOrigem: 'Rua das Flores, 125 - Centro',
-              localDestino: 'Hospital de Amor de Barretos',
-              horarioAtendimento: '09:00',
-              ordemEmbarque: 1,
-              observacoes: 'Exame de rotina oncologia',
-            ),
-            PassageiroViagemModel(
-              pacienteId: 'p2',
-              pacienteNome: 'Carlos Eduardo Martins',
-              acompanhanteNome: 'Ana Paula Martins',
-              localOrigem: 'Rua dos Ipês, 310',
-              localDestino: 'Ambulatório Geral de Barretos',
-              horarioAtendimento: '10:30',
-              ordemEmbarque: 2,
-              observacoes: 'Cadeirante com acompanhante',
-            ),
-          ],
-          passageirosIds: const ['p1', 'p2'],
-        ),
-        ViagemModel(
-          id: 'horario_${dataHoje.year}_${dataHoje.month}_${dataHoje.day}_2',
-          motoristaId: 'mot_marcos',
-          motoristaNome: 'Marcos Roberto Pereira',
-          veiculoId: 'v2',
-          veiculoPlaca: 'BRA-2E45',
-          veiculoModelo: 'Renault Master Minibus',
-          kmInicial: 142100,
-          cidadeDestino: 'SÃO JOSÉ DO RIO PRETO',
-          nomeHorario: '08:30 - São José do Rio Preto (HB / Lucy Montoro)',
-          dataViagem: dataHoje,
-          dataHoraInicio: DateTime(dataHoje.year, dataHoje.month, dataHoje.day, 8, 30),
-          status: 'planejada',
-          passageiros: const [],
-          passageirosIds: const [],
-        ),
-      ]);
-      _todasViagensController.add(List.unmodifiable(_todasViagensMemoria));
+          _todasViagensMemoria
+            ..clear()
+            ..addAll(viagensCarregadas);
+          if (!_todasViagensController.isClosed) {
+            _todasViagensController.add(List.unmodifiable(_todasViagensMemoria));
+          }
+
+          // Sincroniza apenas viagens que já fazem parte da sessão ativa em memória
+          bool atualizouAtiva = false;
+          for (int i = 0; i < _viagensAtivasMemoria.length; i++) {
+            final ar = viagensCarregadas
+                .where((v) => v.id == _viagensAtivasMemoria[i].id && !v.isCancelada && !v.isConcluida)
+                .firstOrNull;
+            if (ar != null) {
+              _viagensAtivasMemoria[i] = ar;
+              atualizouAtiva = true;
+              if (_viagemAtiva?.id == ar.id) {
+                _viagemAtiva = ar;
+                if (!_viagemAtivaController.isClosed) {
+                  _viagemAtivaController.add(_viagemAtiva);
+                }
+              }
+            }
+          }
+          if (atualizouAtiva && !_viagensAtivasController.isClosed) {
+            _viagensAtivasController.add(List.unmodifiable(_viagensAtivasMemoria));
+          }
+        });
+      } catch (_) {}
     }
-
     // Marca a flag como verdadeira para prevenir reinicialização
     _inicializado = true;
   // Fecha o método _inicializarDadosBase
+  }
+
+  /// Gera códigos de acesso únicos (4 a 5 dígitos) e seus respectivos hashes SHA-256
+  /// para todos os passageiros da viagem que ainda não possuam código ou cujo hash
+  /// esteja ausente/dessincronizado (ex.: código inserido manualmente no console).
+  (Map<String, String>, Map<String, String>, bool) _sincronizarCodigosDaViagem({
+    required String viagemId,
+    required List<PassageiroViagemModel> passageiros,
+    required List<String> passageirosIds,
+    required Map<String, String> codigosExistentes,
+    required Map<String, String> hashesExistentes,
+  }) {
+    final mapaCodigos = Map<String, String>.from(codigosExistentes);
+    final mapaHashes = Map<String, String>.from(hashesExistentes);
+    bool alterou = false;
+
+    // Coleta todos os IDs de pacientes da viagem
+    final idsPacientes = <String>{
+      ...passageiros.map((p) => p.pacienteId).where((id) => id.trim().isNotEmpty),
+      ...passageirosIds.where((id) => id.trim().isNotEmpty),
+      ...mapaCodigos.keys.where((id) => id.trim().isNotEmpty),
+    };
+
+    for (final pid in idsPacientes) {
+      final codigoAtual = mapaCodigos[pid]?.trim() ?? '';
+      if (codigoAtual.isEmpty) {
+        final novoCodigo = CodigoAcessoService.gerarCodigoUnicoNaViagem(mapaCodigos.values);
+        mapaCodigos[pid] = novoCodigo;
+        mapaHashes[pid] = CodigoAcessoService.calcularHash(novoCodigo, viagemId);
+        alterou = true;
+      } else {
+        final hashEsperado = CodigoAcessoService.calcularHash(codigoAtual, viagemId);
+        if (mapaHashes[pid] != hashEsperado) {
+          mapaHashes[pid] = hashEsperado;
+          alterou = true;
+        }
+      }
+    }
+
+    return (mapaCodigos, mapaHashes, alterou);
   }
 
   // Linha em branco separadora entre métodos privados
@@ -560,8 +570,6 @@ class ViagemService {
                 // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
                 // Escreve os veículos padrão no Firestore quando a coleção está sem documentos
                 // ------------------------------------------------------------
-                // Sincroniza a base de dados padrão no Firestore de forma assíncrona
-                _sincronizarVeiculosBaseNoFirestore();
                 // Retorna os veículos da memória aplicando o filtro de disponibilidade
                 return ValidacaoViagem.filtrarVeiculosDisponiveis(
                   _veiculosMemoria,
@@ -623,38 +631,6 @@ class ViagemService {
   }
 
   // Linha em branco separadora entre métodos de carregamento e sincronização
-  // ----------------------------------------------------------------------------
-  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
-  // Envia os veículos da lista em memória para a coleção 'veiculos' do Firestore
-  // ----------------------------------------------------------------------------
-  // MÉTODO ASSÍNCRONO: _sincronizarVeiculosBaseNoFirestore
-  // - Grava os veículos padrão da prefeitura na coleção 'veiculos' do Firestore.
-  // --------------------------------------------------------------------------
-  Future<void> _sincronizarVeiculosBaseNoFirestore() async {
-    // Interrompe se o Firebase não estiver configurado
-    if (!_isFirebaseDisponivel()) return;
-    // Bloco try para capturar eventuais falhas de gravação em lote
-    try {
-      // Obtém referência para a coleção 'veiculos'
-      final col = FirebaseFirestore.instance.collection('veiculos');
-      // Itera por cada veículo cadastrado na memória
-      for (final v in _veiculosMemoria) {
-        // Grava o veículo com merge de opções no Firestore
-        await col.doc(v.id).set(v.toMap(), SetOptions(merge: true));
-      // Fecha o loop de veículos
-      }
-    // Captura falhas de escrita sem quebrar o fluxo
-    } catch (_) {
-      // ----------------------------------------------------------------------
-      // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
-      // Ignora falhas de escrita durante a sincronização
-      // ----------------------------------------------------------------------
-    // Fecha o bloco catch
-    }
-  // Fecha o método _sincronizarVeiculosBaseNoFirestore
-  }
-
-  // Linha em branco separadora entre sincronização e iniciarViagem
   // Linha em branco separadora entre sincronização e declararVeiculo
   // ----------------------------------------------------------------------------
   // DECLARAÇÃO DE VEÍCULO (Issue #65: Novo Fluxo)
@@ -745,8 +721,16 @@ class ViagemService {
     }).toList();
 
     final List<String> viagensIdsSessao = [];
+    final List<ViagemModel> viagensAtivadasParaPersistir = [];
     for (final v in viagensDoDia) {
       if (!_viagensAtivasMemoria.any((va) => va.id == v.id)) {
+        final (codigosSinc, hashesSinc, _) = _sincronizarCodigosDaViagem(
+          viagemId: v.id,
+          passageiros: v.passageiros,
+          passageirosIds: v.passageirosIds,
+          codigosExistentes: v.codigosAcesso,
+          hashesExistentes: v.codigosHash,
+        );
         final vAtivada = v.copyWith(
           sessaoId: novaSessao.id,
           veiculoId: veiculo.id,
@@ -754,8 +738,11 @@ class ViagemService {
           veiculoModelo: veiculo.modelo,
           kmInicial: kmInicial,
           status: 'ativa',
+          codigosAcesso: codigosSinc,
+          codigosHash: hashesSinc,
         );
         _viagensAtivasMemoria.add(vAtivada);
+        viagensAtivadasParaPersistir.add(vAtivada);
         viagensIdsSessao.add(vAtivada.id);
         final idx = _todasViagensMemoria.indexWhere((tv) => tv.id == v.id);
         if (idx != -1) {
@@ -793,7 +780,14 @@ class ViagemService {
         await FirebaseFirestore.instance
             .collection('sessoes_veiculo')
             .doc(novaSessao.id)
-            .set(novaSessao.toMap());
+            .set(_sessaoAtiva!.toMap());
+
+        for (final va in viagensAtivadasParaPersistir) {
+          await FirebaseFirestore.instance
+              .collection('viagens')
+              .doc(va.id)
+              .set(va.toMap(), SetOptions(merge: true));
+        }
 
         if (motoristaId.isNotEmpty) {
           await FirebaseFirestore.instance
@@ -894,8 +888,40 @@ class ViagemService {
             : (_viagemAtiva?.id == viagemId ? _viagemAtiva : null));
 
     // 2. Se já existir código atribuído a este paciente na viagem, retorna sem duplicar (Idempotência)
-    if (viagem != null && viagem.codigosAcesso.containsKey(pacienteId)) {
-      return viagem.codigosAcesso[pacienteId]!;
+    if (viagem != null &&
+        viagem.codigosAcesso.containsKey(pacienteId) &&
+        viagem.codigosAcesso[pacienteId]!.trim().isNotEmpty) {
+      final codigoExistente = viagem.codigosAcesso[pacienteId]!.trim();
+      final hashEsperado = CodigoAcessoService.calcularHash(codigoExistente, viagemId);
+      if (viagem.codigosHash[pacienteId] != hashEsperado) {
+        final mapaHashes = Map<String, String>.from(viagem.codigosHash);
+        mapaHashes[pacienteId] = hashEsperado;
+        final viagemAtualizada = viagem.copyWith(codigosHash: mapaHashes);
+        if (viagemIndex != -1) {
+          _viagensAtivasMemoria[viagemIndex] = viagemAtualizada;
+          _viagensAtivasController.add(List.unmodifiable(_viagensAtivasMemoria));
+        }
+        if (todasIndex != -1) {
+          _todasViagensMemoria[todasIndex] = viagemAtualizada;
+          _todasViagensController.add(List.unmodifiable(_todasViagensMemoria));
+        }
+        if (_viagemAtiva?.id == viagemId) {
+          _viagemAtiva = viagemAtualizada;
+          _viagemAtivaController.add(_viagemAtiva);
+        }
+        if (_isFirebaseDisponivel()) {
+          try {
+            await FirebaseFirestore.instance
+                .collection('viagens')
+                .doc(viagemId)
+                .set({
+                  'codigosAcesso': {pacienteId: codigoExistente},
+                  'codigosHash': {pacienteId: hashEsperado},
+                }, SetOptions(merge: true));
+          } catch (_) {}
+        }
+      }
+      return codigoExistente;
     }
 
     // 3. Sorteia código único de 4 a 5 dígitos garantindo ausência de colisões na viagem
@@ -938,8 +964,8 @@ class ViagemService {
             .collection('viagens')
             .doc(viagemId)
             .set({
-              'codigosAcesso.$pacienteId': novoCodigo,
-              'codigosHash.$pacienteId': novoHash,
+              'codigosAcesso': {pacienteId: novoCodigo},
+              'codigosHash': {pacienteId: novoHash},
             }, SetOptions(merge: true));
       } catch (_) {}
     }
@@ -1106,44 +1132,112 @@ class ViagemService {
     }
 
     // Linha em branco separadora entre atualização de memória e criação da viagem
-    // ------------------------------------------------------------------------
-    // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
-    // Instancia o objeto ViagemModel com os dados da viagem
-    // ------------------------------------------------------------------------
-    // Cria a nova instância de ViagemModel com status 'ativa'
-    final novaViagem = ViagemModel(
-      // Gera ID baseado em timestamp
-      id: 'viagem_${DateTime.now().millisecondsSinceEpoch}',
-      // Atribui o ID do motorista
-      motoristaId: motoristaId,
-      // Atribui o nome do motorista
-      motoristaNome: motoristaNome,
-      // Atribui o ID do veículo
-      veiculoId: veiculo.id,
-      // Atribui a placa do veículo
-      veiculoPlaca: veiculo.placa,
-      // Atribui o modelo do veículo
-      veiculoModelo: veiculo.modelo,
-      // Atribui a leitura de KM de partida
-      kmInicial: kmInicial,
-      // Atribui a cidade de destino
-      cidadeDestino: cidadeDestino,
-      // Atribui o momento do início da viagem
-      dataHoraInicio: DateTime.now(),
-      // Define a situação operacional como ativa
-      status: 'ativa',
-      // Vincula à sessão de veículo ativa
-      sessaoId: _sessaoAtiva?.id,
+    // Verifica se já existe horário agendado pelo administrador (ativado na sessão ou planejado)
+    // para este motorista/veículo hoje, aproveitando seus passageiros e códigos de acesso
+    final idxAgendadaAtiva = _viagensAtivasMemoria.indexWhere(
+      (v) =>
+          (v.id.startsWith('horario_') || v.passageiros.isNotEmpty) &&
+          (v.motoristaId == motoristaId || v.veiculoId == veiculo.id),
+    );
+    final idxPlanejada = _todasViagensMemoria.indexWhere(
+      (v) =>
+          v.isPlanejada &&
+          !v.isCancelada &&
+          (v.motoristaId == motoristaId || v.veiculoId == veiculo.id),
     );
 
-    // Linha em branco separadora entre criação da viagem e notificação dos fluxos
-    // ------------------------------------------------------------------------
-    // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
-    // Atualiza a variável e notifica os fluxos de dados
-    // ------------------------------------------------------------------------
-    // Atualiza a lista interna de N viagens ativas
-    _viagensAtivasMemoria.add(novaViagem);
-    _todasViagensMemoria.add(novaViagem);
+    final ViagemModel novaViagem;
+    if (idxAgendadaAtiva != -1) {
+      final base = _viagensAtivasMemoria[idxAgendadaAtiva];
+      final (codigosSinc, hashesSinc, _) = _sincronizarCodigosDaViagem(
+        viagemId: base.id,
+        passageiros: base.passageiros,
+        passageirosIds: base.passageirosIds,
+        codigosExistentes: base.codigosAcesso,
+        hashesExistentes: base.codigosHash,
+      );
+      novaViagem = base.copyWith(
+        motoristaId: motoristaId,
+        motoristaNome: motoristaNome,
+        veiculoId: veiculo.id,
+        veiculoPlaca: veiculo.placa,
+        veiculoModelo: veiculo.modelo,
+        kmInicial: kmInicial,
+        status: 'ativa',
+        sessaoId: _sessaoAtiva?.id,
+        codigosAcesso: codigosSinc,
+        codigosHash: hashesSinc,
+      );
+      _viagensAtivasMemoria[idxAgendadaAtiva] = novaViagem;
+      final idxTodas = _todasViagensMemoria.indexWhere((tv) => tv.id == novaViagem.id);
+      if (idxTodas != -1) {
+        _todasViagensMemoria[idxTodas] = novaViagem;
+      } else {
+        _todasViagensMemoria.add(novaViagem);
+      }
+    } else if (idxPlanejada != -1) {
+      final base = _todasViagensMemoria[idxPlanejada];
+      final (codigosSinc, hashesSinc, _) = _sincronizarCodigosDaViagem(
+        viagemId: base.id,
+        passageiros: base.passageiros,
+        passageirosIds: base.passageirosIds,
+        codigosExistentes: base.codigosAcesso,
+        hashesExistentes: base.codigosHash,
+      );
+      novaViagem = base.copyWith(
+        motoristaId: motoristaId,
+        motoristaNome: motoristaNome,
+        veiculoId: veiculo.id,
+        veiculoPlaca: veiculo.placa,
+        veiculoModelo: veiculo.modelo,
+        kmInicial: kmInicial,
+        status: 'ativa',
+        sessaoId: _sessaoAtiva?.id,
+        codigosAcesso: codigosSinc,
+        codigosHash: hashesSinc,
+      );
+      _todasViagensMemoria[idxPlanejada] = novaViagem;
+      _viagensAtivasMemoria.add(novaViagem);
+    } else {
+      // ------------------------------------------------------------------------
+      // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
+      // Instancia o objeto ViagemModel com os dados da viagem
+      // ------------------------------------------------------------------------
+      // Cria a nova instância de ViagemModel com status 'ativa'
+      novaViagem = ViagemModel(
+        // Gera ID baseado em timestamp
+        id: 'viagem_${DateTime.now().millisecondsSinceEpoch}',
+        // Atribui o ID do motorista
+        motoristaId: motoristaId,
+        // Atribui o nome do motorista
+        motoristaNome: motoristaNome,
+        // Atribui o ID do veículo
+        veiculoId: veiculo.id,
+        // Atribui a placa do veículo
+        veiculoPlaca: veiculo.placa,
+        // Atribui o modelo do veículo
+        veiculoModelo: veiculo.modelo,
+        // Atribui a leitura de KM de partida
+        kmInicial: kmInicial,
+        // Atribui a cidade de destino
+        cidadeDestino: cidadeDestino,
+        // Atribui o momento do início da viagem
+        dataHoraInicio: DateTime.now(),
+        // Define a situação operacional como ativa
+        status: 'ativa',
+        // Vincula à sessão de veículo ativa
+        sessaoId: _sessaoAtiva?.id,
+      );
+
+      // ------------------------------------------------------------------------
+      // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
+      // Atualiza a variável e notifica os fluxos de dados
+      // ------------------------------------------------------------------------
+      // Atualiza a lista interna de N viagens ativas
+      _viagensAtivasMemoria.add(novaViagem);
+      _todasViagensMemoria.add(novaViagem);
+    }
+
     // Atualiza a propriedade interna de viagem ativa principal
     _viagemAtiva = novaViagem;
     // Emite o novo objeto na stream de viagem ativa
@@ -1628,8 +1722,22 @@ class ViagemService {
       }
     }
 
+    final idNovaViagem =
+        'horario_${dataAlvo.year}_${dataAlvo.month}_${dataAlvo.day}_${DateTime.now().millisecondsSinceEpoch}';
+    final listaPassageirosIds = passageiros
+        .expand((p) => [p.pacienteId, if (p.acompanhanteId != null) p.acompanhanteId!])
+        .where((id) => id.isNotEmpty)
+        .toList();
+    final (codigosGerados, hashesGerados, _) = _sincronizarCodigosDaViagem(
+      viagemId: idNovaViagem,
+      passageiros: passageiros,
+      passageirosIds: listaPassageirosIds,
+      codigosExistentes: const {},
+      hashesExistentes: const {},
+    );
+
     final novaViagem = ViagemModel(
-      id: 'horario_${dataAlvo.year}_${dataAlvo.month}_${dataAlvo.day}_${DateTime.now().millisecondsSinceEpoch}',
+      id: idNovaViagem,
       motoristaId: motoristaId,
       motoristaNome: motoristaNome,
       veiculoId: veiculoId,
@@ -1643,10 +1751,9 @@ class ViagemService {
       status: 'planejada',
       observacoes: observacoes,
       passageiros: passageiros,
-      passageirosIds: passageiros
-          .expand((p) => [p.pacienteId, if (p.acompanhanteId != null) p.acompanhanteId!])
-          .where((id) => id.isNotEmpty)
-          .toList(),
+      passageirosIds: listaPassageirosIds,
+      codigosAcesso: codigosGerados,
+      codigosHash: hashesGerados,
     );
 
     // 8. Gravação na memória e notificação das streams
@@ -1761,21 +1868,37 @@ class ViagemService {
       }
     }
 
-    // 3. Tratamento de códigos de acesso existentes
-    // Preserva códigos de passageiros mantidos; descarta códigos de removidos
-    final mapaCodigosPreservados = Map<String, String>.from(existente.codigosAcesso);
-    final mapaHashesPreservados = Map<String, String>.from(existente.codigosHash);
+    // 3. Tratamento de códigos de acesso existentes e geração para novos passageiros
+    // Preserva códigos de passageiros mantidos; descarta códigos de removidos e gera para novos
+    final mapaCodigosPreservados = <String, String>{
+      ...existente.codigosAcesso,
+      ...viagem.codigosAcesso,
+    };
+    final mapaHashesPreservados = <String, String>{
+      ...existente.codigosHash,
+      ...viagem.codigosHash,
+    };
     final idsAtuais = viagem.passageiros.map((p) => p.pacienteId).toSet();
     mapaCodigosPreservados.removeWhere((id, _) => !idsAtuais.contains(id));
     mapaHashesPreservados.removeWhere((id, _) => !idsAtuais.contains(id));
 
+    final listaPassageirosIds = viagem.passageiros
+        .expand((p) => [p.pacienteId, if (p.acompanhanteId != null) p.acompanhanteId!])
+        .where((id) => id.isNotEmpty)
+        .toList();
+
+    final (codigosSinc, hashesSinc, _) = _sincronizarCodigosDaViagem(
+      viagemId: viagem.id,
+      passageiros: viagem.passageiros,
+      passageirosIds: listaPassageirosIds,
+      codigosExistentes: mapaCodigosPreservados,
+      hashesExistentes: mapaHashesPreservados,
+    );
+
     final viagemAtualizada = viagem.copyWith(
-      codigosAcesso: mapaCodigosPreservados,
-      codigosHash: mapaHashesPreservados,
-      passageirosIds: viagem.passageiros
-          .expand((p) => [p.pacienteId, if (p.acompanhanteId != null) p.acompanhanteId!])
-          .where((id) => id.isNotEmpty)
-          .toList(),
+      codigosAcesso: codigosSinc,
+      codigosHash: hashesSinc,
+      passageirosIds: listaPassageirosIds,
     );
 
     _todasViagensMemoria[index] = viagemAtualizada;
@@ -1914,8 +2037,18 @@ class ViagemService {
         vo.dataHoraInicio.minute,
       );
 
+      final idDuplicada =
+          'horario_${dataDestinoFormatada.year}_${dataDestinoFormatada.month}_${dataDestinoFormatada.day}_${DateTime.now().millisecondsSinceEpoch}_$i';
+      final (codigosDup, hashesDup, _) = _sincronizarCodigosDaViagem(
+        viagemId: idDuplicada,
+        passageiros: vo.passageiros,
+        passageirosIds: vo.passageirosIds,
+        codigosExistentes: const {},
+        hashesExistentes: const {},
+      );
+
       final novaViagem = ViagemModel(
-        id: 'horario_${dataDestinoFormatada.year}_${dataDestinoFormatada.month}_${dataDestinoFormatada.day}_${DateTime.now().millisecondsSinceEpoch}_$i',
+        id: idDuplicada,
         motoristaId: vo.motoristaId,
         motoristaNome: vo.motoristaNome,
         veiculoId: vo.veiculoId,
@@ -1930,8 +2063,8 @@ class ViagemService {
         observacoes: vo.observacoes,
         passageiros: List.from(vo.passageiros),
         passageirosIds: List.from(vo.passageirosIds),
-        codigosAcesso: const {},
-        codigosHash: const {},
+        codigosAcesso: codigosDup,
+        codigosHash: hashesDup,
         sessaoId: null,
       );
 

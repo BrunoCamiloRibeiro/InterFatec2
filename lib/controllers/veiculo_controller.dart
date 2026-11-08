@@ -1,9 +1,7 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import '../models/veiculo_model.dart';
 
 /// Controller baseado no padrão ChangeNotifier para gerenciar o ciclo de vida dos Veículos
@@ -68,7 +66,7 @@ class VeiculoController extends ChangeNotifier {
 
   int get totalVeiculos => _veiculos.length;
 
-  /// Carrega os dados reais do Firestore ou fallback em JSON/Memória
+  /// Carrega os dados reais do Firestore
   Future<void> carregarVeiculos() async {
     if (_veiculos.isNotEmpty && _subFirestore != null) return;
 
@@ -82,18 +80,13 @@ class VeiculoController extends ChangeNotifier {
         _subFirestore = FirebaseFirestore.instance
             .collection('veiculos')
             .snapshots()
-            .listen((snapshot) async {
-          if (snapshot.docs.isNotEmpty) {
-            _veiculos.clear();
-            for (final doc in snapshot.docs) {
-              _veiculos.add(VeiculoModel.fromMap(doc.data(), docId: doc.id));
-            }
-            _carregando = false;
-            notifyListeners();
-          } else {
-            // Se a coleção estiver vazia no Firestore, faz seed dos dados de exemplo
-            await _popularFirestoreComDadosIniciais();
+            .listen((snapshot) {
+          _veiculos.clear();
+          for (final doc in snapshot.docs) {
+            _veiculos.add(VeiculoModel.fromMap(doc.data(), docId: doc.id));
           }
+          _carregando = false;
+          notifyListeners();
         }, onError: (e) {
           _erro = 'Erro na sincronização com o banco: $e';
           _carregando = false;
@@ -105,90 +98,8 @@ class VeiculoController extends ChangeNotifier {
       }
     }
 
-    // Fallback para execução sem Firebase ou testes locais
-    await _carregarDoJsonFallback();
-  }
-
-  Future<void> _popularFirestoreComDadosIniciais() async {
-    try {
-      final String jsonString = await rootBundle.loadString(
-        'assets/data/dados_veiculos.json',
-      );
-      final List<dynamic> jsonDecodificado =
-          jsonDecode(jsonString) as List<dynamic>;
-
-      final batch = FirebaseFirestore.instance.batch();
-      _veiculos.clear();
-      for (final item in jsonDecodificado) {
-        final v = VeiculoModel.fromMap(Map<String, dynamic>.from(item as Map));
-        final docRef = FirebaseFirestore.instance.collection('veiculos').doc(v.id);
-        batch.set(docRef, v.toMap());
-        _veiculos.add(v);
-      }
-      await batch.commit();
-    } catch (_) {
-      await _carregarDoJsonFallback();
-    } finally {
-      _carregando = false;
-      notifyListeners();
-    }
-  }
-
-  Future<void> _carregarDoJsonFallback() async {
-    try {
-      final String jsonString = await rootBundle.loadString(
-        'assets/data/dados_veiculos.json',
-      );
-      final List<dynamic> jsonDecodificado =
-          jsonDecode(jsonString) as List<dynamic>;
-
-      _veiculos.clear();
-      for (final item in jsonDecodificado) {
-        _veiculos.add(
-            VeiculoModel.fromMap(Map<String, dynamic>.from(item as Map)));
-      }
-    } catch (e) {
-      _veiculos.clear();
-      _veiculos.addAll([
-        const VeiculoModel(
-          id: 'veiculo001',
-          placa: 'ABC1D23',
-          tipo: TipoVeiculo.van,
-          marca: 'Renault',
-          modelo: 'Master',
-          ano: 2023,
-          qtdAssentos: 15,
-          status: StatusVeiculo.disponivel,
-          quilometragemAtual: 45280,
-          possuiAC: true,
-          possuiPreferencial: false,
-          observacoes: 'Veículo utilizado para viagens intermunicipais.',
-          criadoEm: '2026-10-01T08:00:00',
-          atualizadoEm: '2026-10-01T08:00:00',
-        ),
-        const VeiculoModel(
-          id: 'veiculo002',
-          placa: 'DEF4G56',
-          tipo: TipoVeiculo.ambulancia,
-          marca: 'Fiat',
-          modelo: 'Ducato',
-          ano: 2022,
-          qtdAssentos: 4,
-          status: StatusVeiculo.emManutencao,
-          quilometragemAtual: 62150,
-          ultimoMotoristaId: 'motorista001',
-          possuiAC: true,
-          possuiPreferencial: true,
-          observacoes: 'Revisão preventiva pendente.',
-          criadoEm: '2026-09-15T10:30:00',
-          atualizadoEm: '2026-10-20T14:00:00',
-          atualizadoPor: 'usuario001',
-        ),
-      ]);
-    } finally {
-      _carregando = false;
-      notifyListeners();
-    }
+    _carregando = false;
+    notifyListeners();
   }
 
   /// Filtra a lista em memória
@@ -279,10 +190,13 @@ class VeiculoController extends ChangeNotifier {
   }
 
   @visibleForTesting
-  void resetParaTestes() {
+  void resetParaTestes({List<VeiculoModel>? veiculosIniciais}) {
     _subFirestore?.cancel();
     _subFirestore = null;
     _veiculos.clear();
+    if (veiculosIniciais != null) {
+      _veiculos.addAll(veiculosIniciais);
+    }
     _filtroTexto = '';
     _carregando = false;
     _erro = null;

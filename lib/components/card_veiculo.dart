@@ -18,21 +18,32 @@ class CardVeiculo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final String placa = (veiculo['placa'] ?? 'XXX-1234').toString();
-    final String marca = (veiculo['marca'] ?? 'Marca').toString();
-    final String modelo = (veiculo['modelo'] ?? 'Modelo').toString();
+    final String placa = (veiculo['placa'] ?? '-').toString();
+    final String marca = (veiculo['marca'] ?? '').toString().trim();
+    final String modelo = (veiculo['modelo'] ?? 'Modelo').toString().trim();
     final dynamic ano = veiculo['ano'] ?? 'YYYY';
+    final String descricaoVeiculo = (marca.isNotEmpty &&
+            marca.toLowerCase() != 'marca' &&
+            !modelo.toLowerCase().startsWith(marca.toLowerCase()))
+        ? '$marca $modelo · $ano'
+        : '$modelo · $ano';
     final String tipoRaw = (veiculo['tipo'] ?? 'carro')
         .toString()
         .toLowerCase();
     final String statusRaw = (veiculo['status'] ?? 'disponivel').toString();
     final dynamic km = veiculo['quilometragemAtual'] ?? 0;
     final dynamic assentos = veiculo['qtdAssentos'] ?? 0;
-    final String ultimoMotorista =
-        (veiculo['ultimoMotoristaId'] ??
-                // veiculo['motoristaResponsavelId'] ?? // Removido a pedido do PO (não há motorista responsável fixo)
-                'Nome do Último Motorista')
-            .toString();
+    final String rawMotorista =
+        (veiculo['ultimoMotoristaNome'] ?? veiculo['ultimoMotoristaId'] ?? '')
+            .toString()
+            .trim();
+    final String ultimoMotorista = (rawMotorista.isEmpty ||
+            rawMotorista == 'null' ||
+            rawMotorista == 'motorista_atual')
+        ? 'Não informado'
+        : (rawMotorista == 'mot_inicial_01'
+            ? 'Roberto Almeida Prado'
+            : rawMotorista);
     final bool possuiAC = veiculo['possuiAC'] == true;
     final bool possuiPreferencial = veiculo['possuiPreferencial'] == true;
     final String? observacoes = veiculo['observacoes']?.toString();
@@ -81,151 +92,158 @@ class CardVeiculo extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // IDENTIFICAÇÃO
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      placa,
-                      style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Text(
-                      '$marca $modelo · $ano',
-                      style: const TextStyle(fontSize: 14, color: Colors.black),
-                    ),
-                    Row(
-                      children: [
-                        Icon(iconeTipo, size: 20, color: Colors.grey[700]),
-                        const SizedBox(width: 5),
-                        Text(
-                          labelTipo,
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.grey[700],
-                          ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        placa,
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
                         ),
-                      ],
-                    ),
-                  ],
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        descricaoVeiculo,
+                        style: const TextStyle(fontSize: 14, color: Colors.black),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(iconeTipo, size: 18, color: Colors.grey[700]),
+                          const SizedBox(width: 5),
+                          Flexible(
+                            child: Text(
+                              labelTipo,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.grey[700],
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
+                const SizedBox(width: 8),
 
                 // STATUS INDICATOR COM ÁREA INTEIRA CLICÁVEL
-                Column(
-                  children: [
-                    Container(
-                      decoration: BoxDecoration(
-                        color: corBase.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(30),
+                Container(
+                  decoration: BoxDecoration(
+                    color: corBase.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(30),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
                       ),
-                      clipBehavior: Clip.antiAlias, // Garante que o splash cubra a pílula toda
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<String>(
-                          // O padding fica diretamente no DropdownButton para tornar a área toda clicável
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 6,
-                          ),
-                          value: statusNormalizado,
-                          isDense: true,
-                          menuWidth: 180,
-                          borderRadius: BorderRadius.circular(16),
-                          icon: Icon(
-                            Icons.arrow_drop_down,
-                            size: 20,
-                            color: Color.lerp(corBase, Colors.black, 0.5),
-                          ),
-                          selectedItemBuilder: (BuildContext context) {
-                            return statusOpcoes.map((op) {
-                              return Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.circle,
-                                    size: 10,
-                                    color: Color.lerp(
-                                      corBase,
-                                      Colors.black,
-                                      0.5,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    textoStatus,
-                                    style: TextStyle(
-                                      color: Color.lerp(
-                                        corBase,
-                                        Colors.black,
-                                        0.5,
-                                      ),
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
-                              );
-                            }).toList();
-                          },
-                          items: statusOpcoes.map((op) {
-                            final Color cor = op['cor'] as Color;
-                            return DropdownMenuItem<String>(
-                              value: op['valor'] as String,
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.circle,
-                                    size: 10,
-                                    color: Color.lerp(cor, Colors.black, 0.5),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    op['label'] as String,
-                                    style: TextStyle(
-                                      color: Color.lerp(cor, Colors.black, 0.5),
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
+                      value: statusNormalizado,
+                      isDense: true,
+                      menuWidth: 175,
+                      borderRadius: BorderRadius.circular(16),
+                      icon: Icon(
+                        Icons.arrow_drop_down,
+                        size: 18,
+                        color: Color.lerp(corBase, Colors.black, 0.5),
+                      ),
+                      selectedItemBuilder: (BuildContext context) {
+                        return statusOpcoes.map((op) {
+                          return Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.circle,
+                                size: 9,
+                                color: Color.lerp(
+                                  corBase,
+                                  Colors.black,
+                                  0.5,
+                                ),
                               ),
-                            );
-                          }).toList(),
-                          onChanged: (novoStatus) {
-                            if (novoStatus != null && onStatusChanged != null) {
-                              onStatusChanged!(novoStatus);
-                            }
-                          },
-                        ),
-                      ),
+                              const SizedBox(width: 6),
+                              Text(
+                                textoStatus,
+                                style: TextStyle(
+                                  color: Color.lerp(
+                                    corBase,
+                                    Colors.black,
+                                    0.5,
+                                  ),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          );
+                        }).toList();
+                      },
+                      items: statusOpcoes.map((op) {
+                        final Color cor = op['cor'] as Color;
+                        return DropdownMenuItem<String>(
+                          value: op['valor'] as String,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.circle,
+                                size: 10,
+                                color: Color.lerp(cor, Colors.black, 0.5),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                op['label'] as String,
+                                style: TextStyle(
+                                  color: Color.lerp(cor, Colors.black, 0.5),
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                      onChanged: (novoStatus) {
+                        if (novoStatus != null && onStatusChanged != null) {
+                          onStatusChanged!(novoStatus);
+                        }
+                      },
                     ),
-                  ],
+                  ),
                 ),
               ],
             ),
 
             // INFORMAÇÕES OPERACIONAIS
-            Row(
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               spacing: 12,
               children: [
-                Column(
+                // QUILOMETRAGEM E QTD DE ASSENTOS
+                Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  spacing: 12,
                   children: [
-                    // QUILOMETRAGEM E QTD DE ASSENTOS
-                    Row(
-                      children: [
-                        // QUILOMETRAGEM
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.speed_outlined,
-                              size: 20,
-                              color: Colors.grey[700],
-                            ),
-                            const SizedBox(width: 10),
-                            Column(
+                    // QUILOMETRAGEM
+                    Expanded(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            Icons.speed_outlined,
+                            size: 20,
+                            color: Colors.grey[700],
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
@@ -242,22 +260,28 @@ class CardVeiculo extends StatelessWidget {
                                 Text(
                                   '$km km',
                                   style: const TextStyle(fontSize: 14),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ],
                             ),
-                          ],
-                        ),
-                        const SizedBox(width: 16),
-                        // QTD DE ASSENTOS
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.chair_outlined,
-                              size: 20,
-                              color: Colors.grey[700],
-                            ),
-                            const SizedBox(width: 10),
-                            Column(
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    // QTD DE ASSENTOS
+                    Expanded(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            Icons.chair_outlined,
+                            size: 20,
+                            color: Colors.grey[700],
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
@@ -274,47 +298,48 @@ class CardVeiculo extends StatelessWidget {
                                 Text(
                                   '$assentos',
                                   style: const TextStyle(fontSize: 14),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ],
                             ),
-                          ],
-                        ),
-                      ],
+                          ),
+                        ],
+                      ),
                     ),
-                    // ÚLTIMO MOTORISTA
-                    Row(
-                      children: [
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.person_outline_outlined,
-                              size: 20,
-                              color: Colors.grey[700],
+                  ],
+                ),
+                // ÚLTIMO MOTORISTA
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.person_outline_outlined,
+                      size: 20,
+                      color: Colors.grey[700],
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Último Motorista',
+                            style: TextStyle(
+                              color: Color.lerp(
+                                Colors.grey,
+                                Colors.black,
+                                0.5,
+                              ),
+                              fontSize: 12,
                             ),
-                            const SizedBox(width: 10),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Último Motorista',
-                                  style: TextStyle(
-                                    color: Color.lerp(
-                                      Colors.grey,
-                                      Colors.black,
-                                      0.5,
-                                    ),
-                                    fontSize: 12,
-                                  ),
-                                ),
-                                Text(
-                                  ultimoMotorista,
-                                  style: const TextStyle(fontSize: 14),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ],
+                          ),
+                          Text(
+                            ultimoMotorista,
+                            style: const TextStyle(fontSize: 14),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -437,7 +462,7 @@ class CardVeiculo extends StatelessWidget {
                 ),
               ),
 
-            // BOTÕES DE EDITAR E VER DETALHES (Estilo original 100% preservado)
+            // BOTÕES DE EDITAR E VER DETALHES
             const Divider(height: 2),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -446,7 +471,7 @@ class CardVeiculo extends StatelessWidget {
                   child: TextButton(
                     style: ButtonStyle(
                       padding: WidgetStateProperty.all(
-                        const EdgeInsets.all(20),
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                       ),
                       shape: WidgetStateProperty.all(
                         RoundedRectangleBorder(
@@ -460,28 +485,31 @@ class CardVeiculo extends StatelessWidget {
                       children: [
                         Icon(
                           Icons.edit_outlined,
-                          size: 25,
+                          size: 20,
                           color: Colors.grey[700],
                         ),
-                        const SizedBox(width: 10),
-                        Text(
-                          'Editar',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: Color.lerp(Colors.grey, Colors.black, 0.5),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            'Editar',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: Color.lerp(Colors.grey, Colors.black, 0.5),
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ],
                     ),
                   ),
                 ),
-                const SizedBox(width: 100),
+                const SizedBox(width: 12),
                 Expanded(
                   child: TextButton(
                     style: ButtonStyle(
                       padding: WidgetStateProperty.all(
-                        const EdgeInsets.all(20),
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                       ),
                       shape: WidgetStateProperty.all(
                         RoundedRectangleBorder(
@@ -493,18 +521,21 @@ class CardVeiculo extends StatelessWidget {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        Text(
-                          'Ver Detalhes',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: Color.lerp(Colors.grey, Colors.black, 0.5),
+                        Flexible(
+                          child: Text(
+                            'Ver Detalhes',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: Color.lerp(Colors.grey, Colors.black, 0.5),
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: 8),
                         Icon(
                           Icons.arrow_forward_outlined,
-                          size: 25,
+                          size: 20,
                           color: Colors.grey[700],
                         ),
                       ],

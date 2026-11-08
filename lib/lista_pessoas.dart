@@ -106,6 +106,7 @@ class PessoaItem {
   final String? veiculoModelo;
   final String? veiculoPlaca;
   final String? email;
+  final String? senha;
   final String? nomeAcompanhante;
   final String? cpfAcompanhante;
   final String? telAcompanhante;
@@ -127,6 +128,7 @@ class PessoaItem {
     this.veiculoModelo,
     this.veiculoPlaca,
     this.email,
+    this.senha,
     this.nomeAcompanhante,
     this.cpfAcompanhante,
     this.telAcompanhante,
@@ -184,6 +186,7 @@ class PessoaItem {
     veiculoModelo: m.veiculoModelo,
     veiculoPlaca: m.veiculoPlaca,
     email: m.email,
+    senha: m.senha,
   );
 
   /// Construtor fábrica para converter uma instância de [AdminModel] em [PessoaItem]
@@ -199,6 +202,7 @@ class PessoaItem {
     detalheExtra: a.email.isNotEmpty ? 'E-mail: ${a.email}' : null,
     ativo: a.ativo,
     email: a.email,
+    senha: a.senha,
   );
 }
 
@@ -285,70 +289,10 @@ class _ListaPessoasState extends State<ListaPessoas> {
   void initState() {
     super.initState();
 
-    // Identifica se dados mockados foram explicitamente fornecidos (comum em testes)
-    final temMockExplicitamente =
-        widget.mockPacientes != null ||
-        widget.mockMotoristas != null ||
-        widget.mockAdmins != null;
-
-    // Inicialização síncrona com dados de fallback/testes
-    final pacientesIniciais =
-        widget.mockPacientes ??
-        (temMockExplicitamente
-            ? <PacienteModel>[]
-            : [
-                PacienteModel(
-                  id: 'pac_1',
-                  nome: 'Maria Silva Santos',
-                  cpf: '123.456.789-00',
-                  telefone: '(14) 99876-5432',
-                  enderecoPaciente: 'Rua das Flores, 123',
-                  localConsulta: 'Hospital de Base',
-                  status: 0,
-                ),
-                PacienteModel(
-                  id: 'pac_2',
-                  nome: 'Carlos Eduardo Oliveira',
-                  cpf: '234.567.890-11',
-                  telefone: '(14) 99123-4567',
-                  enderecoPaciente: 'Av. Brasil, 450',
-                  localConsulta: 'AME Bauru',
-                  status: 1,
-                ),
-              ]);
-
-    final motoristasIniciais =
-        widget.mockMotoristas ??
-        (temMockExplicitamente
-            ? <MotoristaModel>[]
-            : [
-                MotoristaModel(
-                  id: 'mot_1',
-                  nome: 'João de Deus Pereira',
-                  cpf: '456.789.012-33',
-                  telefone: '(14) 99777-8899',
-                  email: 'joao@saude.sp.gov.br',
-                  cnh: '01234567890',
-                  veiculoModelo: 'Chevrolet Spin',
-                  veiculoPlaca: 'BRA2E19',
-                ),
-              ]);
-
-    final adminsIniciais =
-        widget.mockAdmins ??
-        (temMockExplicitamente
-            ? <AdminModel>[]
-            : [
-                AdminModel(
-                  id: 'adm_1',
-                  nome: 'Dra. Fernanda Vasconcelos',
-                  cpf: '678.901.234-55',
-                  email: 'fernanda.admin@saude.sp.gov.br',
-                  telefone: '(14) 99111-0022',
-                  role: 'admin',
-                ),
-              ]);
-
+    // Inicialização síncrona com dados injetados para testes ou lista vazia até o Firestore emitir
+    final pacientesIniciais = widget.mockPacientes ?? <PacienteModel>[];
+    final motoristasIniciais = widget.mockMotoristas ?? <MotoristaModel>[];
+    final adminsIniciais = widget.mockAdmins ?? <AdminModel>[];
     // Unificação na lista polimórfica
     _todasPessoas = [
       ...pacientesIniciais.map(PessoaItem.fromPaciente),
@@ -581,12 +525,10 @@ class _ListaPessoasState extends State<ListaPessoas> {
                 'atualizadoEm': FieldValue.serverTimestamp(),
               });
         } catch (e) {
-          // Para mocks iniciais locais, apenas registra debug sem poluir a interface
-          if (pessoa.id.startsWith('pac_') ||
+          final isMockLocal = pessoa.id.startsWith('pac_') ||
               pessoa.id.startsWith('mot_') ||
-              pessoa.id.startsWith('adm_')) {
-            debugPrint('Mock excluído localmente: ${pessoa.nome}');
-          } else if (mounted) {
+              pessoa.id.startsWith('adm_');
+          if (!isMockLocal && mounted) {
             setState(() {
               _erroGeral = 'Falha ao excluir no Firebase: $e';
             });

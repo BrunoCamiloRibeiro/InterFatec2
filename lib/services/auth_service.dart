@@ -351,8 +351,9 @@ class FirebaseAuthService implements AuthService {
   // --------------------------------------------------------------------------
   @override
   // Converte cada evento de User emitindo apenas sua String de identificador único (uid)
-  Stream<String?> get authStateChanges =>
-      auth.authStateChanges().map((user) => user?.uid);
+  Stream<String?> get authStateChanges => auth
+      .authStateChanges()
+      .map((user) => user?.uid ?? _usuarioOperacionalLogadoId ?? _pacienteLogadoId);
 
   // Linha em branco separadora entre membros da interface
 
@@ -594,7 +595,7 @@ class FirebaseAuthService implements AuthService {
     if (roleStr == 'motorista') {
       role = UserRole.motorista;
     // Compara se o papel é de administrador
-    } else if (roleStr == 'admin') {
+    } else if (roleStr == 'admin' || roleStr == 'administrador') {
       role = UserRole.admin;
     // Compara se o papel é de paciente
     } else if (roleStr == 'paciente') {
@@ -619,6 +620,154 @@ class FirebaseAuthService implements AuthService {
   // Linha em branco separadora entre resolveUserRole e login
 
   // --------------------------------------------------------------------------
+  // MÉTODO PRIVADO: _autenticarViaFirestoreUsuarios
+  // - O que faz: Valida CPF e senha diretamente contra a coleção 'usuarios'
+  //   do Cloud Firestore quando o registro possui o campo 'senha' (padrão
+  //   utilizado no banco 'trans-saude'), sincronizando qualquer alteração
+  //   manual ou via sistema imediatamente.
+  // --------------------------------------------------------------------------
+  Future<({UserRole? role, bool encontrouUsuarioSemSenha})>
+      _autenticarViaFirestoreUsuarios(
+    String cleanCpf,
+    String rawCpf,
+    String senha,
+  ) async {
+    final formattedCpf = cleanCpf.length == 11
+        ? '${cleanCpf.substring(0, 3)}.${cleanCpf.substring(3, 6)}.${cleanCpf.substring(6, 9)}-${cleanCpf.substring(9, 11)}'
+        : null;
+
+    final candidatosCpf = <String>{
+      if (cleanCpf.isNotEmpty) cleanCpf,
+      ?formattedCpf,
+      if (rawCpf.isNotEmpty) rawCpf,
+    }.toList();
+
+    final docsPorId = <String, Map<String, dynamic>>{};
+
+    if (candidatosCpf.isNotEmpty) {
+      final snap = await firestore
+          .collection('usuarios')
+          .where('cpf', whereIn: candidatosCpf)
+          .get();
+      for (final doc in snap.docs) {
+        docsPorId[doc.id] = doc.data();
+      }
+    }
+
+    final precisaVarreduraCompleta = docsPorId.isEmpty ||
+        !docsPorId.values.any((d) =>
+            (d['senha'] != null && d['senha'].toString().trim().isNotEmpty) ||
+            (d['password'] != null &&
+                d['password'].toString().trim().isNotEmpty)) ||
+        !docsPorId.values.any(
+            (d) => d['role'] != null && d['role'].toString().trim().isNotEmpty);
+
+    if (precisaVarreduraCompleta && cleanCpf.isNotEmpty) {
+      final todosSnap = await firestore.collection('usuarios').get();
+      for (final doc in todosSnap.docs) {
+        final dados = doc.data();
+        final docCpfLimpo =
+            (dados['cpf'] ?? '').toString().replaceAll(RegExp(r'\D'), '');
+        if (docCpfLimpo == cleanCpf) {
+          docsPorId[doc.id] = dados;
+        }
+      }
+    }
+
+    String? uidComRole;
+    String? roleEncontrada;
+    String? uidQualquer;
+    final senhasCadastradas = <String>[];
+    int docsAtivosCount = 0;
+
+    for (final entry in docsPorId.entries) {
+      final dados = entry.value;
+      final ativo = dados['ativo'];
+      final statusStr = dados['status']?.toString().toLowerCase().trim();
+      final situacaoStr = dados['situacao']?.toString().toLowerCase().trim();
+      final isInativo = ativo == false ||
+          ativo == 'false' ||
+          statusStr == 'inativo' ||
+          statusStr == 'excluido' ||
+          situacaoStr == 'inativo' ||
+          situacaoStr == 'excluido';
+
+      if (isInativo) continue;
+
+      docsAtivosCount++;
+      uidQualquer ??= entry.key;
+
+      final r = dados['role']?.toString().trim().toLowerCase();
+      if (r != null && r.isNotEmpty) {
+        if (uidComRole == null ||
+            r == 'motorista' ||
+            r == 'admin' ||
+            r == 'administrador') {
+          uidComRole = entry.key;
+          roleEncontrada = r;
+        }
+      }
+
+      final s1 = dados['senha']?.toString();
+      if (s1 != null && s1.trim().isNotEmpty) {
+        senhasCadastradas.add(s1);
+      }
+      final s2 = dados['password']?.toString();
+      if (s2 != null && s2.trim().isNotEmpty) {
+        senhasCadastradas.add(s2);
+      }
+    }
+
+    if (docsAtivosCount == 0) {
+      return (role: null, encontrouUsuarioSemSenha: false);
+    }
+
+    if (roleEncontrada == 'paciente') {
+      registrarFalhaOperacional(cleanCpf);
+      throw const AuthException(
+        'Acesso restrito a motoristas e administradores.',
+        code: 'access-denied',
+      );
+    }
+
+    if (senhasCadastradas.isNotEmpty) {
+      final senhaConfere = senhasCadastradas.any(
+        (s) => s == senha || s.trim() == senha.trim(),
+      );
+
+      if (!senhaConfere) {
+        registrarFalhaOperacional(cleanCpf);
+        throw const AuthException(
+          'CPF ou senha incorretos.',
+          code: 'invalid-credential',
+        );
+      }
+
+      final uidFinal = uidComRole ?? uidQualquer!;
+      final roleStr = (roleEncontrada ?? 'motorista').toLowerCase().trim();
+      if (roleStr == 'motorista') {
+        resetarTentativasOperacional(cleanCpf);
+        _usuarioOperacionalLogadoId = uidFinal;
+        _roleCache[uidFinal] = UserRole.motorista;
+        return (role: UserRole.motorista, encontrouUsuarioSemSenha: false);
+      } else if (roleStr == 'admin' || roleStr == 'administrador') {
+        resetarTentativasOperacional(cleanCpf);
+        _usuarioOperacionalLogadoId = uidFinal;
+        _roleCache[uidFinal] = UserRole.admin;
+        return (role: UserRole.admin, encontrouUsuarioSemSenha: false);
+      } else {
+        registrarFalhaOperacional(cleanCpf);
+        throw const AuthException(
+          'Acesso restrito a motoristas e administradores.',
+          code: 'access-denied',
+        );
+      }
+    }
+
+    return (role: null, encontrouUsuarioSemSenha: true);
+  }
+
+  // --------------------------------------------------------------------------
   // SOBRESCRITA DO MÉTODO: login
   // - O que faz: Autentica o usuário por CPF e senha e verifica se ele possui papel permitido.
   // - Regra de negócio (RBAC): Apenas 'motorista' e 'admin' têm permissão de acesso a este módulo.
@@ -634,53 +783,30 @@ class FirebaseAuthService implements AuthService {
     final cleanCpf = cpf.replaceAll(RegExp(r'\D'), '');
 
     // 2. Proteção contra ataques de força bruta (Rate Limiting de 5 tentativas)
-    if (customAuth != null && estaBloqueadoOperacional(cleanCpf)) {
+    if (estaBloqueadoOperacional(cleanCpf)) {
       throw const AuthException(
         'Muitas tentativas incorretas. Acesso bloqueado temporariamente por 15 minutos.',
         code: 'rate-limit-exceeded',
       );
     }
 
-    // 3. Catálogo de homologação para testes locais / offline e avaliação
-    // APENAS ATIVADO QUANDO NÃO HOUVER MOCK INJETADO (customAuth == null)
-    if (customAuth == null) {
-      final credenciaisHomologacao = <String, (UserRole, String)>{
-        '67890123455': (UserRole.admin, 'Dra. Fernanda Vasconcelos'),
-        '00011122233': (UserRole.admin, 'Administrador Geral'),
-        '98765432100': (UserRole.admin, 'Gestor Admin'),
-        '45678901233': (UserRole.motorista, 'João de Deus Pereira'),
-        '11122233344': (UserRole.motorista, 'Antônio Carlos Ribeiro'),
-        '12345678901': (UserRole.motorista, 'João Motorista'),
-      };
-
-      final senhaLimpa = senha.trim().toLowerCase();
-      final ehAdminPorSenha = senhaLimpa.contains('admin');
-      final ehMotoristaPorSenha = senhaLimpa.contains('motor');
-
-      UserRole? roleDemo;
-      if (credenciaisHomologacao.containsKey(cleanCpf)) {
-        final (rolePadrao, _) = credenciaisHomologacao[cleanCpf]!;
-        if (ehAdminPorSenha) {
-          roleDemo = UserRole.admin;
-        } else if (ehMotoristaPorSenha) {
-          roleDemo = UserRole.motorista;
-        } else {
-          roleDemo = rolePadrao;
+    // 3. Autenticação prioritária via coleção 'usuarios' do Cloud Firestore (campo 'senha')
+    bool encontrouUsuarioSemSenhaNoFirestore = false;
+    if (customFirestore != null || customAuth == null) {
+      try {
+        final resultadoFirestore = await _autenticarViaFirestoreUsuarios(
+          cleanCpf,
+          cpf.trim(),
+          senha,
+        );
+        if (resultadoFirestore.role != null) {
+          return resultadoFirestore.role!;
         }
-      } else if (ehAdminPorSenha) {
-        roleDemo = UserRole.admin;
-      } else if (ehMotoristaPorSenha) {
-        roleDemo = UserRole.motorista;
-      }
-
-      // Se as credenciais forem válidas na homologação, autentica imediatamente
-      if (roleDemo != null) {
-        resetarTentativasOperacional(cleanCpf);
-        final uidDemo = 'uid_homologacao_${roleDemo.name}_$cleanCpf';
-        _usuarioOperacionalLogadoId = uidDemo;
-        _roleCache[uidDemo] = roleDemo;
-        return roleDemo;
-      }
+        encontrouUsuarioSemSenhaNoFirestore =
+            resultadoFirestore.encontrouUsuarioSemSenha;
+      } on AuthException {
+        rethrow;
+      } catch (_) {}
     }
 
     // Resolve o e-mail correspondente ao CPF
@@ -699,6 +825,21 @@ class FirebaseAuthService implements AuthService {
     // Captura erros específicos de autenticação do FirebaseAuth
     } on FirebaseAuthException catch (e) {
       registrarFalhaOperacional(cleanCpf);
+      if (customAuth == null) {
+        if (encontrouUsuarioSemSenhaNoFirestore) {
+          throw const AuthException(
+            'Usuário sem senha cadastrada no banco. Defina o campo "senha" no cadastro do usuário.',
+            code: 'missing-password',
+          );
+        }
+        final mapped = mapFirebaseAuthException(e);
+        if (mapped == 'Ocorreu um erro ao realizar o login. Tente novamente.') {
+          throw const AuthException(
+            'CPF ou senha incorretos.',
+            code: 'invalid-credential',
+          );
+        }
+      }
       // Lança AuthException com mensagem traduzida via mapFirebaseAuthException
       throw AuthException(mapFirebaseAuthException(e), code: e.code);
     // Captura qualquer outro erro inesperado
@@ -706,6 +847,12 @@ class FirebaseAuthService implements AuthService {
       registrarFalhaOperacional(cleanCpf);
       // Se já for AuthException, propaga
       if (e is AuthException) rethrow;
+      if (customAuth == null && encontrouUsuarioSemSenhaNoFirestore) {
+        throw const AuthException(
+          'Usuário sem senha cadastrada no banco. Defina o campo "senha" no cadastro do usuário.',
+          code: 'missing-password',
+        );
+      }
       // Lança AuthException genérica
       throw const AuthException(
         'Ocorreu um erro ao realizar o login. Tente novamente.',
@@ -736,10 +883,12 @@ class FirebaseAuthService implements AuthService {
       // Se o usuário for motorista, retorna o papel permitindo prosseguimento
       if (role == UserRole.motorista) {
         resetarTentativasOperacional(cleanCpf);
+        _usuarioOperacionalLogadoId = user.uid;
         return UserRole.motorista;
       // Se o usuário for administrador, retorna o papel permitindo prosseguimento
       } else if (role == UserRole.admin) {
         resetarTentativasOperacional(cleanCpf);
+        _usuarioOperacionalLogadoId = user.uid;
         return UserRole.admin;
       // Se for paciente ou outro perfil não operacional, nega acesso à tela de motoristas/admins
       } else {
@@ -808,23 +957,7 @@ class FirebaseAuthService implements AuthService {
       );
     }
 
-    // 3. Validação do formato do documento: se for CPF (11 dígitos), valida dígitos verificadores
-    // Permite CPFs válidos e credenciais de homologação/teste (123.456.789-00)
-    if (docLimpo.length == 11 &&
-        docLimpo != '12345678900' &&
-        customAuth != null &&
-        !CodigoAcessoService.validarCpf(docLimpo)) {
-      CodigoAcessoService.registrarTentativaFalha(
-        docLimpo,
-        ip: ipOrigem,
-      );
-      throw const AuthException(
-        'Credenciais inválidas ou viagem não localizada.',
-        code: 'invalid-credentials',
-      );
-    }
-
-    // 4. Validação estrita do código de acesso: deve ter exatamente entre 4 e 5 dígitos numéricos
+    // 3. Validação estrita do código de acesso: deve ter exatamente entre 4 e 5 dígitos numéricos
     final codigoSanitizado = codigoAcesso.trim();
     if (!RegExp(r'^\d{4,5}$').hasMatch(codigoSanitizado)) {
       CodigoAcessoService.registrarTentativaFalha(
@@ -837,7 +970,7 @@ class FirebaseAuthService implements AuthService {
       );
     }
 
-    // 5. Varredura de viagens ativas para validação do hash com salt por viagem
+    // 4. Varredura de viagens ativas e planejadas para validação do código/hash
     final viagemService = ViagemService();
     final viagensAtivas = <ViagemModel>[];
     if (viagemService.viagensAtivas.isNotEmpty) {
@@ -845,73 +978,40 @@ class FirebaseAuthService implements AuthService {
     } else if (viagemService.viagemAtiva != null) {
       viagensAtivas.add(viagemService.viagemAtiva!);
     }
+    for (final tv in viagemService.todasViagens) {
+      if ((tv.isAtiva || tv.isPlanejada) &&
+          !tv.isCancelada &&
+          !tv.isConcluida &&
+          !viagensAtivas.any((v) => v.id == tv.id)) {
+        viagensAtivas.add(tv);
+      }
+    }
 
-    // Busca remota no Firestore para viagens com status 'ativa' (multi-dispositivo e homologação)
+    // Busca remota no Firestore para viagens ativas ou planejadas (multi-dispositivo e homologação)
     try {
       final querySnap = await firestore
           .collection('viagens')
-          .where('status', isEqualTo: 'ativa')
           .get();
       for (final doc in querySnap.docs) {
+        final vRemota = ViagemModel.fromMap(doc.data(), docId: doc.id);
+        if ((!vRemota.isAtiva && !vRemota.isPlanejada) ||
+            vRemota.isCancelada ||
+            vRemota.isConcluida) {
+          continue;
+        }
         final docIndex = viagensAtivas.indexWhere((v) => v.id == doc.id);
         if (docIndex == -1) {
-          viagensAtivas.add(ViagemModel.fromMap(doc.data(), docId: doc.id));
+          viagensAtivas.add(vRemota);
         } else {
-          // Se na memória local os códigos estiverem vazios e no Firestore preenchidos, sincroniza
-          if (viagensAtivas[docIndex].codigosHash.isEmpty) {
-            viagensAtivas[docIndex] =
-                ViagemModel.fromMap(doc.data(), docId: doc.id);
+          // Sincroniza se o Firestore possuir códigos/hashes mais completos ou editados manualmente
+          if (viagensAtivas[docIndex].codigosHash.isEmpty ||
+              viagensAtivas[docIndex].codigosAcesso.isEmpty ||
+              vRemota.codigosAcesso.isNotEmpty) {
+            viagensAtivas[docIndex] = vRemota;
           }
         }
       }
     } catch (_) {}
-
-    // Garante a presença da viagem de homologação para testes e homologações
-    final viagemDemo = ViagemModel(
-      id: 'viagem_demo_homologacao',
-      motoristaId: 'dRlCd8lD7TD0Dj0OhKlm',
-      motoristaNome: 'Carlos Roberto',
-      veiculoId: 'v1',
-      veiculoPlaca: 'BRA-2E19',
-      veiculoModelo: 'Chevrolet Spin 1.8 LTZ',
-      kmInicial: 50000,
-      cidadeDestino: 'São José do Rio Preto',
-      dataHoraInicio: DateTime(2026, 11, 7, 16),
-      status: 'ativa',
-      passageirosIds: const [
-        'nhkT53OclKj552MmiMN5',
-        'paciente_demo_homologacao',
-        'p1',
-        'p2',
-      ],
-      codigosAcesso: const {
-        'nhkT53OclKj552MmiMN5': '7890',
-        'paciente_demo_homologacao': '4821',
-        'p1': '12345',
-        'p2': '8420',
-      },
-      codigosHash: {
-        'nhkT53OclKj552MmiMN5': CodigoAcessoService.calcularHash(
-          '7890',
-          'viagem_demo_homologacao',
-        ),
-        'paciente_demo_homologacao': CodigoAcessoService.calcularHash(
-          '4821',
-          'viagem_demo_homologacao',
-        ),
-        'p1': CodigoAcessoService.calcularHash(
-          '12345',
-          'viagem_demo_homologacao',
-        ),
-        'p2': CodigoAcessoService.calcularHash(
-          '8420',
-          'viagem_demo_homologacao',
-        ),
-      },
-    );
-    if (!viagensAtivas.any((v) => v.id == 'viagem_demo_homologacao')) {
-      viagensAtivas.add(viagemDemo);
-    }
 
     // Carrega a base de pacientes ativos para conferência de documentos e acompanhantes
     List<PacienteModel> pacientesDisponiveis = [];
@@ -929,59 +1029,11 @@ class FirebaseAuthService implements AuthService {
       } catch (_) {}
     }
 
-    // Garante presença dos pacientes de homologação com CPFs oficiais válidos
-    final pacientesHomologacao = [
-      PacienteModel(
-        id: 'nhkT53OclKj552MmiMN5',
-        nome: 'Sebastião Ferreira de Souza',
-        cpf: '571.098.984-31',
-        enderecoPaciente: 'Rua Sete de Setembro, 340 - Centro',
-        telefone: '(14) 99765-4321',
-        localConsulta: 'Hospital das Clínicas de Botucatu - Unesp',
-        localSaida: 'Residência',
-        status: 1,
-      ),
-      PacienteModel(
-        id: 'paciente_demo_homologacao',
-        nome: 'Maria Silva Poloni',
-        cpf: '529.982.247-25',
-        enderecoPaciente: 'Rua das Flores, 125 - Centro',
-        telefone: '(17) 99123-4567',
-        localConsulta: 'Hospital de Base',
-        localSaida: 'UBS Poloni',
-        status: 1,
-      ),
-      PacienteModel(
-        id: 'p1',
-        nome: 'Maria das Graças Aparecida',
-        cpf: '123.456.789-00',
-        enderecoPaciente: 'Rua das Flores, 125 - Centro',
-        telefone: '(17) 99123-4567',
-        localConsulta: 'Hospital de Base',
-        localSaida: 'Laboratório de Análises Clínicas',
-        status: 1,
-      ),
-      PacienteModel(
-        id: 'p2',
-        nome: 'Carlos Eduardo Martins',
-        cpf: '301.894.649-92',
-        enderecoPaciente: 'Rua dos Ipês, 310',
-        telefone: '(17) 99456-7890',
-        localConsulta: 'AME São José do Rio Preto',
-        localSaida: 'Centro de Diagnóstico por Imagem',
-        status: 1,
-      ),
-    ];
-    for (final pHomo in pacientesHomologacao) {
-      if (!pacientesDisponiveis.any((p) => p.id == pHomo.id)) {
-        pacientesDisponiveis.add(pHomo);
-      }
-    }
-
-    // 6. Itera sobre as viagens ativas procurando a correspondência
+    // 5. Itera sobre as viagens procurando correspondência por hash ou código em claro
     for (final viagem in viagensAtivas) {
-      // Se a viagem não possui mapa de hashes, não há credenciais ativas
-      if (viagem.codigosHash.isEmpty) continue;
+      if (viagem.isCancelada || viagem.isConcluida) continue;
+      // Se a viagem não possui nem hashes nem códigos de acesso, prossegue
+      if (viagem.codigosHash.isEmpty && viagem.codigosAcesso.isEmpty) continue;
 
       // Calcula o hash da tentativa usando o ID da viagem como salt criptográfico
       final hashTentativa = CodigoAcessoService.calcularHash(
@@ -993,31 +1045,40 @@ class FirebaseAuthService implements AuthService {
         // Aplica a ordem estrita de resolução do identificador
         final resolucao =
             CodigoAcessoService.resolverIdentificadorLogin(paciente);
-        if (resolucao.tipo == 'ignorado' ||
-            resolucao.documentoNormalizado == null) {
-          // Log interno para auditoria sem dados sensíveis
+        String? docRes = resolucao.documentoNormalizado;
+
+        // Fallback para pacientes cadastrados cujo CPF de 11 dígitos foi digitado manualmente
+        // no formulário administrativo sem dígito verificador Mod-11 estrito (desde que não seja sequência repetida)
+        if ((resolucao.tipo == 'ignorado' || docRes == null) &&
+            docLimpo.isNotEmpty &&
+            !RegExp(r'^(\d)\1{10}$').hasMatch(docLimpo)) {
+          final cpfPacLimpo = CodigoAcessoService.normalizarDigitos(paciente.cpf);
+          final cpfAcompLimpo = CodigoAcessoService.normalizarDigitos(paciente.cpfAcompanhante ?? '');
+          if (cpfPacLimpo.isNotEmpty && cpfPacLimpo == docLimpo) {
+            docRes = cpfPacLimpo;
+          } else if (cpfAcompLimpo.isNotEmpty && cpfAcompLimpo == docLimpo) {
+            docRes = cpfAcompLimpo;
+          }
+        }
+
+        if (docRes == null || docRes.isEmpty) {
           continue;
         }
 
         // Verifica se o identificador digitado coincide com o documento resolvido
-        final docRes = resolucao.documentoNormalizado!;
         final matchDocumento = docRes == docLimpo ||
             (docLimpo.isNotEmpty &&
                 CodigoAcessoService.normalizarDigitos(docRes) == docLimpo) ||
             docRes.trim().toUpperCase() == documento.trim().toUpperCase();
 
         if (matchDocumento) {
-          // Verifica se o hash calculado coincide com o hash gravado na viagem
+          // Verifica se o código em claro ou o hash calculado coincidem com os registros da viagem
+          final codigoClaro = viagem.codigosAcesso[paciente.id]?.trim();
+          final codigoClaroValido =
+              codigoClaro != null && codigoClaro.isNotEmpty && codigoClaro == codigoSanitizado;
           final hashRegistrado = viagem.codigosHash[paciente.id];
-          final hashValido = (hashRegistrado != null &&
-                  hashRegistrado == hashTentativa) ||
-              (viagem.id == 'viagem_demo_homologacao' &&
-                  viagem.passageirosIds.contains(paciente.id) &&
-                  (codigoSanitizado == '12345' ||
-                      codigoSanitizado == '4821' ||
-                      codigoSanitizado == '7890' ||
-                      codigoSanitizado == '8420'));
-          if (hashValido) {
+          final hashValido = hashRegistrado != null && hashRegistrado == hashTentativa;
+          if (codigoClaroValido || hashValido) {
             // Sucesso! Registra na proteção contra força bruta
             CodigoAcessoService.registrarSucesso(
               docLimpo,
@@ -1031,29 +1092,27 @@ class FirebaseAuthService implements AuthService {
           }
         }
       }
-    }
 
-    // Fallback defensivo de homologação apenas quando não for injeção de testes controlados
-    if (pacientesParaTestes == null &&
-        customAuth == null &&
-        (codigoSanitizado == '7890' ||
-            codigoSanitizado == '4821' ||
-            codigoSanitizado == '1234' ||
-            codigoSanitizado == '12345' ||
-            codigoSanitizado == '8420')) {
-      final pMatch = pacientesDisponiveis.where(
-        (p) =>
-            CodigoAcessoService.normalizarDigitos(p.cpf) == docLimpo ||
-            (docLimpo == '12345678900' && p.id == 'p1') ||
-            (docLimpo == '57109898431' && p.id == 'nhkT53OclKj552MmiMN5') ||
-            (docLimpo == '52998224725' &&
-                (p.id == 'paciente_demo_homologacao' || p.id == 'p1')),
-      ).firstOrNull;
-      if (pMatch != null) {
-        CodigoAcessoService.registrarSucesso(docLimpo, ip: ipOrigem);
-        _pacienteLogadoId = pMatch.id;
-        _roleCache[pMatch.id] = UserRole.paciente;
-        return UserRole.paciente;
+      // Verifica também os passageiros embutidos diretamente na viagem (caso não listado na consulta anterior)
+      for (final pv in viagem.passageiros) {
+        final cpfPv = CodigoAcessoService.normalizarDigitos(pv.pacienteCpf ?? '');
+        final matchPv = docLimpo.isNotEmpty && cpfPv.isNotEmpty && cpfPv == docLimpo;
+        if (matchPv) {
+          final codigoClaro = viagem.codigosAcesso[pv.pacienteId]?.trim();
+          final codigoClaroValido =
+              codigoClaro != null && codigoClaro.isNotEmpty && codigoClaro == codigoSanitizado;
+          final hashRegistrado = viagem.codigosHash[pv.pacienteId];
+          final hashValido = hashRegistrado != null && hashRegistrado == hashTentativa;
+          if (codigoClaroValido || hashValido) {
+            CodigoAcessoService.registrarSucesso(
+              docLimpo,
+              ip: ipOrigem,
+            );
+            _pacienteLogadoId = pv.pacienteId;
+            _roleCache[pv.pacienteId] = UserRole.paciente;
+            return UserRole.paciente;
+          }
+        }
       }
     }
 

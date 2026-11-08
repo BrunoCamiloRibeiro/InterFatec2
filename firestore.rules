@@ -103,5 +103,19 @@ service cloud.firestore {
     match /veiculos/{veiculoId} {
       allow read, write: if isAuthenticated() || !isAuthenticated();
     }
+
+    // =========================================================================
+    // COLEÇÃO: SESSÕES DE VEÍCULO
+    // =========================================================================
+    match /sessoes_veiculo/{sessaoId} {
+      allow read, write: if isAuthenticated() || !isAuthenticated();
+    }
+
+    // =========================================================================
+    // COLEÇÃO: LOCALIZAÇÕES DE MOTORISTAS
+    // =========================================================================
+    match /localizacoes_motoristas/{motoristaId} {
+      allow read, write: if isAuthenticated() || !isAuthenticated();
+    }
   }
 }

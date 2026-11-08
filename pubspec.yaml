@@ -66,36 +66,24 @@ dependencies:
     # Vinculado ao SDK instalado
     sdk: flutter
 
-  # The following adds the Cupertino Icons font to your application.
-  # Use with the CupertinoIcons class for iOS style icons.
-  # Conjunto de ícones no estilo visual do iOS (Cupertino)
-  cupertino_icons: ^1.0.8
   # Núcleo de inicialização do ecossistema Firebase
   firebase_core: ^4.15.0
   # Biblioteca de autenticação com Firebase Auth
   firebase_auth: ^6.7.0
   # Banco de dados NoSQL Cloud Firestore em tempo real
   cloud_firestore: ^6.10.0
-  # Armazenamento de arquivos e mídias no Cloud Storage
-  firebase_storage: ^13.6.0
   # Obtenção de localização geográfica e coordenadas GPS do dispositivo
   geolocator: ^14.0.3
-  # Integração e renderização de mapas interativos do Google Maps
-  google_maps_flutter: ^2.18.1
   # Geração programática de documentos PDF
   pdf: ^3.13.1
   # Utilitários de impressão e pré-visualização de relatórios PDF
   printing: ^5.15.1
-  # Gerenciamento de estado reativo e injeção de dependências
-  provider: ^6.1.5+1
   # Utilitários de internacionalização e formatação de datas e moedas
   intl: ^0.20.3
   # Hashing criptográfico para códigos de acesso
   crypto: ^3.0.7
   # Componente de timeline e etapas sequenciais
   timeline_tile: ^2.0.0
-  # Extensão de timelines para interface gráfica
-  timelines_plus: ^2.0.0
   flutter_map: ^8.3.2
   latlong2: ^0.10.1
 
@@ -130,10 +118,6 @@ flutter:
   # To add assets to your application, add an assets section, like this:
   # Seção de ativos estáticos embutidos no pacote da aplicação
   assets:
-      # Arquivo JSON com dados simulados de pacientes
-      - assets/data/dados_pacientes.json
-      # Arquivo JSON com catálogo e frota de veículos
-      - assets/data/dados_veiculos.json
       # Fonte TrueType Liberation Sans Regular para geração de PDF
       - assets/fonts/LiberationSans-Regular.ttf
       # Fonte TrueType Liberation Sans Bold para geração de PDF

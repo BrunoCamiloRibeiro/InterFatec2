@@ -101,6 +101,10 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
   // Campos específicos de Admin
   late TextEditingController _emailController;
 
+  // Campo de senha de acesso para usuários operacionais (Motorista e Admin)
+  late TextEditingController _senhaController;
+  bool _ocultarSenha = true;
+
   bool _salvando = false;
   String? _erroMensagem;
 
@@ -127,6 +131,7 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
 
     _cnhController = TextEditingController(text: p?.cnh ?? '');
     _emailController = TextEditingController(text: p?.email ?? '');
+    _senhaController = TextEditingController(text: p?.senha ?? '');
 
     // Se estiver em modo edição, extrai detalhes contextuais conhecidos caso algum campo ainda esteja vazio
     if (p != null && p.detalheExtra != null) {
@@ -153,6 +158,7 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
     _telAcompController.dispose();
     _cnhController.dispose();
     _emailController.dispose();
+    _senhaController.dispose();
     super.dispose();
   }
 
@@ -193,6 +199,9 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
 
     final emailInput = _emailController.text.trim();
     final emailFinal = emailInput.isNotEmpty ? emailInput : (widget.pessoaParaEditar?.email ?? '');
+
+    final senhaInput = _senhaController.text.trim();
+    final senhaFinal = senhaInput.isNotEmpty ? senhaInput : (widget.pessoaParaEditar?.senha ?? '');
 
     final nomeAcompFinal = _temAcompanhante ? _nomeAcompController.text.trim() : '';
     final cpfAcompFinal = _temAcompanhante ? _cpfAcompController.text.trim() : '';
@@ -261,8 +270,10 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
             payload['cnh'] = cnhFinal;
             if (modeloFinal.isNotEmpty) payload['veiculoModelo'] = modeloFinal;
             if (placaFinal.isNotEmpty) payload['veiculoPlaca'] = placaFinal;
+            if (senhaFinal.isNotEmpty) payload['senha'] = senhaFinal;
           } else if (role == 'admin') {
             payload['email'] = emailFinal;
+            if (senhaFinal.isNotEmpty) payload['senha'] = senhaFinal;
           }
 
           await col.doc(idFinal).update(payload);
@@ -296,8 +307,10 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
             payload['cnh'] = cnhFinal;
             payload['capacidadeVeiculo'] = 4;
             payload['emViagem'] = false;
+            if (senhaFinal.isNotEmpty) payload['senha'] = senhaFinal;
           } else if (role == 'admin') {
             payload['email'] = emailFinal;
+            if (senhaFinal.isNotEmpty) payload['senha'] = senhaFinal;
           }
 
           await docRef.set(payload);
@@ -326,6 +339,7 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
         veiculoModelo: modeloFinal.isNotEmpty ? modeloFinal : null,
         veiculoPlaca: placaFinal.isNotEmpty ? placaFinal : null,
         email: emailFinal.isNotEmpty ? emailFinal : null,
+        senha: senhaFinal.isNotEmpty ? senhaFinal : null,
         nomeAcompanhante: nomeAcompFinal.isNotEmpty ? nomeAcompFinal : null,
         cpfAcompanhante: cpfAcompFinal.isNotEmpty ? cpfAcompFinal : null,
         telAcompanhante: telAcompFinal.isNotEmpty ? telAcompFinal : null,
@@ -646,6 +660,32 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
                       border: OutlineInputBorder(),
                     ),
                   ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    key: const Key('campoSenhaPessoa'),
+                    controller: _senhaController,
+                    obscureText: _ocultarSenha,
+                    decoration: InputDecoration(
+                      labelText: 'Senha de Acesso',
+                      hintText: 'Informe a senha de login',
+                      prefixIcon: const Icon(Icons.lock_outline, size: 20),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _ocultarSenha
+                              ? Icons.visibility_outlined
+                              : Icons.visibility_off_outlined,
+                          size: 20,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _ocultarSenha = !_ocultarSenha;
+                          });
+                        },
+                      ),
+                      isDense: true,
+                      border: const OutlineInputBorder(),
+                    ),
+                  ),
                 ] else if (_roleSelecionado == 'admin') ...[
                   TextFormField(
                     controller: _emailController,
@@ -656,6 +696,32 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
                       prefixIcon: Icon(Icons.email_outlined, size: 20),
                       isDense: true,
                       border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    key: const Key('campoSenhaPessoa'),
+                    controller: _senhaController,
+                    obscureText: _ocultarSenha,
+                    decoration: InputDecoration(
+                      labelText: 'Senha de Acesso',
+                      hintText: 'Informe a senha de login',
+                      prefixIcon: const Icon(Icons.lock_outline, size: 20),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _ocultarSenha
+                              ? Icons.visibility_outlined
+                              : Icons.visibility_off_outlined,
+                          size: 20,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _ocultarSenha = !_ocultarSenha;
+                          });
+                        },
+                      ),
+                      isDense: true,
+                      border: const OutlineInputBorder(),
                     ),
                   ),
                 ],

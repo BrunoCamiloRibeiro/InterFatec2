@@ -108,8 +108,6 @@ class FooterPacientes extends StatelessWidget {
     // Widget Container: caixa de layout decorada com preenchimento interno e borda superior divisória
     // Elemento: Classe Container de 'package:flutter/widgets.dart'
     return Container(
-      // Propriedade padding: preenchimento interno constante de 16 horizontal e 10 vertical em pixels lógicos
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
       // Propriedade decoration: estilo visual com fundo branco e linha de borda no topo
       decoration: BoxDecoration(
         // Cor de fundo branca sólida para contraste com a lista
@@ -124,11 +122,16 @@ class FooterPacientes extends StatelessWidget {
         ),
       // Fecha a instanciação de BoxDecoration
       ),
-      // Comentário original do autor mantido byte a byte:
-      // Linha única horizontal dividindo esquerda (lugares) e direita (botão)
-      // Propriedade child de Container: widget Row distribuindo ocupação de lugares e botão de relatório
-      // Widget Row: organiza horizontalmente os itens entre as extremidades
-      child: Row(
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          // Propriedade padding: preenchimento interno constante de 16 horizontal e 10 vertical em pixels lógicos
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
+          // Comentário original do autor mantido byte a byte:
+          // Linha única horizontal dividindo esquerda (lugares) e direita (botão)
+          // Propriedade child de Container: widget Row distribuindo ocupação de lugares e botão de relatório
+          // Widget Row: organiza horizontalmente os itens entre as extremidades
+          child: Row(
         // Propriedade mainAxisAlignment: afasta os filhos posicionando um na extrema esquerda e outro na extrema direita
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         // Propriedade children da Row principal do rodapé: bloco de lugares e botão de encerramento
@@ -299,6 +302,8 @@ class FooterPacientes extends StatelessWidget {
         // Fecha a lista children da Row principal do rodapé
         ],
       // Fecha o widget Row principal do rodapé
+      ),
+        ),
       ),
     // Fecha o widget Container do rodapé
     );

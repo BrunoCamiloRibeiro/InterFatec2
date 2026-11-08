@@ -62,6 +62,7 @@ class _CardTrackingPacienteState extends State<CardTrackingPaciente>
   String? _motoristaSelecionadoId;
   LatLng? _posicaoDispositivo;
   bool _solicitandoGps = false;
+  bool _jaCentralizouMotorista = false;
   LocationPermission? _permissaoGps;
 
   // Centro padrão regional (Poloni - SP / Região Noroeste Paulista)
@@ -90,14 +91,14 @@ class _CardTrackingPacienteState extends State<CardTrackingPaciente>
 
   Future<void> _verificarLocalizacaoInicial() async {
     try {
-      final perm = await Geolocator.checkPermission();
+      final perm = await _localizacaoService.solicitarPermissaoLocalizacao();
       if (!mounted) return;
       setState(() {
         _permissaoGps = perm;
       });
       if (perm == LocationPermission.whileInUse ||
           perm == LocationPermission.always) {
-        await _atualizarPosicaoAparelho();
+        await _atualizarPosicaoAparelho(moverCamera: true);
       }
     } catch (_) {}
   }
@@ -117,10 +118,7 @@ class _CardTrackingPacienteState extends State<CardTrackingPaciente>
 
       if (perm == LocationPermission.whileInUse ||
           perm == LocationPermission.always) {
-        await _atualizarPosicaoAparelho();
-        if (_posicaoDispositivo != null) {
-          _mapController.move(_posicaoDispositivo!, 14.0);
-        }
+        await _atualizarPosicaoAparelho(moverCamera: true);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -141,13 +139,26 @@ class _CardTrackingPacienteState extends State<CardTrackingPaciente>
     }
   }
 
-  Future<void> _atualizarPosicaoAparelho() async {
+  Future<void> _atualizarPosicaoAparelho({bool moverCamera = false}) async {
     try {
       final pos = await _localizacaoService.obterPosicaoDispositivoAtual();
       if (pos != null && mounted) {
+        final novaPosicao = LatLng(pos.latitude, pos.longitude);
         setState(() {
-          _posicaoDispositivo = LatLng(pos.latitude, pos.longitude);
+          _posicaoDispositivo = novaPosicao;
         });
+        await _localizacaoService.garantirLocalizacaoViagemAtivaComGpsDispositivo(
+          pos.latitude,
+          pos.longitude,
+        );
+        if (moverCamera && mounted) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            try {
+              _mapController.move(novaPosicao, 14.5);
+            } catch (_) {}
+          });
+        }
       }
     } catch (_) {}
   }
@@ -207,6 +218,22 @@ class _CardTrackingPacienteState extends State<CardTrackingPaciente>
         final todosMotoristas = snapshot.data ?? [];
         final motoristasAtivos =
             todosMotoristas.where((m) => m.emViagem).toList();
+
+        if (motoristasAtivos.isNotEmpty && !_jaCentralizouMotorista) {
+          _jaCentralizouMotorista = true;
+          final alvo = LatLng(
+            motoristasAtivos.first.latitude,
+            motoristasAtivos.first.longitude,
+          );
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            try {
+              _mapController.move(alvo, 14.0);
+            } catch (_) {}
+          });
+        } else if (motoristasAtivos.isEmpty) {
+          _jaCentralizouMotorista = false;
+        }
 
         // Se o motorista selecionado não estiver mais ativo, reseta seleção
         if (_motoristaSelecionadoId != null &&

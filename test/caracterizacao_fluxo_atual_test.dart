@@ -1,4 +1,4 @@
-// ============================================================================
+﻿// ============================================================================
 // ARQUIVO: test/caracterizacao_fluxo_atual_test.dart
 // ----------------------------------------------------------------------------
 // O QUE FAZ:
@@ -40,7 +40,27 @@ void main() {
 
     setUp(() {
       service = ViagemService();
-      service.resetParaTestes();
+      service.resetParaTestes(
+        veiculosIniciais: const [
+          VeiculoModel(
+            id: 'v1',
+            placa: 'ABC-1D23',
+            modelo: 'Chevrolet Spin 1.8 LTZ',
+            capacidade: 7,
+            quilometragemAtual: 85420,
+            emUso: false,
+          ),
+          VeiculoModel(
+            id: 'v4',
+            placa: 'XYZ-9K88',
+            modelo: 'Fiat Cronos Drive 1.3',
+            capacidade: 5,
+            quilometragemAtual: 41900,
+            emUso: true,
+            motoristaAtualId: 'mot_antonio',
+          ),
+        ],
+      );
     });
 
     test('Lista inicial de veículos contém veículos padrão com frotas livres', () async {
