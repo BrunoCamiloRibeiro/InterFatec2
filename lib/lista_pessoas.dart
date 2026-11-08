@@ -106,6 +106,9 @@ class PessoaItem {
   final String? veiculoModelo;
   final String? veiculoPlaca;
   final String? email;
+  final String? nomeAcompanhante;
+  final String? cpfAcompanhante;
+  final String? telAcompanhante;
 
   const PessoaItem({
     required this.id,
@@ -124,25 +127,42 @@ class PessoaItem {
     this.veiculoModelo,
     this.veiculoPlaca,
     this.email,
+    this.nomeAcompanhante,
+    this.cpfAcompanhante,
+    this.telAcompanhante,
   });
 
   /// Construtor fábrica para converter uma instância de [PacienteModel] em [PessoaItem]
-  factory PessoaItem.fromPaciente(PacienteModel p) => PessoaItem(
-    id: p.id,
-    nome: p.nome,
-    cpf: p.cpf,
-    telefone: p.telefone,
-    role: p.role,
-    badgeLabel: 'Paciente',
-    badgeCor: const Color(0xFF2563EB),
-    status: p.status,
-    detalheExtra: p.localConsulta.isNotEmpty
-        ? 'Consulta: ${p.localConsulta}'
-        : null,
-    ativo: p.ativo,
-    endereco: p.enderecoPaciente,
-    localConsulta: p.localConsulta,
-  );
+  factory PessoaItem.fromPaciente(PacienteModel p) {
+    String? detalhe;
+    final temConsulta = p.localConsulta.isNotEmpty;
+    final temAcomp = p.nomeAcompanhante != null && p.nomeAcompanhante!.trim().isNotEmpty;
+    if (temConsulta && temAcomp) {
+      detalhe = 'Consulta: ${p.localConsulta} • Acomp: ${p.nomeAcompanhante}';
+    } else if (temConsulta) {
+      detalhe = 'Consulta: ${p.localConsulta}';
+    } else if (temAcomp) {
+      detalhe = 'Acomp: ${p.nomeAcompanhante}';
+    }
+
+    return PessoaItem(
+      id: p.id,
+      nome: p.nome,
+      cpf: p.cpf,
+      telefone: p.telefone,
+      role: p.role,
+      badgeLabel: 'Paciente',
+      badgeCor: const Color(0xFF2563EB),
+      status: p.status,
+      detalheExtra: detalhe,
+      ativo: p.ativo,
+      endereco: p.enderecoPaciente,
+      localConsulta: p.localConsulta,
+      nomeAcompanhante: p.nomeAcompanhante,
+      cpfAcompanhante: p.cpfAcompanhante,
+      telAcompanhante: p.telAcompanhante,
+    );
+  }
 
   /// Construtor fábrica para converter uma instância de [MotoristaModel] em [PessoaItem]
   factory PessoaItem.fromMotorista(MotoristaModel m) => PessoaItem(
@@ -183,7 +203,7 @@ class PessoaItem {
 }
 
 /// ============================================================================
-/// TELA DE GESTÃO DE PESSOAS (CRUD - ISSUE #34)
+/// TELA DE GESTÃO DE PESSOAS
 /// ============================================================================
 /// Centraliza a consulta, filtragem por perfil, busca reativa por nome/CPF
 /// e exclusão lógica de Pacientes, Motoristas e Administradores.

@@ -112,7 +112,7 @@ enum TipoVeiculo {
   }
 }
 
-/// Modelo de dados unificado do Veículo, compatível com a gestão de frotas (CRUD)
+/// Modelo de dados unificado do Veículo, compatível com a gestão de frotas
 /// e o fluxo de viagens operacionais do transporte municipal de saúde.
 class VeiculoModel {
   final String id;

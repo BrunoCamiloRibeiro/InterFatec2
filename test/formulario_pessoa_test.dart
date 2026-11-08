@@ -260,4 +260,134 @@ void main() {
       },
     );
   });
+
+  group('5. Gestão de Acompanhante no Cadastro de Paciente', () {
+    testWidgets(
+      'Ativação de acompanhante exibe campos adicionais e valida obrigatoriedade do nome',
+      (WidgetTester tester) async {
+        await tester.pumpWidget(criarAppTeste(const FormularioPessoa()));
+
+        // Inicialmente campos de acompanhante não aparecem
+        expect(find.byKey(const Key('checkboxAcompanhante')), findsOneWidget);
+        expect(find.byKey(const Key('campoNomeAcompanhante')), findsNothing);
+
+        // Rola até o checkbox e marca a opção de acompanhante
+        await tester.ensureVisible(find.byKey(const Key('checkboxAcompanhante')));
+        await tester.tap(find.byKey(const Key('checkboxAcompanhante')));
+        await tester.pumpAndSettle();
+
+        // Agora os campos devem estar visíveis
+        expect(find.byKey(const Key('campoNomeAcompanhante')), findsOneWidget);
+        expect(find.byKey(const Key('campoCpfAcompanhante')), findsOneWidget);
+        expect(find.byKey(const Key('campoTelAcompanhante')), findsOneWidget);
+
+        // Preenche dados do paciente
+        await tester.enterText(find.byType(TextFormField).at(0), 'Paciente Com Acomp');
+        await tester.enterText(find.byType(TextFormField).at(1), '52998224725');
+        await tester.enterText(find.byType(TextFormField).at(2), '14998877665');
+        await tester.pumpAndSettle();
+
+        // Tenta cadastrar sem nome de acompanhante
+        await tester.ensureVisible(find.text('Cadastrar'));
+        await tester.tap(find.text('Cadastrar'));
+        await tester.pumpAndSettle();
+
+        expect(find.textContaining('Informe o nome do acompanhante'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'Criação de paciente com acompanhante preenchido emite dados no callback',
+      (WidgetTester tester) async {
+        PessoaItem? pacienteSalvo;
+
+        await tester.pumpWidget(
+          criarAppTeste(FormularioPessoa(onSalvo: (p) => pacienteSalvo = p)),
+        );
+
+        // Preenche dados do paciente
+        await tester.enterText(find.byType(TextFormField).at(0), 'Lúcia de Fátima');
+        await tester.enterText(find.byType(TextFormField).at(1), '52998224725');
+        await tester.enterText(find.byType(TextFormField).at(2), '14998877665');
+        await tester.enterText(find.byType(TextFormField).at(3), 'Hospital de Base');
+        await tester.pumpAndSettle();
+
+        // Ativa acompanhante
+        await tester.ensureVisible(find.byKey(const Key('checkboxAcompanhante')));
+        await tester.tap(find.byKey(const Key('checkboxAcompanhante')));
+        await tester.pumpAndSettle();
+
+        // Preenche campos do acompanhante
+        await tester.ensureVisible(find.byKey(const Key('campoNomeAcompanhante')));
+        await tester.enterText(find.byKey(const Key('campoNomeAcompanhante')), 'Roberto de Fátima');
+        await tester.ensureVisible(find.byKey(const Key('campoCpfAcompanhante')));
+        await tester.enterText(find.byKey(const Key('campoCpfAcompanhante')), '52998224725');
+        await tester.ensureVisible(find.byKey(const Key('campoTelAcompanhante')));
+        await tester.enterText(find.byKey(const Key('campoTelAcompanhante')), '14991122334');
+        await tester.pumpAndSettle();
+
+        // Cadastra
+        await tester.ensureVisible(find.text('Cadastrar'));
+        await tester.tap(find.text('Cadastrar'));
+        await tester.pumpAndSettle();
+
+        expect(pacienteSalvo, isNotNull);
+        expect(pacienteSalvo!.nome, equals('Lúcia de Fátima'));
+        expect(pacienteSalvo!.nomeAcompanhante, equals('Roberto de Fátima'));
+        expect(pacienteSalvo!.cpfAcompanhante, equals('529.982.247-25'));
+        expect(pacienteSalvo!.telAcompanhante, equals('(14) 99112-2334'));
+        expect(pacienteSalvo!.detalheExtra, contains('Acomp: Roberto de Fátima'));
+      },
+    );
+
+    testWidgets(
+      'Modo edição pré-carrega acompanhante existente',
+      (WidgetTester tester) async {
+        const pacienteMock = PessoaItem(
+          id: 'pac_com_acomp',
+          nome: 'Clara Nunes',
+          cpf: '529.982.247-25',
+          telefone: '(14) 99876-5432',
+          role: 'paciente',
+          badgeLabel: 'Paciente',
+          badgeCor: Color(0xFF2563EB),
+          nomeAcompanhante: 'Carlos Nunes',
+          cpfAcompanhante: '529.982.247-25',
+          telAcompanhante: '(14) 99888-7766',
+        );
+
+        await tester.pumpWidget(
+          criarAppTeste(FormularioPessoa(pessoaParaEditar: pacienteMock)),
+        );
+
+        expect(find.text('Carlos Nunes'), findsOneWidget);
+        expect(find.byKey(const Key('checkboxAcompanhante')), findsOneWidget);
+      },
+    );
+  });
+
+  group('6. Responsividade Mobile (360x640)', () {
+    testWidgets(
+      'Renderiza formulário com seção de acompanhante expandida em 360x640 sem overflow',
+      (WidgetTester tester) async {
+        tester.view.physicalSize = const Size(360, 640);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        await tester.pumpWidget(criarAppTeste(const FormularioPessoa()));
+
+        // Ativa acompanhante no celular rolando até ele
+        await tester.ensureVisible(find.byKey(const Key('checkboxAcompanhante')));
+        await tester.tap(find.byKey(const Key('checkboxAcompanhante')));
+        await tester.pumpAndSettle();
+
+        // Rola até o botão cadastrar
+        await tester.ensureVisible(find.text('Cadastrar'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Cadastrar'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  });
 }

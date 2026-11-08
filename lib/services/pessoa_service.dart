@@ -86,7 +86,7 @@ class ValidacaoPessoa {
   }
 }
 
-/// Serviço de Backend para Gestão de Pessoas (CRUD, Governança e LGPD no Cloud Firestore)
+/// Serviço de Backend para Gestão de Pessoas (Governança e LGPD no Cloud Firestore)
 class PessoaService {
   final FirebaseFirestore _firestore;
 
