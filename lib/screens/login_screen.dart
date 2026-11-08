@@ -121,11 +121,13 @@ class CpfInputFormatter extends TextInputFormatter {
 class LoginScreen extends StatefulWidget {
   // Instância do serviço de autenticação utilizada para login
   final AuthService authService;
+  // Modo inicial de exibição (0 = Motorista/Gestão, 1 = Paciente/Acompanhante)
+  final int modoInicial;
 
   // Linha em branco separadora entre atributo e construtor
 
   // Construtor com parâmetro opcional de authService para injeção de dependência em testes
-  LoginScreen({super.key, AuthService? authService})
+  LoginScreen({super.key, AuthService? authService, this.modoInicial = 0})
     // Inicializa authService com a instância repassada ou cria FirebaseAuthService padrão
     : authService = authService ?? FirebaseAuthService();
 
@@ -141,14 +143,23 @@ class LoginScreen extends StatefulWidget {
 // Linha em branco separadora entre LoginScreen e _LoginScreenState
 // Classe de estado privada que controla o formulário de login
 class _LoginScreenState extends State<LoginScreen> {
-  // Chave global para identificação e validação do formulário
+  // Chave global para identificação e validação do formulário de motorista/admin
   final _formKey = GlobalKey<FormState>();
+  // Chave global para identificação e validação do formulário de paciente (Issue #65)
+  final _formPacienteKey = GlobalKey<FormState>();
   // Controlador de texto do campo de CPF
   final TextEditingController _cpfController = TextEditingController();
   // Controlador de texto do campo de senha
   final TextEditingController _senhaController = TextEditingController();
+  // Controladores de texto para acesso de paciente/acompanhante (Issue #65)
+  final TextEditingController _documentoPacienteController =
+      TextEditingController();
+  final TextEditingController _codigoAcessoController =
+      TextEditingController();
 
   // Linha em branco separadora entre controladores e variáveis de estado
+  // Modo de login selecionado: 0 = Motorista / Gestão, 1 = Paciente / Acompanhante
+  late int _modoLogin = widget.modoInicial;
   // Booleano para alternar a ocultação da senha (inicia oculta como true)
   bool _obscurePassword = true;
   // Indicador de carregamento durante a submissão assíncrona
@@ -166,6 +177,9 @@ class _LoginScreenState extends State<LoginScreen> {
     _cpfController.dispose();
     // Descarta o controlador de senha
     _senhaController.dispose();
+    // Descarta controladores de paciente
+    _documentoPacienteController.dispose();
+    _codigoAcessoController.dispose();
     // Executa a finalização da superclasse
     super.dispose();
   // Fecha o método dispose
@@ -251,6 +265,63 @@ class _LoginScreenState extends State<LoginScreen> {
   // Fecha o método _submit
   }
 
+  // --------------------------------------------------------------------------
+  // MÉTODO ASSÍNCRONO: _submitPaciente (Issue #65)
+  // - O que faz: Valida documento (CPF/RG/CNH) e código dinâmico de 4 a 5 dígitos
+  //   e efetua a autenticação com proteção de rate limiting.
+  // - Redirecionamento: Encaminha para a rota oficial do paciente ('/paciente').
+  // --------------------------------------------------------------------------
+  Future<void> _submitPaciente() async {
+    if (_isLoading) return;
+
+    final formValido = _formPacienteKey.currentState?.validate() ?? false;
+    if (!formValido) return;
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final role = await widget.authService.loginPacienteComCodigo(
+        documento: _documentoPacienteController.text.trim(),
+        codigoAcesso: _codigoAcessoController.text.trim(),
+      );
+
+      if (!mounted) return;
+
+      if (role == UserRole.paciente) {
+        Navigator.pushReplacementNamed(context, '/paciente');
+      }
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = e.message;
+        _isLoading = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.message),
+          backgroundColor: const Color(0xFFDC2626),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      const fallbackMsg =
+          'Credenciais inválidas ou viagem não localizada.';
+      setState(() {
+        _errorMessage = fallbackMsg;
+        _isLoading = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(fallbackMsg),
+          backgroundColor: Color(0xFFDC2626),
+        ),
+      );
+    }
+  }
+
   // Linha em branco separadora entre _submit e build
 
   // Sobrescrita do método build para montagem visual da tela de login
@@ -284,307 +355,630 @@ class _LoginScreenState extends State<LoginScreen> {
                     horizontal: 24,
                     vertical: 28,
                   ),
-                  // Formulário gerenciado pela chave _formKey
-                  child: Form(
-                    key: _formKey,
-                    // Coluna esticada horizontalmente
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Avatar centralizado com ícone do aplicativo
-                        Center(
-                          child: CircleAvatar(
-                            radius: 35,
-                            backgroundColor: const Color(0xFF0F172A),
-                            child: const Icon(
-                              Icons.directions_bus,
-                              size: 36,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                        // Espaçamento vertical de 18 pontos
-                        const SizedBox(height: 18),
-                        // Título principal do card
-                        const Text(
-                          'Acesse sua Conta',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF0F172A),
-                          ),
-                        ),
-                        // Espaçamento vertical de 6 pontos
-                        const SizedBox(height: 6),
-                        // Subtítulo descritivo
-                        const Text(
-                          'Digite seus dados para entrar',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Color(0xFF64748B),
-                            fontSize: 13,
-                          ),
-                        ),
-                        // Espaçamento vertical de 24 pontos
-                        const SizedBox(height: 24),
-                        // Exibe banner de erro condicionalmente caso _errorMessage não seja nulo
-                        if (_errorMessage != null) ...[
-                          // Container de banner de erro com fundo avermelhado suave
-                          Container(
-                            key: const Key('mensagemErro'),
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFFEF2F2),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: const Color(0xFFF87171),
-                              ),
-                            ),
-                            // Linha contendo ícone de alerta e mensagem explicativa
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Icon(
-                                  Icons.error_outline,
-                                  color: Color(0xFFDC2626),
-                                  size: 20,
+                  // Formulário gerenciado pela chave de estado correspondente ao modo
+                  child: _modoLogin == 0
+                      ? Form(
+                          key: _formKey,
+                          // Coluna esticada horizontalmente
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              // Avatar centralizado com ícone do aplicativo
+                              Center(
+                                child: CircleAvatar(
+                                  radius: 35,
+                                  backgroundColor: const Color(0xFF0F172A),
+                                  child: const Icon(
+                                    Icons.directions_bus,
+                                    size: 36,
+                                    color: Colors.white,
+                                  ),
                                 ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    _errorMessage!,
-                                    style: const TextStyle(
-                                      color: Color(0xFFB91C1C),
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w500,
+                              ),
+                              // Espaçamento vertical de 18 pontos
+                              const SizedBox(height: 18),
+                              // Título principal do card
+                              const Text(
+                                'Acesse sua Conta',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF0F172A),
+                                ),
+                              ),
+                              // Espaçamento vertical de 6 pontos
+                              const SizedBox(height: 6),
+                              // Subtítulo descritivo
+                              const Text(
+                                'Digite seus dados para entrar',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: Color(0xFF64748B),
+                                  fontSize: 13,
+                                ),
+                              ),
+                              // Espaçamento vertical de 24 pontos
+                              const SizedBox(height: 24),
+                              // Exibe banner de erro condicionalmente caso _errorMessage não seja nulo
+                              if (_errorMessage != null) ...[
+                                // Container de banner de erro com fundo avermelhado suave
+                                Container(
+                                  key: const Key('mensagemErro'),
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFEF2F2),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: const Color(0xFFF87171),
                                     ),
                                   ),
+                                  // Linha contendo ícone de alerta e mensagem explicativa
+                                  child: Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      const Icon(
+                                        Icons.error_outline,
+                                        color: Color(0xFFDC2626),
+                                        size: 20,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          _errorMessage!,
+                                          style: const TextStyle(
+                                            color: Color(0xFFB91C1C),
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
+                                // Espaçamento vertical de 16 pontos abaixo do banner
+                                const SizedBox(height: 16),
                               ],
-                            ),
-                          ),
-                          // Espaçamento vertical de 16 pontos abaixo do banner
-                          const SizedBox(height: 16),
-                        ],
-                        // Rótulo textual em maiúsculas para o campo de CPF
-                        const Text(
-                          'CPF',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF334155),
-                          ),
-                        ),
-                        // Espaçamento vertical de 6 pontos
-                        const SizedBox(height: 6),
-                        // Semantics para acessibilidade no leitor de tela
-                        Semantics(
-                          label: 'Campo de CPF',
-                          textField: true,
-                          // Campo de entrada de texto para o CPF
-                          child: TextFormField(
-                            key: const Key('campoCpf'),
-                            controller: _cpfController,
-                            keyboardType: TextInputType.number,
-                            textInputAction: TextInputAction.next,
-                            // Formatadores de entrada: somente dígitos e máscara 000.000.000-00
-                            inputFormatters: [
-                              FilteringTextInputFormatter.digitsOnly,
-                              CpfInputFormatter(),
-                            ],
-                            // Decoração do campo com ícone de crachá e bordas suaves
-                            decoration: InputDecoration(
-                              labelText: 'CPF',
-                              hintText: '000.000.000-00',
-                              hintStyle: TextStyle(
-                                color: Colors.grey.shade400,
-                                fontSize: 14,
-                              ),
-                              prefixIcon: const Icon(
-                                Icons.badge_outlined,
-                                color: Color(0xFF64748B),
-                              ),
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 14,
-                              ),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10),
-                                borderSide: BorderSide(
-                                  color: Colors.grey.shade300,
+                              // Rótulo textual em maiúsculas para o campo de CPF
+                              const Text(
+                                'CPF',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF334155),
                                 ),
                               ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10),
-                                borderSide: BorderSide(
-                                  color: Colors.grey.shade300,
-                                ),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10),
-                                borderSide: const BorderSide(
-                                  color: Color(0xFF0F172A),
-                                  width: 1.5,
-                                ),
-                              ),
-                            ),
-                            // Validação do campo de CPF
-                            validator: (value) {
-                              final raw = value?.trim() ?? '';
-                              if (raw.isEmpty) {
-                                return 'Informe o CPF.';
-                              }
-                              final digits = raw.replaceAll(RegExp(r'\D'), '');
-                              if (digits.length != 11) {
-                                return 'Informe um CPF válido com 11 dígitos.';
-                              }
-                              return null;
-                            },
-                          ),
-                        ),
-                        // Espaçamento vertical de 16 pontos entre os campos
-                        const SizedBox(height: 16),
-                        // Rótulo textual em maiúsculas para o campo de Senha
-                        const Text(
-                          'SENHA',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF334155),
-                          ),
-                        ),
-                        // Espaçamento vertical de 6 pontos
-                        const SizedBox(height: 6),
-                        // Semantics para acessibilidade no campo de senha
-                        Semantics(
-                          label: 'Campo de senha',
-                          textField: true,
-                          // Campo de entrada de texto para a senha
-                          child: TextFormField(
-                            key: const Key('campoSenha'),
-                            controller: _senhaController,
-                            obscureText: _obscurePassword,
-                            textInputAction: TextInputAction.done,
-                            onFieldSubmitted: _isLoading
-                                ? null
-                                : (_) => _submit(),
-                            // Decoração do campo com ícone de cadeado e alternância de visibilidade
-                            decoration: InputDecoration(
-                              labelText: 'Senha',
-                              hintText: '••••••••',
-                              hintStyle: TextStyle(
-                                color: Colors.grey.shade400,
-                                fontSize: 14,
-                              ),
-                              prefixIcon: const Icon(
-                                Icons.lock_outline,
-                                color: Color(0xFF64748B),
-                              ),
-                              // Botão sufixo para mostrar ou ocultar senha com Semantics
-                              suffixIcon: Semantics(
-                                label: _obscurePassword
-                                    ? 'Mostrar senha'
-                                    : 'Ocultar senha',
-                                button: true,
-                                child: IconButton(
-                                  key: const Key('botaoAlternarSenha'),
-                                  constraints: const BoxConstraints(
-                                    minWidth: 48,
-                                    minHeight: 48,
+                              // Espaçamento vertical de 6 pontos
+                              const SizedBox(height: 6),
+                              // Semantics para acessibilidade no leitor de tela
+                              Semantics(
+                                label: 'Campo de CPF',
+                                textField: true,
+                                // Campo de entrada de texto para o CPF
+                                child: TextFormField(
+                                  key: const Key('campoCpf'),
+                                  controller: _cpfController,
+                                  keyboardType: TextInputType.number,
+                                  textInputAction: TextInputAction.next,
+                                  // Formatadores de entrada: somente dígitos e máscara 000.000.000-00
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.digitsOnly,
+                                    CpfInputFormatter(),
+                                  ],
+                                  // Decoração do campo com ícone de crachá e bordas suaves
+                                  decoration: InputDecoration(
+                                    labelText: 'CPF',
+                                    hintText: '000.000.000-00',
+                                    hintStyle: TextStyle(
+                                      color: Colors.grey.shade400,
+                                      fontSize: 14,
+                                    ),
+                                    prefixIcon: const Icon(
+                                      Icons.badge_outlined,
+                                      color: Color(0xFF64748B),
+                                    ),
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 14,
+                                      vertical: 14,
+                                    ),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                      borderSide: BorderSide(
+                                        color: Colors.grey.shade300,
+                                      ),
+                                    ),
+                                    enabledBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                      borderSide: BorderSide(
+                                        color: Colors.grey.shade300,
+                                      ),
+                                    ),
+                                    focusedBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                      borderSide: const BorderSide(
+                                        color: Color(0xFF0F172A),
+                                        width: 1.5,
+                                      ),
+                                    ),
                                   ),
-                                  icon: Icon(
-                                    _obscurePassword
-                                        ? Icons.visibility_outlined
-                                        : Icons.visibility_off_outlined,
-                                    color: const Color(0xFF64748B),
-                                  ),
-                                  tooltip: _obscurePassword
-                                      ? 'Mostrar senha'
-                                      : 'Ocultar senha',
-                                  onPressed: () {
-                                    setState(() {
-                                      _obscurePassword = !_obscurePassword;
-                                    });
+                                  // Validação do campo de CPF
+                                  validator: (value) {
+                                    final raw = value?.trim() ?? '';
+                                    if (raw.isEmpty) {
+                                      return 'Informe o CPF.';
+                                    }
+                                    final digits =
+                                        raw.replaceAll(RegExp(r'\D'), '');
+                                    if (digits.length != 11) {
+                                      return 'Informe um CPF válido com 11 dígitos.';
+                                    }
+                                    return null;
                                   },
                                 ),
                               ),
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 14,
-                              ),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10),
-                                borderSide: BorderSide(
-                                  color: Colors.grey.shade300,
+                              // Espaçamento vertical de 16 pontos entre os campos
+                              const SizedBox(height: 16),
+                              // Rótulo textual em maiúsculas para o campo de Senha
+                              const Text(
+                                'SENHA',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF334155),
                                 ),
                               ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10),
-                                borderSide: BorderSide(
-                                  color: Colors.grey.shade300,
-                                ),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10),
-                                borderSide: const BorderSide(
-                                  color: Color(0xFF0F172A),
-                                  width: 1.5,
-                                ),
-                              ),
-                            ),
-                            // Validação de senha obrigatória
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return 'Informe a senha.';
-                              }
-                              return null;
-                            },
-                          ),
-                        ),
-                        // Espaçamento vertical de 24 pontos antes do botão de submissão
-                        const SizedBox(height: 24),
-                        // Semantics para o botão Entrar
-                        Semantics(
-                          label: 'Entrar',
-                          button: true,
-                          child: ElevatedButton(
-                            key: const Key('botaoEntrar'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF0F172A),
-                              foregroundColor: Colors.white,
-                              disabledBackgroundColor: const Color(0xFF0F172A)
-                                  .withValues(alpha: 0.6),
-                              disabledForegroundColor: Colors.white70,
-                              minimumSize: const Size.fromHeight(48),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              elevation: 2,
-                            ),
-                            onPressed: _isLoading ? null : _submit,
-                            child: _isLoading
-                                ? const SizedBox(
-                                    height: 22,
-                                    width: 22,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2.5,
-                                      color: Colors.white,
+                              // Espaçamento vertical de 6 pontos
+                              const SizedBox(height: 6),
+                              // Semantics para acessibilidade no campo de senha
+                              Semantics(
+                                label: 'Campo de senha',
+                                textField: true,
+                                // Campo de entrada de texto para a senha
+                                child: TextFormField(
+                                  key: const Key('campoSenha'),
+                                  controller: _senhaController,
+                                  obscureText: _obscurePassword,
+                                  textInputAction: TextInputAction.done,
+                                  onFieldSubmitted:
+                                      _isLoading ? null : (_) => _submit(),
+                                  // Decoração do campo com ícone de cadeado e alternância de visibilidade
+                                  decoration: InputDecoration(
+                                    labelText: 'Senha',
+                                    hintText: '••••••••',
+                                    hintStyle: TextStyle(
+                                      color: Colors.grey.shade400,
+                                      fontSize: 14,
                                     ),
-                                  )
-                                : const Text(
-                                    'Entrar',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
+                                    prefixIcon: const Icon(
+                                      Icons.lock_outline,
+                                      color: Color(0xFF64748B),
+                                    ),
+                                    // Botão sufixo para mostrar ou ocultar senha com Semantics
+                                    suffixIcon: Semantics(
+                                      label: _obscurePassword
+                                          ? 'Mostrar senha'
+                                          : 'Ocultar senha',
+                                      button: true,
+                                      child: IconButton(
+                                        key: const Key('botaoAlternarSenha'),
+                                        constraints: const BoxConstraints(
+                                          minWidth: 48,
+                                          minHeight: 48,
+                                        ),
+                                        icon: Icon(
+                                          _obscurePassword
+                                              ? Icons.visibility_outlined
+                                              : Icons.visibility_off_outlined,
+                                          color: const Color(0xFF64748B),
+                                        ),
+                                        tooltip: _obscurePassword
+                                            ? 'Mostrar senha'
+                                            : 'Ocultar senha',
+                                        onPressed: () {
+                                          setState(() {
+                                            _obscurePassword =
+                                                !_obscurePassword;
+                                          });
+                                        },
+                                      ),
+                                    ),
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 14,
+                                      vertical: 14,
+                                    ),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                      borderSide: BorderSide(
+                                        color: Colors.grey.shade300,
+                                      ),
+                                    ),
+                                    enabledBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                      borderSide: BorderSide(
+                                        color: Colors.grey.shade300,
+                                      ),
+                                    ),
+                                    focusedBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                      borderSide: const BorderSide(
+                                        color: Color(0xFF0F172A),
+                                        width: 1.5,
+                                      ),
                                     ),
                                   ),
+                                  // Validação de senha obrigatória
+                                  validator: (value) {
+                                    if (value == null || value.isEmpty) {
+                                      return 'Informe a senha.';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                              ),
+                              // Espaçamento vertical de 24 pontos antes do botão de submissão
+                              const SizedBox(height: 24),
+                              // Semantics para o botão Entrar
+                              Semantics(
+                                label: 'Entrar',
+                                button: true,
+                                child: ElevatedButton(
+                                  key: const Key('botaoEntrar'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF0F172A),
+                                    foregroundColor: Colors.white,
+                                    disabledBackgroundColor:
+                                        const Color(0xFF0F172A)
+                                            .withValues(alpha: 0.6),
+                                    disabledForegroundColor: Colors.white70,
+                                    minimumSize: const Size.fromHeight(48),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    elevation: 2,
+                                  ),
+                                  onPressed: _isLoading ? null : _submit,
+                                  child: _isLoading
+                                      ? const SizedBox(
+                                          height: 22,
+                                          width: 22,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2.5,
+                                            color: Colors.white,
+                                          ),
+                                        )
+                                      : const Text(
+                                          'Entrar',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                ),
+                              ),
+                              // Botão para alternar para o fluxo de paciente/acompanhante (Issue #65)
+                              const SizedBox(height: 16),
+                              Semantics(
+                                label:
+                                    'Alternar para acesso do paciente ou acompanhante',
+                                button: true,
+                                child: TextButton.icon(
+                                  key: const Key('botaoModoPaciente'),
+                                  style: TextButton.styleFrom(
+                                    minimumSize: const Size.fromHeight(48),
+                                  ),
+                                  onPressed: _isLoading
+                                      ? null
+                                      : () {
+                                          setState(() {
+                                            _modoLogin = 1;
+                                            _errorMessage = null;
+                                          });
+                                        },
+                                  icon: const Icon(
+                                    Icons.badge_outlined,
+                                    size: 18,
+                                    color: Color(0xFF0F172A),
+                                  ),
+                                  label: const Text(
+                                    'Acesso do Paciente / Acompanhante',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF0F172A),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      : Form(
+                          key: _formPacienteKey,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Center(
+                                child: CircleAvatar(
+                                  radius: 35,
+                                  backgroundColor: const Color(0xFF0F172A),
+                                  child: const Icon(
+                                    Icons.airline_seat_recline_normal,
+                                    size: 36,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 18),
+                              const Text(
+                                'Acesso do Paciente',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF0F172A),
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              const Text(
+                                'Informe seu documento e o código temporário',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: Color(0xFF64748B),
+                                  fontSize: 13,
+                                ),
+                              ),
+                              const SizedBox(height: 24),
+                              if (_errorMessage != null) ...[
+                                Container(
+                                  key: const Key('mensagemErro'),
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFEF2F2),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: const Color(0xFFF87171),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      const Icon(
+                                        Icons.error_outline,
+                                        color: Color(0xFFDC2626),
+                                        size: 20,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          _errorMessage!,
+                                          style: const TextStyle(
+                                            color: Color(0xFFB91C1C),
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                              ],
+                              const Text(
+                                'DOCUMENTO (CPF, RG OU CNH)',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF334155),
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Semantics(
+                                label: 'Campo de documento do passageiro',
+                                textField: true,
+                                child: TextFormField(
+                                  key: const Key('campoDocumentoPaciente'),
+                                  controller: _documentoPacienteController,
+                                  keyboardType: TextInputType.text,
+                                  textInputAction: TextInputAction.next,
+                                  decoration: InputDecoration(
+                                    labelText: 'Documento',
+                                    hintText: '000.000.000-00 ou RG/CNH',
+                                    hintStyle: TextStyle(
+                                      color: Colors.grey.shade400,
+                                      fontSize: 14,
+                                    ),
+                                    prefixIcon: const Icon(
+                                      Icons.person_pin_outlined,
+                                      color: Color(0xFF64748B),
+                                    ),
+                                    contentPadding:
+                                        const EdgeInsets.symmetric(
+                                      horizontal: 14,
+                                      vertical: 14,
+                                    ),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                      borderSide: BorderSide(
+                                        color: Colors.grey.shade300,
+                                      ),
+                                    ),
+                                    enabledBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                      borderSide: BorderSide(
+                                        color: Colors.grey.shade300,
+                                      ),
+                                    ),
+                                    focusedBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                      borderSide: const BorderSide(
+                                        color: Color(0xFF0F172A),
+                                        width: 1.5,
+                                      ),
+                                    ),
+                                  ),
+                                  validator: (value) {
+                                    final raw = value?.trim() ?? '';
+                                    if (raw.isEmpty) {
+                                      return 'Informe seu documento.';
+                                    }
+                                    if (raw.length < 3) {
+                                      return 'Informe um documento válido.';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              const Text(
+                                'CÓDIGO DE ACESSO (4 A 5 DÍGITOS)',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF334155),
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Semantics(
+                                label: 'Campo de código de acesso',
+                                textField: true,
+                                child: TextFormField(
+                                  key: const Key('campoCodigoAcesso'),
+                                  controller: _codigoAcessoController,
+                                  keyboardType: TextInputType.number,
+                                  textInputAction: TextInputAction.done,
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.digitsOnly,
+                                    LengthLimitingTextInputFormatter(5),
+                                  ],
+                                  onFieldSubmitted: _isLoading
+                                      ? null
+                                      : (_) => _submitPaciente(),
+                                  decoration: InputDecoration(
+                                    labelText: 'Código de Acesso',
+                                    hintText: 'Ex.: 12345',
+                                    hintStyle: TextStyle(
+                                      color: Colors.grey.shade400,
+                                      fontSize: 14,
+                                    ),
+                                    prefixIcon: const Icon(
+                                      Icons.key_outlined,
+                                      color: Color(0xFF64748B),
+                                    ),
+                                    contentPadding:
+                                        const EdgeInsets.symmetric(
+                                      horizontal: 14,
+                                      vertical: 14,
+                                    ),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                      borderSide: BorderSide(
+                                        color: Colors.grey.shade300,
+                                      ),
+                                    ),
+                                    enabledBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                      borderSide: BorderSide(
+                                        color: Colors.grey.shade300,
+                                      ),
+                                    ),
+                                    focusedBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                      borderSide: const BorderSide(
+                                        color: Color(0xFF0F172A),
+                                        width: 1.5,
+                                      ),
+                                    ),
+                                  ),
+                                  validator: (value) {
+                                    final raw = value?.trim() ?? '';
+                                    if (raw.isEmpty) {
+                                      return 'Informe o código de acesso.';
+                                    }
+                                    if (raw.length < 4 || raw.length > 5) {
+                                      return 'O código deve ter entre 4 e 5 dígitos.';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                              ),
+                              const SizedBox(height: 24),
+                              Semantics(
+                                label: 'Acessar Viagem',
+                                button: true,
+                                child: ElevatedButton(
+                                  key: const Key('botaoAcessarViagem'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF0F172A),
+                                    foregroundColor: Colors.white,
+                                    disabledBackgroundColor:
+                                        const Color(0xFF0F172A)
+                                            .withValues(alpha: 0.6),
+                                    disabledForegroundColor: Colors.white70,
+                                    minimumSize: const Size.fromHeight(48),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    elevation: 2,
+                                  ),
+                                  onPressed:
+                                      _isLoading ? null : _submitPaciente,
+                                  child: _isLoading
+                                      ? const SizedBox(
+                                          height: 22,
+                                          width: 22,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2.5,
+                                            color: Colors.white,
+                                          ),
+                                        )
+                                      : const Text(
+                                          'Acessar Viagem',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              Semantics(
+                                label: 'Voltar para login de motorista ou gestão',
+                                button: true,
+                                child: TextButton.icon(
+                                  key: const Key('botaoVoltarMotorista'),
+                                  style: TextButton.styleFrom(
+                                    minimumSize: const Size.fromHeight(48),
+                                  ),
+                                  onPressed: _isLoading
+                                      ? null
+                                      : () {
+                                          setState(() {
+                                            _modoLogin = 0;
+                                            _errorMessage = null;
+                                          });
+                                        },
+                                  icon: const Icon(
+                                    Icons.directions_bus,
+                                    size: 18,
+                                    color: Color(0xFF0F172A),
+                                  ),
+                                  label: const Text(
+                                    'Voltar para Motorista / Gestão',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF0F172A),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      ],
-                    ),
-                  ),
                 ),
               ),
             ),

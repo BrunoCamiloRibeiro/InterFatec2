@@ -46,6 +46,9 @@
 // Entidade imutável em memória: sem efeitos colaterais de I/O, rede ou estado global.
 // ============================================================================
 
+import 'passageiro_viagem_model.dart';
+export 'passageiro_viagem_model.dart';
+
 // Linha em branco separadora entre o cabeçalho descritivo do arquivo e a enumeração de estados
 // ----------------------------------------------------------------------------
 // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
@@ -259,6 +262,33 @@ class ViagemModel {
   // --------------------------------------------------------------------------
   final List<String> passageirosIds;
 
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: sessaoId
+  // - O que é: Identificador da sessão de veículo do motorista vinculada a esta viagem (Issue #65).
+  // --------------------------------------------------------------------------
+  final String? sessaoId;
+
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: codigosAcesso
+  // - O que é: Dicionário associando pacienteId -> código numérico de 4 a 5 dígitos (Issue #65).
+  // --------------------------------------------------------------------------
+  final Map<String, String> codigosAcesso;
+
+  // --------------------------------------------------------------------------
+  // ATRIBUTO: codigosHash
+  // - O que é: Dicionário associando pacienteId -> hash criptográfico do código (Issue #65).
+  // --------------------------------------------------------------------------
+  final Map<String, String> codigosHash;
+
+  /// Nome amigável do Horário (ex.: "06:00 - São José do Rio Preto - HB")
+  final String? nomeHorario;
+
+  /// Data da operação do dia (YYYY-MM-DD)
+  final DateTime? dataViagem;
+
+  /// Lista detalhada de passageiros com acompanhantes, ordens e destinos
+  final List<PassageiroViagemModel> passageiros;
+
   // Linha em branco separadora entre atributos e construtor principal
   // ----------------------------------------------------------------------------
   // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
@@ -299,8 +329,57 @@ class ViagemModel {
     this.observacoes,
     // Parâmetro opcional: Lista de IDs dos passageiros agendados, padrão lista vazia
     this.passageirosIds = const [],
+    // Parâmetro opcional: Identificador da sessão de veículo
+    this.sessaoId,
+    // Parâmetro opcional: Códigos de acesso para exibição ao motorista
+    this.codigosAcesso = const {},
+    // Parâmetro opcional: Hashes dos códigos de acesso para autenticação
+    this.codigosHash = const {},
+    // Parâmetro opcional: Nome do horário
+    this.nomeHorario,
+    // Parâmetro opcional: Data do horário
+    this.dataViagem,
+    // Parâmetro opcional: Lista de passageiros
+    this.passageiros = const [],
   // Fecha a lista de parâmetros formais nomeados do construtor
   });
+
+  // ----------------------------------------------------------------------------
+  // GETTERS AUXILIARES DE HORÁRIO E AUDITORIA (FASE 1)
+  // ----------------------------------------------------------------------------
+  /// Retorna o título amigável do Horário (ou destino formatado como fallback)
+  String get tituloHorario {
+    if (nomeHorario != null && nomeHorario!.trim().isNotEmpty) {
+      return nomeHorario!;
+    }
+    final hora = dataHoraInicio.hour.toString().padLeft(2, '0');
+    final minuto = dataHoraInicio.minute.toString().padLeft(2, '0');
+    return '$hora:$minuto - $cidadeDestino';
+  }
+
+  /// Retorna a data operacional da viagem
+  DateTime get dataOperacional =>
+      dataViagem ?? DateTime(dataHoraInicio.year, dataHoraInicio.month, dataHoraInicio.day);
+
+  /// Total consolidado de assentos ocupados nesta viagem (considerando acompanhantes)
+  int get totalAssentosOcupados {
+    if (passageiros.isNotEmpty) {
+      return passageiros.fold(0, (sum, p) => sum + p.assentosOcupados);
+    }
+    return passageirosIds.length;
+  }
+
+  /// Retorna se a viagem é ativa
+  bool get isAtiva => status == 'ativa';
+
+  /// Retorna se a viagem é planejada
+  bool get isPlanejada => status == 'planejada';
+
+  /// Retorna se a viagem foi encerrada ou concluída
+  bool get isConcluida => status == 'encerrada' || status == 'concluida';
+
+  /// Retorna se a viagem foi cancelada
+  bool get isCancelada => status == 'cancelada';
 
   // Linha em branco separadora entre o construtor e o método toMap
   // ----------------------------------------------------------------------------
@@ -312,43 +391,34 @@ class ViagemModel {
   // - Retorno: Map pronto para ser persistido na coleção 'viagens' do Cloud Firestore.
   // ----------------------------------------------------------------------------
   Map<String, dynamic> toMap() {
-    // ------------------------------------------------------------------------
-    // Retorna a estrutura literal de mapa com todas as propriedades da viagem:
-    // ------------------------------------------------------------------------
+    final effectivePassageirosIds = passageirosIds.isNotEmpty
+        ? passageirosIds
+        : passageiros.map((p) => p.pacienteId).toList();
+
     return {
-      // Mapeia o ID da viagem para a chave 'id'
       'id': id,
-      // Mapeia o ID do motorista para a chave 'motoristaId'
       'motoristaId': motoristaId,
-      // Mapeia o nome do motorista para a chave 'motoristaNome'
       'motoristaNome': motoristaNome,
-      // Mapeia o ID do veículo para a chave 'veiculoId'
       'veiculoId': veiculoId,
-      // Mapeia a placa do veículo para a chave 'veiculoPlaca'
       'veiculoPlaca': veiculoPlaca,
-      // Mapeia o modelo do veículo para a chave 'veiculoModelo'
       'veiculoModelo': veiculoModelo,
-      // Mapeia o hodômetro de saída para a chave 'kmInicial'
       'kmInicial': kmInicial,
-      // Mapeia a cidade destino para a chave 'cidadeDestino'
       'cidadeDestino': cidadeDestino,
-      // Mapeia a data de início convertida em texto ISO-8601
       'dataHoraInicio': dataHoraInicio.toIso8601String(),
-      // Mapeia a situação da viagem ('ativa' ou 'encerrada') para a chave 'status'
       'status': status,
-      // Mapeia o hodômetro de encerramento para a chave 'kmFinal'
       'kmFinal': kmFinal,
-      // Mapeia a quilometragem percorrida para a chave 'kmRodado'
       'kmRodado': kmRodado,
-      // Mapeia a data de término convertida em texto ISO-8601 se não for nula
       'dataHoraFim': dataHoraFim?.toIso8601String(),
-      // Mapeia as observações para a chave 'observacoes'
       'observacoes': observacoes,
-      // Mapeia a lista de passageiros para a chave 'passageirosIds'
-      'passageirosIds': passageirosIds,
-    // Fecha o dicionário de pares chave/valor
+      'passageirosIds': effectivePassageirosIds,
+      'sessaoId': sessaoId,
+      'codigosAcesso': codigosAcesso,
+      'codigosHash': codigosHash,
+      if (nomeHorario != null) 'nomeHorario': nomeHorario,
+      if (nomeHorario != null) 'horario': nomeHorario,
+      'dataViagem': (dataViagem ?? dataHoraInicio).toIso8601String(),
+      'passageiros': passageiros.map((p) => p.toMap()).toList(),
     };
-  // Fecha o bloco de instruções do método toMap
   }
 
   // Linha em branco separadora entre toMap e o construtor factory
@@ -417,6 +487,45 @@ class ViagemModel {
           ? List<String>.from(map['passageirosIds'])
           // Fallback para lista vazia constante
           : const [],
+      // Mapeia sessaoId se presente
+      sessaoId: map['sessaoId']?.toString(),
+      // Mapeia codigosAcesso com conversão segura
+      codigosAcesso: (map['codigosAcesso'] is Map)
+          ? Map<String, String>.from(
+              (map['codigosAcesso'] as Map).map(
+                (k, v) => MapEntry(k.toString(), v.toString()),
+              ),
+            )
+          : const {},
+      // Mapeia codigosHash com conversão segura
+      codigosHash: (map['codigosHash'] is Map)
+          ? Map<String, String>.from(
+              (map['codigosHash'] as Map).map(
+                (k, v) => MapEntry(k.toString(), v.toString()),
+              ),
+            )
+          : const {},
+      // Mapeia nomeHorario (ou alias horario)
+      nomeHorario: map['nomeHorario']?.toString() ?? map['horario']?.toString(),
+      // Mapeia dataViagem
+      dataViagem: map['dataViagem'] != null
+          ? DateTime.tryParse(map['dataViagem'].toString())
+          : null,
+      // Mapeia passageiros detalhados
+      passageiros: (map['passageiros'] is List)
+          ? (map['passageiros'] as List)
+              .map((p) => PassageiroViagemModel.fromMap(
+                  Map<String, dynamic>.from(p as Map)))
+              .toList()
+          : (map['passageirosIds'] is List)
+              ? (map['passageirosIds'] as List)
+                  .map((id) => PassageiroViagemModel(
+                        pacienteId: id.toString(),
+                        pacienteNome: 'Paciente $id',
+                        localDestino: map['cidadeDestino']?.toString() ?? '',
+                      ))
+                  .toList()
+              : const [],
     // Fecha a lista de argumentos passados ao construtor ViagemModel
     );
   // Fecha o bloco de instruções do construtor factory fromMap
@@ -462,11 +571,31 @@ class ViagemModel {
     String? observacoes,
     // Nova lista de passageiros opcional
     List<String>? passageirosIds,
+    // Novo identificador de sessão opcional
+    String? sessaoId,
+    // Flag opcional para desvincular sessão (ex: rollback de migração)
+    bool removerSessaoId = false,
+    // Novos códigos de acesso opcionais
+    Map<String, String>? codigosAcesso,
+    // Novos hashes de códigos de acesso opcionais
+    Map<String, String>? codigosHash,
+    // Novo nome do horário opcional
+    String? nomeHorario,
+    // Nova data da viagem opcional
+    DateTime? dataViagem,
+    // Nova lista detalhada de passageiros opcional
+    List<PassageiroViagemModel>? passageiros,
   // Fecha a lista de parâmetros formais nomeados do copyWith
   }) {
     // ------------------------------------------------------------------------
     // Retorna uma nova instância com os campos mesclados (novo valor ?? valor atual):
     // ------------------------------------------------------------------------
+    final novosPassageiros = passageiros ?? this.passageiros;
+    final novosPassageirosIds = passageirosIds ??
+        (passageiros != null
+            ? passageiros.map((p) => p.pacienteId).toList()
+            : this.passageirosIds);
+
     return ViagemModel(
       // Preserva o ID atual se o novo não for fornecido
       id: id ?? this.id,
@@ -497,7 +626,19 @@ class ViagemModel {
       // Preserva as observações se não forem informadas novas
       observacoes: observacoes ?? this.observacoes,
       // Preserva a lista de passageiros se não for informada uma nova
-      passageirosIds: passageirosIds ?? this.passageirosIds,
+      passageirosIds: novosPassageirosIds,
+      // Preserva a sessão se não for informada uma nova (ou remove se explicitado)
+      sessaoId: removerSessaoId ? null : (sessaoId ?? this.sessaoId),
+      // Preserva os códigos de acesso se não forem informados novos
+      codigosAcesso: codigosAcesso ?? this.codigosAcesso,
+      // Preserva os hashes dos códigos se não forem informados novos
+      codigosHash: codigosHash ?? this.codigosHash,
+      // Preserva nome do horário
+      nomeHorario: nomeHorario ?? this.nomeHorario,
+      // Preserva data da viagem
+      dataViagem: dataViagem ?? this.dataViagem,
+      // Preserva passageiros
+      passageiros: novosPassageiros,
     // Fecha a chamada do construtor ViagemModel
     );
   // Fecha o bloco de instruções do método copyWith

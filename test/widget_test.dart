@@ -185,6 +185,14 @@ void main() {
       await tester.tap(find.text('Gerar Relatório'));
       await tester.pumpAndSettle();
 
+      // Pergunta de confirmação obrigatória antes de emitir o relatório final
+      expect(
+        find.text('Você tem certeza que quer finalizar a viagem?'),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Sim, finalizar'));
+      await tester.pumpAndSettle();
+
       expect(find.text('Formulário de Encerramento'), findsOneWidget);
       expect(find.text('Retorno'), findsOneWidget);
       expect(find.text('Km Retorno'), findsOneWidget);

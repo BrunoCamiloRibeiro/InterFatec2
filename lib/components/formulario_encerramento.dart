@@ -49,6 +49,8 @@ import '../models/paciente_model.dart';
 import '../models/viagem_model.dart';
 // Importa o serviço de geração do documento PDF oficial TFD
 import '../services/relatorio_pdf_service.dart';
+// Importa o serviço de gerenciamento de viagens para finalizar sessão e viagens ativas
+import '../services/viagem_service.dart';
 
 // Linha em branco separadora entre imports e a declaração de FormularioEncerramento
 // Comentários originais do autor mantidos byte a byte:
@@ -60,6 +62,8 @@ class FormularioEncerramento extends StatefulWidget {
   // Atributo viagem: objeto da viagem ativa que está sendo encerrada (opcional)
   // Tipo: ViagemModel? anulável
   final ViagemModel? viagem;
+  // Atributo viagens: lista de N viagens ativas para geração em lote de PDF (Issue #65)
+  final List<ViagemModel>? viagens;
   // Atributo pacientes: lista de passageiros vinculados à viagem para emissão do relatório (opcional)
   // Tipo: List<PacienteModel>? anulável
   final List<PacienteModel>? pacientes;
@@ -76,6 +80,8 @@ class FormularioEncerramento extends StatefulWidget {
     super.key,
     // Parâmetro nomeado opcional: objeto da viagem ativa
     this.viagem,
+    // Parâmetro nomeado opcional: N viagens ativas para emissão em lote
+    this.viagens,
     // Parâmetro nomeado opcional: lista de pacientes atendidos
     this.pacientes,
     // Parâmetro nomeado opcional: callback de confirmação
@@ -438,36 +444,69 @@ class _FormularioEncerramentoState extends State<FormularioEncerramento> {
             // Notifica o callback onConfirmar repassando os valores informados
             widget.onConfirmar?.call(retorno, kmRetorno, kmRodado);
 
-            // Comentário original do autor mantido byte a byte:
-            // Se houver dados de viagem e pacientes disponíveis, aciona a visualização/impressão do PDF
-            // Checagem de disponibilidade: se viagem e pacientes foram informados, gera e exibe o PDF
-            if (widget.viagem != null && widget.pacientes != null) {
-              // Obtém a referência não-nula do objeto da viagem
-              final v = widget.viagem!;
-              // Converte a string de KM retorno para inteiro numérico
-              final kmRetornoNum = int.tryParse(kmRetorno);
-              // Converte a string de KM rodado para inteiro numérico
-              final kmRodadoNum = int.tryParse(kmRodado);
+            // Identifica as viagens a serem processadas (N viagens em lote ou viagem única)
+            final List<ViagemModel> viagensAlvo =
+                (widget.viagens != null && widget.viagens!.isNotEmpty)
+                    ? widget.viagens!
+                    : (widget.viagem != null
+                        ? [widget.viagem!]
+                        : const <ViagemModel>[]);
 
-              // Invoca Printing.layoutPdf para abrir o visualizador de impressão do sistema operacional
-              await Printing.layoutPdf(
-                // Nome do arquivo gerado
-                name: 'Roteiro_Viagem_${v.veiculoPlaca}.pdf',
-                // Callback gerador que constrói os bytes do documento PDF via RelatorioPdfService
-                onLayout: (format) async {
-                  // Invocação do serviço de relatório oficial
-                  return RelatorioPdfService.gerarRoteiroViagemPdf(
-                    viagem: v,
-                    pacientes: widget.pacientes!,
-                    retornoInformado: retorno.isNotEmpty ? retorno : null,
-                    kmRetornoInformado: kmRetornoNum,
-                    kmRodadoInformado: kmRodadoNum,
-                  // Fecha a chamada de gerarRoteiroViagemPdf
-                  );
-                // Fecha a função assíncrona onLayout
-                },
-              // Fecha a chamada de Printing.layoutPdf
-              );
+            // Converte a string de KM retorno para inteiro numérico
+            final kmRetornoNum = int.tryParse(kmRetorno);
+            // Converte a string de KM rodado para inteiro numérico
+            final kmRodadoNum = int.tryParse(kmRodado);
+
+            // Finaliza as viagens e a sessão do veículo no serviço
+            await ViagemService().encerrarTodasViagens(
+              kmFinal: kmRetornoNum,
+              kmRodado: kmRodadoNum,
+            );
+
+            // Checagem de disponibilidade: se há viagens e pacientes informados, gera e exibe o PDF
+            if (viagensAlvo.isNotEmpty && widget.pacientes != null) {
+
+              if (viagensAlvo.length > 1) {
+                // Emissão em lote atômica de todas as N viagens ativas (Issue #65)
+                final lote = await RelatorioPdfService.gerarLoteViagensPdf(
+                  viagens: viagensAlvo,
+                  pacientes: widget.pacientes!,
+                  retornoInformado: retorno.isNotEmpty ? retorno : null,
+                  kmRetornoInformado: kmRetornoNum,
+                  kmRodadoInformado: kmRodadoNum,
+                );
+
+                for (final v in viagensAlvo) {
+                  final bytes = lote[v.id];
+                  if (bytes != null) {
+                    await Printing.layoutPdf(
+                      name: 'Roteiro_Viagem_${v.id}_${v.veiculoPlaca}.pdf',
+                      onLayout: (format) async => bytes,
+                    );
+                  }
+                }
+              } else {
+                // Emissão individual preservando comportamento e assinaturas pré-existentes
+                final v = viagensAlvo.first;
+                await Printing.layoutPdf(
+                  // Nome do arquivo gerado
+                  name: 'Roteiro_Viagem_${v.veiculoPlaca}.pdf',
+                  // Callback gerador que constrói os bytes do documento PDF via RelatorioPdfService
+                  onLayout: (format) async {
+                    // Invocação do serviço de relatório oficial
+                    return RelatorioPdfService.gerarRoteiroViagemPdf(
+                      viagem: v,
+                      pacientes: widget.pacientes!,
+                      retornoInformado: retorno.isNotEmpty ? retorno : null,
+                      kmRetornoInformado: kmRetornoNum,
+                      kmRodadoInformado: kmRodadoNum,
+                    // Fecha a chamada de gerarRoteiroViagemPdf
+                    );
+                  // Fecha a função assíncrona onLayout
+                  },
+                // Fecha a chamada de Printing.layoutPdf
+                );
+              }
             // Fecha o bloco condicional de geração de PDF
             }
 

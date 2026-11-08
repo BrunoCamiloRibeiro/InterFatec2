@@ -167,6 +167,16 @@ class PacienteModel {
   final String? telAcompanhante;
 
   // --------------------------------------------------------------------------
+  // ATRIBUTOS DOCUMENTAIS EXTRAS (Issue #65: Resolução de Identificador de Login)
+  // --------------------------------------------------------------------------
+  /// CPF do acompanhante responsável (caso o paciente não possua CPF)
+  final String? cpfAcompanhante;
+  /// Registro Geral (RG) do paciente (documento secundário de identificação)
+  final String? rg;
+  /// Carteira Nacional de Habilitação (CNH) do paciente (documento secundário)
+  final String? cnh;
+
+  // --------------------------------------------------------------------------
   // ATRIBUTO: role
   // - O que é: Campo final imutável do tipo primitivo 'String'.
   // - Papel: Identificador de papel de acesso RBAC, com valor padrão 'paciente'.
@@ -218,6 +228,9 @@ class PacienteModel {
     this.nomeAcompanhante,
     // Parâmetro opcional: Telefone de contato do acompanhante
     this.telAcompanhante,
+    this.cpfAcompanhante,
+    this.rg,
+    this.cnh,
     // Parâmetro opcional: Papel de acesso RBAC, padrão 'paciente'
     this.role = 'paciente',
     // Parâmetro opcional: Indicador de conta ativa, padrão verdadeiro
@@ -381,6 +394,9 @@ class PacienteModel {
       'nomeAcompanhante': nomeAcompanhante,
       // Mapeia o telefone do acompanhante para a chave 'telAcompanhante'
       'telAcompanhante': telAcompanhante,
+      'cpfAcompanhante': cpfAcompanhante,
+      'rg': rg,
+      'cnh': cnh,
       // Mapeia o papel de privilégio para a chave 'role'
       'role': role,
       // Mapeia a bandeira booleana de atividade da conta para a chave 'ativo'
@@ -471,6 +487,9 @@ class PacienteModel {
       nomeAcompanhante: map['nomeAcompanhante']?.toString(),
       // Converte o telefone do acompanhante para String ou preserva null se ausente
       telAcompanhante: map['telAcompanhante']?.toString(),
+      cpfAcompanhante: map['cpfAcompanhante']?.toString(),
+      rg: map['rg']?.toString(),
+      cnh: map['cnh']?.toString(),
       // Atribui o papel de permissão com fallback padrão para 'paciente'
       role: (map['role'] ?? 'paciente').toString(),
       // Avalia 'ativo' com tolerância a booleano verdadeiro, nulo (ativo por padrão) ou 'true'
