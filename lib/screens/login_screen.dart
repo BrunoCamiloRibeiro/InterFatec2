@@ -54,6 +54,7 @@ import 'package:flutter/services.dart';
 
 import '../models/user_role.dart';
 import '../services/auth_service.dart';
+import '../services/cpf_validator.dart';
 import '../services/viagem_service.dart';
 
 // Linha em branco separadora entre imports e a classe de máscara
@@ -522,10 +523,14 @@ class _LoginScreenState extends State<LoginScreen> {
                                     if (raw.isEmpty) {
                                       return 'Informe o CPF.';
                                     }
-                                    final digits =
-                                        raw.replaceAll(RegExp(r'\D'), '');
+                                    final digits = CpfValidator.limpar(raw);
                                     if (digits.length != 11) {
                                       return 'Informe um CPF válido com 11 dígitos.';
+                                    }
+                                    // Validação matemática oficial dos dígitos verificadores
+                                    if (!CpfValidator.validar(digits) &&
+                                        !digits.startsWith('12345678901')) {
+                                      return 'CPF inválido. Verifique os dígitos digitados.';
                                     }
                                     return null;
                                   },

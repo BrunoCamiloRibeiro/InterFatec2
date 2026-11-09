@@ -66,6 +66,7 @@ import '../models/paciente_model.dart';
 import '../models/user_role.dart';
 import '../models/viagem_model.dart';
 import 'codigo_acesso_service.dart';
+import 'cpf_validator.dart';
 import 'localizacao_motorista_service.dart';
 import 'viagem_service.dart';
 
@@ -457,7 +458,7 @@ class FirebaseAuthService implements AuthService {
 
     // Linha em branco separadora entre consulta no Firestore e fallback padrão
     // Retorna o e-mail gerado sinteticamente com o domínio municipal oficial
-    return '$cleanCpf@transsaude.sp.gov.br';
+    return CpfValidator.derivarEmail(cleanCpf);
   // Fecha o método _resolveEmail
   }
 
@@ -503,6 +504,28 @@ class FirebaseAuthService implements AuthService {
         return data;
       }
     } catch (_) {}
+
+    // Resolução resiliente pós-F5 por e-mail sintético do usuário autenticado
+    try {
+      final userAuth = auth.currentUser;
+      if (userAuth?.email != null && userAuth!.email!.isNotEmpty) {
+        final queryEmail = await firestore
+            .collection('usuarios')
+            .where('email', isEqualTo: userAuth.email)
+            .limit(1)
+            .get();
+        if (queryEmail.docs.isNotEmpty) {
+          final d = queryEmail.docs.first;
+          _usuarioOperacionalDocId = d.id;
+          final data = d.data();
+          if (data['role'] == 'motorista') {
+            motoristaEmViagemStatic = data['emViagem'] == true || data['emViagem'] == 'true';
+          }
+          return data;
+        }
+      }
+    } catch (_) {}
+
     // Retorna nulo se o documento não for encontrado
     return null;
   // Fecha o método _fetchUserData
