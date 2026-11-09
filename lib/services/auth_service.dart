@@ -195,14 +195,6 @@ abstract class AuthService {
   // ----------------------------------------------------------------------------
   void clearRoleCache() {}
 
-  // Linha em branco separadora entre clearRoleCache e currentUserId
-  // ----------------------------------------------------------------------------
-  // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
-  /// Retorna o UID do usuário atualmente autenticado, se houver
-  // ----------------------------------------------------------------------------
-  // GETTER: currentUserId
-  // - O que faz: Retorna o UID do usuário atualmente conectado na sessão ou 'null'.
-  // ----------------------------------------------------------------------------
   String? get currentUserId => null;
 
 // Fecha o contrato da interface abstrata AuthService
@@ -266,6 +258,12 @@ class FirebaseAuthService implements AuthService {
 
   // Identificador da sessão ativa de usuário operacional (motorista/admin) em homologação
   static String? _usuarioOperacionalLogadoId;
+
+  // Identificador do documento do usuário na coleção 'usuarios' do Firestore (pode diferir do authUid)
+  static String? _usuarioOperacionalDocId;
+
+  // Estado de 'emViagem' do motorista autenticado lido do Firestore
+  static bool? motoristaEmViagemStatic;
 
   // Controle de rate limiting e bloqueio contra ataques de força bruta (FASE 2)
   static final Map<String, int> _tentativasLoginOperacional = {};
@@ -358,6 +356,12 @@ class FirebaseAuthService implements AuthService {
 
   // Linha em branco separadora entre membros da interface
 
+  String? get currentDocId => _usuarioOperacionalDocId ?? currentUserId;
+
+  bool? get motoristaEmViagem => motoristaEmViagemStatic;
+
+  // Linha em branco separadora entre membros da interface
+
   // --------------------------------------------------------------------------
   // SOBRESCRITA DO GETTER: currentUserId
   // - Retorna o UID do usuário atualmente autenticado no FirebaseAuth ou o ID do paciente logado.
@@ -397,6 +401,8 @@ class FirebaseAuthService implements AuthService {
   void clearRoleCache() {
     _pacienteLogadoId = null;
     _usuarioOperacionalLogadoId = null;
+    _usuarioOperacionalDocId = null;
+    motoristaEmViagemStatic = null;
     _roleCache.clear();
   }
 
@@ -473,7 +479,12 @@ class FirebaseAuthService implements AuthService {
     final doc = await firestore.collection('usuarios').doc(uid).get();
     // Se o documento existir no banco, retorna os dados
     if (doc.exists) {
-      return doc.data();
+      final data = doc.data();
+      _usuarioOperacionalDocId = doc.id;
+      if (data != null && data['role'] == 'motorista') {
+        motoristaEmViagemStatic = data['emViagem'] == true || data['emViagem'] == 'true';
+      }
+      return data;
     }
     // Fallback após lazy migration: busca por authUid associado
     try {
@@ -483,7 +494,13 @@ class FirebaseAuthService implements AuthService {
           .limit(1)
           .get();
       if (queryAuth.docs.isNotEmpty) {
-        return queryAuth.docs.first.data();
+        final d = queryAuth.docs.first;
+        _usuarioOperacionalDocId = d.id;
+        final data = d.data();
+        if (data['role'] == 'motorista') {
+          motoristaEmViagemStatic = data['emViagem'] == true || data['emViagem'] == 'true';
+        }
+        return data;
       }
     } catch (_) {}
     // Retorna nulo se o documento não for encontrado
@@ -755,7 +772,13 @@ class FirebaseAuthService implements AuthService {
       }
 
       final uidFinal = uidComRole ?? uidQualquer!;
+      _usuarioOperacionalDocId = uidFinal;
       final roleStr = (roleEncontrada ?? 'motorista').toLowerCase().trim();
+      final docAchado = docsPorId[uidFinal];
+      if (docAchado != null && roleStr == 'motorista') {
+        motoristaEmViagemStatic =
+            docAchado['emViagem'] == true || docAchado['emViagem'] == 'true';
+      }
       if (roleStr == 'motorista') {
         resetarTentativasOperacional(cleanCpf);
         _usuarioOperacionalLogadoId = uidFinal;
@@ -822,11 +845,11 @@ class FirebaseAuthService implements AuthService {
         final role = await resolveUserRole(user.uid);
         if (role == UserRole.motorista) {
           resetarTentativasOperacional(cleanCpf);
-          _usuarioOperacionalLogadoId = user.uid;
+          _usuarioOperacionalLogadoId = _usuarioOperacionalDocId ?? user.uid;
           return UserRole.motorista;
         } else if (role == UserRole.admin) {
           resetarTentativasOperacional(cleanCpf);
-          _usuarioOperacionalLogadoId = user.uid;
+          _usuarioOperacionalLogadoId = _usuarioOperacionalDocId ?? user.uid;
           return UserRole.admin;
         } else {
           await auth.signOut();
@@ -892,6 +915,7 @@ class FirebaseAuthService implements AuthService {
 
           resetarTentativasOperacional(cleanCpf);
           _usuarioOperacionalLogadoId = uidFinal;
+          _usuarioOperacionalDocId = uidFinal;
           _roleCache[uidFinal] = role;
           if (novoAuthUid != null) {
             _roleCache[novoAuthUid] = role;

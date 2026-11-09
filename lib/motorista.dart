@@ -174,6 +174,9 @@ class _MotoristaState extends State<Motorista> {
   String? _motoristaId;
   String _motoristaNome = '';
 
+  // Estado emViagem do motorista persistido no Firestore
+  bool? _motoristaEmViagem;
+
   // Garante que argumentos da rota sejam lidos apenas na abertura inicial e não reativem viagem encerrada
   bool _argumentosRotaProcessados = false;
 
@@ -215,9 +218,15 @@ class _MotoristaState extends State<Motorista> {
     if (_viagemAtiva == null && _viagemService.viagemAtiva != null) {
       _viagemAtiva = _viagemService.viagemAtiva;
     }
+    _motoristaEmViagem = _viagemService.viagemAtiva != null
+        ? true
+        : FirebaseAuthService.motoristaEmViagemStatic;
     _veiculosFrota = List<VeiculoModel>.from(_viagemService.todosVeiculos);
     if (_viagemAtiva == null) {
-      final idMotInicial = _motoristaId ?? FirebaseAuthService().currentUserId ?? '';
+      final idMotInicial = _motoristaId ??
+          FirebaseAuthService().currentDocId ??
+          FirebaseAuthService().currentUserId ??
+          '';
       if (idMotInicial.isNotEmpty) {
         _viagemService.restaurarSessaoMotoristaSeAtiva(
           motoristaId: idMotInicial,
@@ -227,6 +236,7 @@ class _MotoristaState extends State<Motorista> {
         if (_viagemService.viagemAtiva != null) {
           _viagemAtiva = _viagemService.viagemAtiva;
           _viagensAtivas = _viagemService.viagensAtivas;
+          _motoristaEmViagem = true;
         }
       }
     }
@@ -396,6 +406,8 @@ class _MotoristaState extends State<Motorista> {
   void _aoEncerrarViagemMotorista() {
     if (!mounted) return;
     setState(() {
+      _motoristaEmViagem = false;
+      FirebaseAuthService.motoristaEmViagemStatic = false;
       _viagemAtiva = null;
       _viagensAtivas = [];
       _indiceViagemAtual = 0;
@@ -636,9 +648,13 @@ class _MotoristaState extends State<Motorista> {
           // Verifica se existem documentos retornados e se o widget ainda está montado
           if (snapshot.docs.isNotEmpty && mounted) {
             final uidLogado = FirebaseAuthService().currentUserId;
+            final docIdLogado = FirebaseAuthService().currentDocId;
             final docSelecionado = (uidLogado != null && uidLogado.isNotEmpty)
                 ? snapshot.docs
-                    .where((d) => d.id == uidLogado)
+                    .where((d) =>
+                        d.id == uidLogado ||
+                        (docIdLogado != null && d.id == docIdLogado) ||
+                        d.data()['authUid'] == uidLogado)
                     .firstOrNull ?? snapshot.docs.first
                 : snapshot.docs.first;
             // Converte os dados brutos do documento em um modelo fortemente tipado MotoristaModel
@@ -654,6 +670,8 @@ class _MotoristaState extends State<Motorista> {
               _capacidadeMotoristaDoc = motorista.capacidadeVeiculo;
               _placaMotoristaDoc = motorista.veiculoPlaca;
               _motoristaId = motorista.id.isNotEmpty ? motorista.id : docSelecionado.id;
+              _motoristaEmViagem = motorista.emViagem;
+              FirebaseAuthService.motoristaEmViagemStatic = motorista.emViagem;
               if (motorista.nome.trim().isNotEmpty) {
                 _motoristaNome = motorista.nome.trim();
               }
@@ -666,6 +684,7 @@ class _MotoristaState extends State<Motorista> {
                 if (_viagemService.viagemAtiva != null) {
                   _viagensAtivas = _viagemService.viagensAtivas;
                   _viagemAtiva = _viagemService.viagemAtiva;
+                  _motoristaEmViagem = true;
                 }
               }
               // Atribui a capacidade numérica de assentos do veículo resolvida da frota
@@ -875,6 +894,33 @@ class _MotoristaState extends State<Motorista> {
   @override
   // Recebe o contexto de montagem do widget
   Widget build(BuildContext context) {
+    // Se o motorista possui comprovadamente emViagem == true mas a viagem ativa ainda está sendo restaurada:
+    // Exibe tela de carregamento para evitar flash da tela 'Iniciar Viagem'
+    if (!_temViagemAtiva && _motoristaEmViagem == true) {
+      return const Scaffold(
+        backgroundColor: Color(0xFF0F172A),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF38BDF8)),
+              ),
+              SizedBox(height: 16),
+              Text(
+                'Carregando viagem ativa...',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 16,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     // Caso o motorista não possua viagem ativa (primeira vez do dia que entrar ou
     // após finalizar a viagem gerando o relatório final), exibe o formulário de
     // início de viagem para escolher o veículo e registrar a quilometragem inicial.
@@ -909,6 +955,8 @@ class _MotoristaState extends State<Motorista> {
                 motoristaNome: _motoristaNome.isNotEmpty ? _motoristaNome : 'Motorista da Saúde',
                 onViagemIniciada: (novaViagem) {
                   setState(() {
+                    _motoristaEmViagem = true;
+                    FirebaseAuthService.motoristaEmViagemStatic = true;
                     _viagemAtiva = novaViagem;
                     _viagensAtivas = _viagemService.viagensAtivas.isNotEmpty
                         ? _viagemService.viagensAtivas

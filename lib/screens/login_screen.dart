@@ -220,10 +220,13 @@ class _LoginScreenState extends State<LoginScreen> {
 
       // Se o usuário autenticado for motorista, redireciona para a tela do motorista
       if (role == UserRole.motorista) {
-        final uid = widget.authService.currentUserId ?? '';
-        if (uid.isNotEmpty) {
+        final authSvc = widget.authService;
+        final idMotorista = (authSvc is FirebaseAuthService ? authSvc.currentDocId : null) ??
+            authSvc.currentUserId ??
+            '';
+        if (idMotorista.isNotEmpty) {
           ViagemService().restaurarSessaoMotoristaSeAtiva(
-            motoristaId: uid,
+            motoristaId: idMotorista,
             motoristaNome: '',
           );
         }

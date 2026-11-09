@@ -78,6 +78,7 @@ import '../models/sessao_veiculo_model.dart';
 import '../models/user_role.dart';
 import '../models/veiculo_model.dart';
 import '../models/viagem_model.dart';
+import 'auth_service.dart';
 import 'codigo_acesso_service.dart';
 import 'localizacao_motorista_service.dart';
 import 'paciente_sync_service.dart';
@@ -2184,6 +2185,7 @@ class ViagemService {
             // ----------------------------------------------------------------
             // Atualiza a flag emViagem do documento do motorista na coleção 'usuarios'
             if (motoristaId.isNotEmpty) {
+              FirebaseAuthService.motoristaEmViagemStatic = true;
               await FirebaseFirestore.instance
                   .collection('usuarios')
                   .doc(motoristaId)
@@ -2572,6 +2574,8 @@ class ViagemService {
     // 4. Se não houver mais nenhuma viagem ativa na jornada do motorista, encerra a sessão dele e libera o veículo
     final sessaoFinalizada = _viagensAtivasMemoria.isEmpty;
     final sessaoIdEncerrada = _sessaoAtiva?.id;
+    final idMotoristaSessao = _sessaoAtiva?.motoristaId ?? '';
+    final nomeMotoristaSessao = _sessaoAtiva?.motoristaNome ?? '';
     if (sessaoFinalizada) {
       _sessaoFinalizadaPeloMotorista = true;
       _sessaoAtiva = _sessaoAtiva?.copyWith(
@@ -2600,9 +2604,16 @@ class ViagemService {
 
     // 5. Persiste as alterações no Cloud Firestore de forma assíncrona não-bloqueante
     if (_isFirebaseDisponivel()) {
-      final idMotoristaParaLiberar = viagem.motoristaId.isNotEmpty
-          ? viagem.motoristaId
-          : (_sessaoAtiva?.motoristaId ?? '');
+      final idMotoristaParaLiberar = viagem.motoristaId.trim().isNotEmpty
+          ? viagem.motoristaId.trim()
+          : (idMotoristaSessao.trim().isNotEmpty
+              ? idMotoristaSessao.trim()
+              : (FirebaseAuthService().currentDocId ?? FirebaseAuthService().currentUserId ?? ''));
+      final nomeMotoristaParaLiberar = viagem.motoristaNome.trim().isNotEmpty
+          ? viagem.motoristaNome.trim()
+          : (nomeMotoristaSessao.trim().isNotEmpty
+              ? nomeMotoristaSessao.trim()
+              : 'Motorista');
 
       unawaited(
         Future.microtask(() async {
@@ -2629,41 +2640,42 @@ class ViagemService {
               _totalGravacoesFirestoreJornada++;
 
               // Registro Homologado: Snapshot imutável congelado na coleção viagens_homologadas
-              final strParaHash =
-                  '${viagem.id}:$kmFinalCalculado:$kmRodadoCalculado:${agoraFim.toIso8601String()}';
-              final hashSha256 =
-                  sha256.convert(utf8.encode(strParaHash)).toString();
+              try {
+                final strParaHash =
+                    '${viagem.id}:$kmFinalCalculado:$kmRodadoCalculado:${agoraFim.toIso8601String()}';
+                final hashSha256 =
+                    sha256.convert(utf8.encode(strParaHash)).toString();
 
-              final dadosHomologados = <String, dynamic>{
-                'viagemId': viagem.id,
-                'cidadeDestino': viagemAtualizada.cidadeDestino,
-                'motoristaId': idMotoristaParaLiberar,
-                'motoristaNome': viagem.motoristaNome.isNotEmpty
-                    ? viagem.motoristaNome
-                    : 'Motorista',
-                'veiculoId': veiculoId,
-                'veiculoPlaca': viagemAtualizada.veiculoPlaca,
-                'veiculoModelo': viagemAtualizada.veiculoModelo,
-                'kmInicial': viagem.kmInicial,
-                'kmFinal': kmFinalCalculado,
-                'kmRodado': kmRodadoCalculado,
-                'dataHoraInicio': viagem.dataHoraInicio.toIso8601String(),
-                'dataHoraFim': agoraFim.toIso8601String(),
-                'passageiros':
-                    passageirosSincronizados.map((p) => p.toMap()).toList(),
-                'status': 'homologada',
-                'autor': viagem.motoristaNome.isNotEmpty
-                    ? viagem.motoristaNome
-                    : 'Motorista',
-                'hashIntegridade': hashSha256,
-                'homologadoEm': FieldValue.serverTimestamp(),
-              };
+                final dadosHomologados = <String, dynamic>{
+                  'viagemId': viagem.id,
+                  'cidadeDestino': viagemAtualizada.cidadeDestino,
+                  'motoristaId': idMotoristaParaLiberar,
+                  'motoristaNome': nomeMotoristaParaLiberar,
+                  'veiculoId': veiculoId,
+                  'veiculoPlaca': viagemAtualizada.veiculoPlaca,
+                  'veiculoModelo': viagemAtualizada.veiculoModelo,
+                  'kmInicial': viagem.kmInicial,
+                  'kmFinal': kmFinalCalculado,
+                  'kmRodado': kmRodadoCalculado,
+                  'dataHoraInicio': viagem.dataHoraInicio.toIso8601String(),
+                  'dataHoraFim': agoraFim.toIso8601String(),
+                  'passageiros':
+                      passageirosSincronizados.map((p) => p.toMap()).toList(),
+                  'status': 'homologada',
+                  'autor': nomeMotoristaParaLiberar,
+                  'hashIntegridade': hashSha256,
+                  'homologadoEm': FieldValue.serverTimestamp(),
+                };
 
-              await FirebaseFirestore.instance
-                  .collection('viagens_homologadas')
-                  .doc(viagem.id)
-                  .set(dadosHomologados, SetOptions(merge: true));
-              _totalGravacoesFirestoreJornada++;
+                await FirebaseFirestore.instance
+                    .collection('viagens_homologadas')
+                    .doc(viagem.id)
+                    .set(dadosHomologados, SetOptions(merge: true));
+                _totalGravacoesFirestoreJornada++;
+              } catch (e) {
+                // Tolerância a falha do snapshot homologado: erro na coleção não bloqueia liberação do veículo/motorista
+                debugPrint('Aviso: falha na persistência do snapshot homologado ($e)');
+              }
             }
 
             if (sessaoFinalizada) {
@@ -2729,6 +2741,7 @@ class ViagemService {
     List<PacienteModel>? pacientes,
   }) async {
     _sessaoFinalizadaPeloMotorista = true;
+    final idMotoristaDaSessaoAntes = _sessaoAtiva?.motoristaId ?? '';
     final mapaParaEncerrar = <String, ViagemModel>{};
 
     if (viagensExplicitas != null && viagensExplicitas.isNotEmpty) {
@@ -2774,10 +2787,13 @@ class ViagemService {
     }
 
     _viagensConcluidasNaSessao.clear();
+    FirebaseAuthService.motoristaEmViagemStatic = false;
 
-    final idMotoristaFinal = refViagem?.motoristaId.isNotEmpty == true
-        ? refViagem!.motoristaId
-        : (_sessaoAtiva?.motoristaId ?? '');
+    final idMotoristaFinal = refViagem?.motoristaId.trim().isNotEmpty == true
+        ? refViagem!.motoristaId.trim()
+        : (idMotoristaDaSessaoAntes.trim().isNotEmpty
+            ? idMotoristaDaSessaoAntes.trim()
+            : (FirebaseAuthService().currentDocId ?? FirebaseAuthService().currentUserId ?? ''));
     if (_isFirebaseDisponivel() && idMotoristaFinal.isNotEmpty) {
       unawaited(
         FirebaseFirestore.instance

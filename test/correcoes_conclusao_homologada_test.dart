@@ -19,6 +19,7 @@ import 'package:trans_saude/components/formulario_encerramento.dart';
 import 'package:trans_saude/models/user_role.dart';
 import 'package:trans_saude/models/veiculo_model.dart';
 import 'package:trans_saude/models/viagem_model.dart';
+import 'package:trans_saude/motorista.dart';
 import 'package:trans_saude/services/auth_service.dart';
 import 'package:trans_saude/services/viagem_service.dart';
 
@@ -378,6 +379,96 @@ void main() {
       expect(veiculoLiberado.emUso, isFalse);
       expect(veiculoLiberado.motoristaAtualId, isNull);
       expect(veiculoLiberado.quilometragemAtual, equals(1150));
+    });
+
+    testWidgets('4. Roteamento por emViagem: com emViagem == true não pisca tela de Iniciar Viagem; com emViagem == false exibe início', (tester) async {
+      final viagemService = ViagemService();
+      viagemService.resetParaTestes();
+
+      // Caso A: emViagem == true (motorista em trânsito)
+      FirebaseAuthService.motoristaEmViagemStatic = true;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Motorista(
+            key: const Key('mot_em_viagem'),
+            viagemServiceOverride: viagemService,
+          ),
+        ),
+      );
+
+      // Não deve exibir o formulário de "Início da Viagem"
+      expect(find.text('Início da Viagem'), findsNothing);
+      expect(find.text('Carregando viagem ativa...'), findsOneWidget);
+
+      // Caso B: emViagem == false (motorista sem viagem ativa)
+      FirebaseAuthService.motoristaEmViagemStatic = false;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Motorista(
+            key: const Key('mot_sem_viagem'),
+            viagemServiceOverride: viagemService,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // Agora sim deve renderizar o formulário de início de viagem
+      expect(find.text('Início da Viagem'), findsOneWidget);
+    });
+
+    test('5. Tolerância a falhas: encerramento em lote preserva motorista e veículo liberados', () async {
+      final viagemService = ViagemService();
+      final v1 = ViagemModel(
+        id: 'viagem_tolerancia_1',
+        motoristaId: 'mot_tolerancia',
+        motoristaNome: 'Motorista Tolerante',
+        veiculoId: 'ducato_01',
+        veiculoPlaca: 'DEF4G56',
+        veiculoModelo: 'Ducato',
+        kmInicial: 5000,
+        cidadeDestino: 'Barretos',
+        dataHoraInicio: DateTime.now(),
+        status: 'ativa',
+        passageiros: const [
+          PassageiroViagemModel(
+            pacienteId: 'p_tol',
+            pacienteNome: 'Paciente Tolerância',
+            localDestino: 'Hospital',
+            statusEmbarque: 4,
+          ),
+        ],
+      );
+
+      viagemService.resetParaTestes(
+        viagensAtivasIniciais: [v1],
+        veiculosIniciais: [
+          VeiculoModel(
+            id: 'ducato_01',
+            placa: 'DEF4G56',
+            modelo: 'Ducato',
+            quilometragemAtual: 5000,
+            emUso: true,
+            motoristaAtualId: 'mot_tolerancia',
+          ),
+        ],
+      );
+
+      await viagemService.encerrarTodasViagens(
+        kmFinal: 5200,
+        kmRodado: 200,
+        viagensExplicitas: [v1],
+      );
+
+      expect(viagemService.viagemAtiva, isNull);
+      expect(viagemService.viagensAtivas, isEmpty);
+      expect(FirebaseAuthService.motoristaEmViagemStatic, isFalse);
+      final veic = viagemService.todosVeiculos.firstWhere((v) => v.id == 'ducato_01');
+      expect(veic.emUso, isFalse);
+      expect(veic.motoristaAtualId, isNull);
+      expect(veic.quilometragemAtual, equals(5200));
     });
   });
 }
