@@ -390,4 +390,68 @@ void main() {
       },
     );
   });
+
+  group('7. Campo de Horário da Consulta no Criar e Editar Paciente', () {
+    testWidgets(
+      'Exibe e salva o Horário da Consulta (HH:mm) na criação e edição de paciente',
+      (WidgetTester tester) async {
+        PessoaItem? criado;
+        await tester.pumpWidget(
+          criarAppTeste(FormularioPessoa(onSalvo: (p) => criado = p)),
+        );
+
+        expect(find.byKey(const Key('campoHorarioConsultaPessoa')), findsOneWidget);
+        expect(find.text('Horário da Consulta'), findsOneWidget);
+
+        await tester.enterText(find.byType(TextFormField).at(0), 'Helena Souza');
+        await tester.enterText(find.byType(TextFormField).at(1), '52998224725');
+        await tester.enterText(find.byType(TextFormField).at(2), '17991112222');
+        await tester.enterText(find.byType(TextFormField).at(3), 'HB Rio Preto');
+        await tester.enterText(
+          find.byKey(const Key('campoHorarioConsultaPessoa')),
+          '1430',
+        );
+        await tester.pumpAndSettle();
+
+        await tester.ensureVisible(find.text('Cadastrar'));
+        await tester.tap(find.text('Cadastrar'));
+        await tester.pumpAndSettle();
+
+        expect(criado, isNotNull);
+        expect(criado!.horarioConsulta, equals('14:30'));
+        expect(criado!.detalheExtra, contains('14:30'));
+
+        // Testa edição preservando e alterando o Horário da Consulta
+        PessoaItem? editado;
+        await tester.pumpWidget(
+          MaterialApp(
+            key: UniqueKey(),
+            home: Scaffold(
+              body: FormularioPessoa(
+                key: UniqueKey(),
+                pessoaParaEditar: criado,
+                onSalvo: (p) => editado = p,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('14:30'), findsOneWidget);
+
+        await tester.enterText(
+          find.byKey(const Key('campoHorarioConsultaPessoa')),
+          '0915',
+        );
+        await tester.pumpAndSettle();
+
+        await tester.ensureVisible(find.text('Salvar Alterações'));
+        await tester.tap(find.text('Salvar Alterações'));
+        await tester.pumpAndSettle();
+
+        expect(editado, isNotNull);
+        expect(editado!.horarioConsulta, equals('09:15'));
+      },
+    );
+  });
 }

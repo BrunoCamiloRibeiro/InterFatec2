@@ -109,6 +109,35 @@ class RelatorioPdfService {
   /// Altura reservada na base da Página 1 para a linha 'Emitido em' (12.3 mm -> 35.0 pt).
   static const double kAlturaRodapeEmissao = 35.0;
 
+  static (pw.Font, pw.Font) _resolverFontes({
+    pw.Font? fonteRegular,
+    pw.Font? fonteBold,
+  }) {
+    return (
+      fonteRegular ?? pw.Font.helvetica(),
+      fonteBold ?? pw.Font.helveticaBold(),
+    );
+  }
+
+  /// Normaliza o número da requisição para no máximo 6 caracteres limpos,
+  /// evitando quebra de linha e sobreposição vertical no cabeçalho quando
+  /// o ID da viagem é um identificador longo (ex.: 'horario_2026_11_8_1762645200000').
+  static String _formatarNumeroRequisicao(String idBruto) {
+    final limpo = idBruto.trim();
+    if (limpo.isEmpty) return '025059';
+    if (limpo.length <= 8 && !limpo.contains('_')) {
+      return limpo.padLeft(6, '0');
+    }
+    final digitos = limpo.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digitos.length >= 6) {
+      return digitos.substring(digitos.length - 6);
+    }
+    if (digitos.isNotEmpty) {
+      return digitos.padLeft(6, '0');
+    }
+    return limpo.substring(0, limpo.length > 6 ? 6 : limpo.length).toUpperCase();
+  }
+
   // ===========================================================================
   // MÉTODO PRINCIPAL DE GERAÇÃO DO DOCUMENTO
   // ===========================================================================
@@ -150,17 +179,19 @@ class RelatorioPdfService {
     // 1. Inicializa a estrutura de documento em memória do pacote pdf/widgets
     final doc = pw.Document();
 
-    // 2. Define as fontes tipográficas com fallback gracioso para as fontes padrão do PDF
-    final fRegular = fonteRegular ?? pw.Font.helvetica();
-    final fBold = fonteBold ?? pw.Font.helveticaBold();
+    // 2. Define as fontes tipográficas com fallback nativo instantâneo para Helvetica
+    final (fRegular, fBold) = _resolverFontes(
+      fonteRegular: fonteRegular,
+      fonteBold: fonteBold,
+    );
 
     // 3. Define a data e hora de emissão oficial do documento
     final emisso = dataHoraEmissao ?? DateTime.now();
 
     // 4. Formata o número da requisição com 6 dígitos numéricos (ex: "025059")
-    final requisicao = (numeroRequisicao != null && numeroRequisicao.isNotEmpty)
-        ? numeroRequisicao
-        : (viagem.id.isNotEmpty ? viagem.id.padLeft(6, '0') : '025059');
+    final requisicao = (numeroRequisicao != null && numeroRequisicao.trim().isNotEmpty)
+        ? numeroRequisicao.trim()
+        : _formatarNumeroRequisicao(viagem.id);
 
     // 5. Totalização matemática rigorosa conforme regras municipais do TFD
     // Total de Pacientes: contagem cardinal da lista de passageiros principais
@@ -451,14 +482,21 @@ class RelatorioPdfService {
     final double yAposPacientes =
         yBase + (numPacientesNaPagina * kAlturaBlocoPaciente);
 
+    // Limite máximo de início do Resumo para nunca colidir com o rodapé 'Emitido em'
+    // na Página 1 (722.15 pt) nem com a margem inferior nas páginas seguintes
+    final double limiteMaximoTopoResumo = isPrimeiraPagina
+        ? (722.15 - 10.0 - kAlturaBlocoResumo)
+        : (kAlturaPagina - kMargemInferior - kAlturaBlocoResumo);
+
     // No modelo escaneado (página 2 com 3 pacientes), o resumo começa em ~336 pt
     // 105.0 pt + (3 * 50.7 pt) = 257.1 pt -> margem observada de ~78 pt abaixo do último paciente
-    if (yAposPacientes + 75.0 <=
-        (kAlturaPagina - kMargemInferior - kAlturaBlocoResumo)) {
+    if (yAposPacientes + 78.0 <= limiteMaximoTopoResumo) {
       return yAposPacientes + 78.0;
-    } else {
+    } else if (yAposPacientes + 20.0 <= limiteMaximoTopoResumo) {
       // Espaçamento compacto seguro para páginas mais cheias
       return yAposPacientes + 20.0;
+    } else {
+      return (yAposPacientes + 8.0).clamp(yBase, limiteMaximoTopoResumo);
     }
   }
 
@@ -557,6 +595,8 @@ class RelatorioPdfService {
                           ),
                           pw.Text(
                             viagem.motoristaNome.toUpperCase(),
+                            maxLines: 1,
+                            overflow: pw.TextOverflow.clip,
                             style: pw.TextStyle(
                               font: fBold,
                               fontSize: 8.5,
@@ -583,6 +623,8 @@ class RelatorioPdfService {
                           pw.Text(
                             '${viagem.veiculoModelo} - ${viagem.veiculoPlaca}'
                                 .toUpperCase(),
+                            maxLines: 1,
+                            overflow: pw.TextOverflow.clip,
                             style: pw.TextStyle(
                               font: fRegular,
                               fontSize: 8.5,
@@ -608,6 +650,8 @@ class RelatorioPdfService {
                           ),
                           pw.Text(
                             dataHoraSaidaFormatada,
+                            maxLines: 1,
+                            overflow: pw.TextOverflow.clip,
                             style: pw.TextStyle(
                               font: fRegular,
                               fontSize: 8.5,
@@ -641,6 +685,8 @@ class RelatorioPdfService {
                           ),
                           pw.Text(
                             requisicao,
+                            maxLines: 1,
+                            overflow: pw.TextOverflow.clip,
                             style: pw.TextStyle(
                               font: fRegular,
                               fontSize: 8.5,
@@ -665,6 +711,8 @@ class RelatorioPdfService {
                           ),
                           pw.Text(
                             viagem.cidadeDestino.toUpperCase(),
+                            maxLines: 1,
+                            overflow: pw.TextOverflow.clip,
                             style: pw.TextStyle(
                               font: fRegular,
                               fontSize: 8.5,
@@ -771,8 +819,9 @@ class RelatorioPdfService {
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
                     // Coluna: Nome do Paciente (largura fixa 227 pt com corte de texto em overflow)
-                    pw.SizedBox(
+                    pw.Container(
                       width: 227.0,
+                      padding: const pw.EdgeInsets.only(right: 6.0),
                       child: pw.Column(
                         crossAxisAlignment: pw.CrossAxisAlignment.start,
                         children: [
@@ -780,6 +829,8 @@ class RelatorioPdfService {
                             cpfMascarado.isNotEmpty
                                 ? 'Paciente (CPF: $cpfMascarado)'
                                 : 'Paciente',
+                            maxLines: 1,
+                            overflow: pw.TextOverflow.clip,
                             style: pw.TextStyle(
                               font: fRegular,
                               fontSize: 5.5,
@@ -801,8 +852,9 @@ class RelatorioPdfService {
                     ),
 
                     // Coluna: Telefone do Paciente (largura fixa 79 pt)
-                    pw.SizedBox(
+                    pw.Container(
                       width: 79.0,
+                      padding: const pw.EdgeInsets.only(right: 6.0),
                       child: pw.Column(
                         crossAxisAlignment: pw.CrossAxisAlignment.start,
                         children: [
@@ -810,6 +862,8 @@ class RelatorioPdfService {
                             (codigo != null && codigo.isNotEmpty)
                                 ? 'Telefone / Cód: $codigo'
                                 : 'Telefone',
+                            maxLines: 1,
+                            overflow: pw.TextOverflow.clip,
                             style: pw.TextStyle(
                               font: fRegular,
                               fontSize: 5.5,
@@ -832,28 +886,33 @@ class RelatorioPdfService {
 
                     // Coluna: Acompanhantes (expandida para preencher o espaço intermediário)
                     pw.Expanded(
-                      child: pw.Column(
-                        crossAxisAlignment: pw.CrossAxisAlignment.start,
-                        children: [
-                          pw.Text(
-                            'Acompanhantes',
-                            style: pw.TextStyle(
-                              font: fRegular,
-                              fontSize: 5.5,
-                              color: PdfColors.black,
+                      child: pw.Padding(
+                        padding: const pw.EdgeInsets.only(right: 6.0),
+                        child: pw.Column(
+                          crossAxisAlignment: pw.CrossAxisAlignment.start,
+                          children: [
+                            pw.Text(
+                              'Acompanhantes',
+                              maxLines: 1,
+                              overflow: pw.TextOverflow.clip,
+                              style: pw.TextStyle(
+                                font: fRegular,
+                                fontSize: 5.5,
+                                color: PdfColors.black,
+                              ),
                             ),
-                          ),
-                          pw.Text(
-                            textoAcomp,
-                            maxLines: 1,
-                            overflow: pw.TextOverflow.clip,
-                            style: pw.TextStyle(
-                              font: fRegular,
-                              fontSize: 7.5,
-                              color: PdfColors.black,
+                            pw.Text(
+                              textoAcomp,
+                              maxLines: 1,
+                              overflow: pw.TextOverflow.clip,
+                              style: pw.TextStyle(
+                                font: fRegular,
+                                fontSize: 7.5,
+                                color: PdfColors.black,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
 
@@ -865,6 +924,8 @@ class RelatorioPdfService {
                         children: [
                           pw.Text(
                             'Telefone acompanhante',
+                            maxLines: 1,
+                            overflow: pw.TextOverflow.clip,
                             style: pw.TextStyle(
                               font: fRegular,
                               fontSize: 5.5,
@@ -893,13 +954,16 @@ class RelatorioPdfService {
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
                     // Coluna: Endereço residencial do paciente (largura fixa 195 pt)
-                    pw.SizedBox(
+                    pw.Container(
                       width: 195.0,
+                      padding: const pw.EdgeInsets.only(right: 6.0),
                       child: pw.Column(
                         crossAxisAlignment: pw.CrossAxisAlignment.start,
                         children: [
                           pw.Text(
                             'Endereço',
+                            maxLines: 1,
+                            overflow: pw.TextOverflow.clip,
                             style: pw.TextStyle(
                               font: fRegular,
                               fontSize: 5.5,
@@ -922,13 +986,16 @@ class RelatorioPdfService {
 
                     // Coluna: Local de Saída específico (ex: "SANTA CASA").
                     // Por regra municipal, se for 'Residência' ou vazio, fica em branco para não poluir
-                    pw.SizedBox(
+                    pw.Container(
                       width: 123.0,
+                      padding: const pw.EdgeInsets.only(right: 6.0),
                       child: pw.Column(
                         crossAxisAlignment: pw.CrossAxisAlignment.start,
                         children: [
                           pw.Text(
                             'Local de Saída',
+                            maxLines: 1,
+                            overflow: pw.TextOverflow.clip,
                             style: pw.TextStyle(
                               font: fRegular,
                               fontSize: 5.5,
@@ -955,28 +1022,33 @@ class RelatorioPdfService {
                     // Coluna: Destino / Clínica / Hospital da Consulta
                     // Utiliza TextOverflow.clip para evitar sobreposição caso o nome do local seja muito extenso
                     pw.Expanded(
-                      child: pw.Column(
-                        crossAxisAlignment: pw.CrossAxisAlignment.start,
-                        children: [
-                          pw.Text(
-                            'Destino',
-                            style: pw.TextStyle(
-                              font: fRegular,
-                              fontSize: 5.5,
-                              color: PdfColors.black,
+                      child: pw.Padding(
+                        padding: const pw.EdgeInsets.only(right: 6.0),
+                        child: pw.Column(
+                          crossAxisAlignment: pw.CrossAxisAlignment.start,
+                          children: [
+                            pw.Text(
+                              'Destino',
+                              maxLines: 1,
+                              overflow: pw.TextOverflow.clip,
+                              style: pw.TextStyle(
+                                font: fRegular,
+                                fontSize: 5.5,
+                                color: PdfColors.black,
+                              ),
                             ),
-                          ),
-                          pw.Text(
-                            p.localConsulta.toUpperCase(),
-                            maxLines: 1,
-                            overflow: pw.TextOverflow.clip,
-                            style: pw.TextStyle(
-                              font: fRegular,
-                              fontSize: 7.0,
-                              color: PdfColors.black,
+                            pw.Text(
+                              p.localConsulta.toUpperCase(),
+                              maxLines: 1,
+                              overflow: pw.TextOverflow.clip,
+                              style: pw.TextStyle(
+                                font: fRegular,
+                                fontSize: 7.0,
+                                color: PdfColors.black,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
 
@@ -988,6 +1060,8 @@ class RelatorioPdfService {
                         children: [
                           pw.Text(
                             'Consulta',
+                            maxLines: 1,
+                            overflow: pw.TextOverflow.clip,
                             style: pw.TextStyle(
                               font: fRegular,
                               fontSize: 5.5,
@@ -1253,6 +1327,8 @@ class RelatorioPdfService {
         // Rótulo do campo em corpo pequeno
         pw.Text(
           rotulo,
+          maxLines: 1,
+          overflow: pw.TextOverflow.clip,
           style: pw.TextStyle(
             font: fRegular,
             fontSize: 6.0,
@@ -1264,6 +1340,8 @@ class RelatorioPdfService {
         if (valor != null && valor.isNotEmpty)
           pw.Text(
             valor,
+            maxLines: 1,
+            overflow: pw.TextOverflow.clip,
             style: pw.TextStyle(
               font: fRegular,
               fontSize: 8.0,

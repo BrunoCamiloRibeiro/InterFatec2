@@ -70,11 +70,13 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 
+import '../models/paciente_model.dart';
 import '../models/sessao_veiculo_model.dart';
 import '../models/user_role.dart';
 import '../models/veiculo_model.dart';
 import '../models/viagem_model.dart';
 import 'codigo_acesso_service.dart';
+import 'paciente_sync_service.dart';
 import 'validacao_viagem.dart';
 
 // Linha em branco separadora entre imports e a classe de resultado
@@ -333,6 +335,297 @@ class ViagemService {
   // - Evita que os dados padrão sejam inseridos repetidamente na memória.
   // --------------------------------------------------------------------------
   bool _inicializado = false;
+  bool _escutandoFirestore = false;
+  bool _sessaoFinalizadaPeloMotorista = false;
+  StreamSubscription<PacienteModel>? _subSyncPacientesInterno;
+
+  /// Viagens que foram concluídas automaticamente (todos os pacientes em status 4) durante a sessão atual do motorista,
+  /// preservadas até que o motorista gere o relatório e finalize a sessão do veículo.
+  final List<ViagemModel> _viagensConcluidasNaSessao = [];
+
+  ViagemModel _enriquecerViagemParaRelatorio(
+    ViagemModel v, {
+    ViagemModel? referenciaSessao,
+  }) {
+    final sessao = _sessaoAtiva;
+    final conclSessao =
+        _viagensConcluidasNaSessao.where((vc) => vc.id == v.id).firstOrNull;
+    final placa = v.veiculoPlaca.isNotEmpty
+        ? v.veiculoPlaca
+        : (conclSessao?.veiculoPlaca.isNotEmpty == true
+              ? conclSessao!.veiculoPlaca
+              : (sessao?.veiculoPlaca.isNotEmpty == true
+                    ? sessao!.veiculoPlaca
+                    : (referenciaSessao?.veiculoPlaca ?? '')));
+    final modelo = v.veiculoModelo.isNotEmpty
+        ? v.veiculoModelo
+        : (conclSessao?.veiculoModelo.isNotEmpty == true
+              ? conclSessao!.veiculoModelo
+              : (sessao?.veiculoModelo.isNotEmpty == true
+                    ? sessao!.veiculoModelo
+                    : (referenciaSessao?.veiculoModelo ?? '')));
+    final veiculoId = v.veiculoId.isNotEmpty
+        ? v.veiculoId
+        : (conclSessao?.veiculoId.isNotEmpty == true
+              ? conclSessao!.veiculoId
+              : (sessao?.veiculoId.isNotEmpty == true
+                    ? sessao!.veiculoId
+                    : (referenciaSessao?.veiculoId ?? '')));
+    final kmIni = v.kmInicial > 0
+        ? v.kmInicial
+        : ((conclSessao?.kmInicial ?? 0) > 0
+              ? conclSessao!.kmInicial
+              : ((sessao?.kmInicial ?? 0) > 0
+                    ? sessao!.kmInicial
+                    : (referenciaSessao?.kmInicial ?? 0)));
+    final motNome = v.motoristaNome.isNotEmpty
+        ? v.motoristaNome
+        : (conclSessao?.motoristaNome.isNotEmpty == true
+              ? conclSessao!.motoristaNome
+              : (sessao?.motoristaNome.isNotEmpty == true
+                    ? sessao!.motoristaNome
+                    : (referenciaSessao?.motoristaNome ?? '')));
+    final codigos = <String, String>{
+      ...?conclSessao?.codigosAcesso,
+      ...v.codigosAcesso,
+    };
+    return v.copyWith(
+      veiculoId: veiculoId,
+      veiculoPlaca: placa,
+      veiculoModelo: modelo,
+      kmInicial: kmIni,
+      motoristaNome: motNome,
+      codigosAcesso: codigos,
+    );
+  }
+
+  /// Retorna as viagens reais operadas na sessão para geração do relatório PDF.
+  List<ViagemModel> obterViagensParaRelatorio({
+    List<ViagemModel>? viagensExplicitas,
+    ViagemModel? viagemUnica,
+  }) {
+    final informadas = <ViagemModel>[
+      ...?viagensExplicitas,
+      ?viagemUnica,
+      ..._viagensAtivasMemoria,
+      ?_viagemAtiva,
+    ];
+    final refSessao = viagemUnica ?? _viagemAtiva ?? informadas.firstOrNull;
+    final reais = <String, ViagemModel>{};
+    for (final v in _viagensConcluidasNaSessao) {
+      if (v.id.isNotEmpty && !v.id.startsWith('sessao_ativa_')) {
+        final emTodas = _todasViagensMemoria.where((tv) => tv.id == v.id).firstOrNull;
+        reais[v.id] = _enriquecerViagemParaRelatorio(
+          emTodas ?? v,
+          referenciaSessao: refSessao,
+        );
+      }
+    }
+    for (final v in informadas) {
+      if (v.id.isNotEmpty && !v.id.startsWith('sessao_ativa_')) {
+        final emTodas = _todasViagensMemoria.where((tv) => tv.id == v.id).firstOrNull;
+        reais[v.id] = _enriquecerViagemParaRelatorio(
+          emTodas ?? v,
+          referenciaSessao: refSessao,
+        );
+      }
+    }
+    if (reais.isNotEmpty) {
+      return reais.values.toList();
+    }
+    final unicas = <String, ViagemModel>{};
+    for (final v in informadas) {
+      if (v.id.isNotEmpty) {
+        unicas[v.id] = _enriquecerViagemParaRelatorio(
+          v,
+          referenciaSessao: refSessao,
+        );
+      }
+    }
+    return unicas.values.toList();
+  }
+
+  /// Reconstrói a lista de [PacienteModel] de uma viagem para o relatório PDF,
+  /// funcionando mesmo quando a viagem já foi concluída automaticamente e a lista ativa da tela esvaziou.
+  List<PacienteModel> obterPacientesParaViagemRelatorio(
+    ViagemModel viagem, {
+    List<PacienteModel>? pacientesInformados,
+  }) {
+    final mapaInformados = <String, PacienteModel>{
+      if (pacientesInformados != null)
+        for (final p in pacientesInformados) p.id: p,
+    };
+    if (viagem.passageiros.isNotEmpty) {
+      return viagem.passageiros.map((pv) {
+        final pInf = mapaInformados[pv.pacienteId];
+        final pMem = PacienteSyncService().obterPacienteMemoria(pv.pacienteId);
+        final pBase = pInf ?? pMem;
+        final st = resolverStatusEfetivoPassageiro(
+          pv,
+          pacientesContexto: pacientesInformados,
+        );
+        return PacienteModel(
+          id: pv.pacienteId,
+          nome: pv.pacienteNome.isNotEmpty
+              ? pv.pacienteNome
+              : (pBase?.nome ?? ''),
+          cpf: (pv.pacienteCpf != null && pv.pacienteCpf!.isNotEmpty)
+              ? pv.pacienteCpf!
+              : (pBase?.cpf ?? ''),
+          telefone: (pBase != null && pBase.telefone.isNotEmpty)
+              ? pBase.telefone
+              : (pv.acompanhanteTelefone ?? ''),
+          enderecoPaciente: pv.localOrigem.isNotEmpty
+              ? pv.localOrigem
+              : (pBase?.enderecoPaciente ?? ''),
+          localSaida: pv.localOrigem.isNotEmpty
+              ? pv.localOrigem
+              : (pBase?.localSaida ?? ''),
+          localConsulta: pv.localDestino.isNotEmpty
+              ? pv.localDestino
+              : (pBase?.localConsulta ?? ''),
+          horarioConsulta: pv.horarioAtendimento.isNotEmpty
+              ? pv.horarioAtendimento
+              : (pBase?.horarioConsulta ?? ''),
+          nomeAcompanhante:
+              (pv.acompanhanteNome != null && pv.acompanhanteNome!.isNotEmpty)
+                  ? pv.acompanhanteNome
+                  : pBase?.nomeAcompanhante,
+          cpfAcompanhante: pBase?.cpfAcompanhante,
+          telAcompanhante: (pv.acompanhanteTelefone != null &&
+                  pv.acompanhanteTelefone!.isNotEmpty)
+              ? pv.acompanhanteTelefone
+              : pBase?.telAcompanhante,
+          rg: pBase?.rg,
+          cnh: pBase?.cnh,
+          status: st,
+          prontoRetorno: pBase?.prontoRetorno ?? false,
+          janelaReversao: pBase?.janelaReversao,
+        );
+      }).toList();
+    }
+    return pacientesInformados ?? const <PacienteModel>[];
+  }
+
+  String _normalizarPlacaInterna(String placa) {
+    return placa.replaceAll(RegExp(r'[^A-Za-z0-9]'), '').toUpperCase();
+  }
+
+  /// Resolve o status efetivo de um passageiro (considerando memória de sincronização e contexto).
+  int resolverStatusEfetivoPassageiro(
+    PassageiroViagemModel p, {
+    List<PacienteModel>? pacientesContexto,
+  }) {
+    int statusEfetivo = p.statusEmbarque;
+    if (pacientesContexto != null) {
+      final pacCtx =
+          pacientesContexto.where((x) => x.id == p.pacienteId).firstOrNull;
+      if (pacCtx != null) {
+        if (pacCtx.status == 5 || statusEfetivo == 5) return 5;
+        // Evita que um paciente recém-adicionado (statusEmbarque == 0) herde status == 4 residual de outra viagem anterior
+        if (pacCtx.status > statusEfetivo &&
+            !(statusEfetivo == 0 && pacCtx.status == 4)) {
+          statusEfetivo = pacCtx.status;
+        }
+      }
+    }
+    final pacSync = PacienteSyncService().obterPacienteMemoria(p.pacienteId);
+    if (pacSync != null) {
+      if (pacSync.status == 5 || statusEfetivo == 5) return 5;
+      if (pacSync.status > statusEfetivo &&
+          !(statusEfetivo == 0 && pacSync.status == 4)) {
+        statusEfetivo = pacSync.status;
+      }
+    }
+    return statusEfetivo;
+  }
+
+  /// Calcula a quantidade de lugares preenchidos na viagem considerando apenas
+  /// as pessoas às quais o motorista já deu a baixa em andamento (status >= 1 e <= 3).
+  int calcularLugaresPreenchidosComBaixa(
+    ViagemModel viagem, {
+    List<PacienteModel>? pacientesContexto,
+  }) {
+    if (viagem.passageiros.isNotEmpty) {
+      int total = 0;
+      for (final p in viagem.passageiros) {
+        final st = resolverStatusEfetivoPassageiro(
+          p,
+          pacientesContexto: pacientesContexto,
+        );
+        if (st >= 1 && st <= 3) {
+          total += p.assentosOcupados;
+        }
+      }
+      return total;
+    }
+    if (pacientesContexto != null && pacientesContexto.isNotEmpty) {
+      final ids = viagem.passageirosIds.toSet();
+      final lista = ids.isNotEmpty
+          ? pacientesContexto.where((p) => ids.contains(p.id))
+          : pacientesContexto;
+      int total = 0;
+      for (final p in lista) {
+        if (p.status >= 1 && p.status <= 3) {
+          total += (p.nomeAcompanhante != null &&
+                  p.nomeAcompanhante!.trim().isNotEmpty)
+              ? 2
+              : 1;
+        }
+      }
+      return total;
+    }
+    return 0;
+  }
+
+  /// Verifica se todos os pacientes da viagem já voltaram (status == 4, desconsiderando cancelados status == 5).
+  bool todosPacientesVoltaram(
+    ViagemModel viagem, {
+    List<PacienteModel>? pacientesContexto,
+  }) {
+    if (viagem.passageiros.isNotEmpty) {
+      final naoCancelados = viagem.passageiros.where((p) {
+        final st = resolverStatusEfetivoPassageiro(
+          p,
+          pacientesContexto: pacientesContexto,
+        );
+        return st != 5;
+      }).toList();
+      if (naoCancelados.isEmpty) return true;
+      return naoCancelados.every((p) {
+        final st = resolverStatusEfetivoPassageiro(
+          p,
+          pacientesContexto: pacientesContexto,
+        );
+        return st == 4;
+      });
+    }
+    if (pacientesContexto != null && pacientesContexto.isNotEmpty) {
+      final ids = viagem.passageirosIds.toSet();
+      final listaRef = ids.isNotEmpty
+          ? pacientesContexto.where((p) => ids.contains(p.id)).toList()
+          : pacientesContexto;
+      final naoCancelados = listaRef.where((p) => p.status != 5).toList();
+      if (naoCancelados.isEmpty) return true;
+      return naoCancelados.every((p) => p.status == 4);
+    }
+    if (viagem.passageirosIds.isNotEmpty) {
+      bool algumRegistrado = false;
+      for (final id in viagem.passageirosIds) {
+        final pacSync = PacienteSyncService().obterPacienteMemoria(id);
+        if (pacSync != null) {
+          algumRegistrado = true;
+          if (pacSync.status != 4 && pacSync.status != 5) {
+            return false;
+          }
+        } else {
+          return false;
+        }
+      }
+      if (algumRegistrado) return true;
+    }
+    return viagem.isConcluida;
+  }
 
   // Linha em branco separadora entre flags e getters públicos
   // ----------------------------------------------------------------------------
@@ -367,10 +660,16 @@ class ViagemService {
       StreamController<List<ViagemModel>>.broadcast();
 
   /// Stream reativa emitindo todas as viagens cadastradas no sistema
-  Stream<List<ViagemModel>> get todasViagensStream => _todasViagensController.stream;
+  Stream<List<ViagemModel>> get todasViagensStream {
+    _garantirEscutaFirestore();
+    return _todasViagensController.stream;
+  }
 
   /// Retorna lista imutável com todas as viagens em memória
-  List<ViagemModel> get todasViagens => List.unmodifiable(_todasViagensMemoria);
+  List<ViagemModel> get todasViagens {
+    _garantirEscutaFirestore();
+    return List.unmodifiable(_todasViagensMemoria);
+  }
 
   // Linha em branco separadora entre getters públicos
   // ----------------------------------------------------------------------------
@@ -404,81 +703,333 @@ class ViagemService {
   // - Popula a lista em memória com a frota padrão do município de Poloni.
   // --------------------------------------------------------------------------
   void _inicializarDadosBase() {
+    _subSyncPacientesInterno ??=
+        PacienteSyncService().alteracoesGlobaisStream.listen((p) {
+      atualizarStatusPassageiroNaViagem(
+        viagemId: '',
+        pacienteId: p.id,
+        novoStatus: p.status,
+      );
+    });
     // Interrompe se a lista já tiver sido inicializada anteriormente
-    if (_inicializado) return;
-    // Quando o Firebase está disponível, sincroniza frota e viagens diretamente do Firestore
-    if (_isFirebaseDisponivel()) {
-      try {
-        FirebaseFirestore.instance.collection('veiculos').snapshots().listen((snap) {
-          _veiculosMemoria
-            ..clear()
-            ..addAll(snap.docs.map((d) => VeiculoModel.fromMap(d.data(), docId: d.id)));
-          if (!_veiculosController.isClosed) {
-            _veiculosController.add(ValidacaoViagem.filtrarVeiculosDisponiveis(_veiculosMemoria));
-          }
-        });
-        FirebaseFirestore.instance.collection('viagens').snapshots().listen((snap) {
-          final viagensCarregadas = <ViagemModel>[];
-          for (final d in snap.docs) {
-            var v = ViagemModel.fromMap(d.data(), docId: d.id);
-            // Garante que toda viagem ativa ou planejada possua códigos e hashes sincronizados para seus passageiros
-            if ((v.isAtiva || v.isPlanejada) && !v.isCancelada && !v.isConcluida) {
-              final (codigos, hashes, alterou) = _sincronizarCodigosDaViagem(
-                viagemId: v.id,
-                passageiros: v.passageiros,
-                passageirosIds: v.passageirosIds,
-                codigosExistentes: v.codigosAcesso,
-                hashesExistentes: v.codigosHash,
-              );
-              if (alterou) {
-                v = v.copyWith(codigosAcesso: codigos, codigosHash: hashes);
-                try {
-                  FirebaseFirestore.instance
-                      .collection('viagens')
-                      .doc(v.id)
-                      .set({
-                        'codigosAcesso': codigos,
-                        'codigosHash': hashes,
-                      }, SetOptions(merge: true));
-                } catch (_) {}
-              }
-            }
-            viagensCarregadas.add(v);
-          }
-
-          _todasViagensMemoria
-            ..clear()
-            ..addAll(viagensCarregadas);
-          if (!_todasViagensController.isClosed) {
-            _todasViagensController.add(List.unmodifiable(_todasViagensMemoria));
-          }
-
-          // Sincroniza apenas viagens que já fazem parte da sessão ativa em memória
-          bool atualizouAtiva = false;
-          for (int i = 0; i < _viagensAtivasMemoria.length; i++) {
-            final ar = viagensCarregadas
-                .where((v) => v.id == _viagensAtivasMemoria[i].id && !v.isCancelada && !v.isConcluida)
-                .firstOrNull;
-            if (ar != null) {
-              _viagensAtivasMemoria[i] = ar;
-              atualizouAtiva = true;
-              if (_viagemAtiva?.id == ar.id) {
-                _viagemAtiva = ar;
-                if (!_viagemAtivaController.isClosed) {
-                  _viagemAtivaController.add(_viagemAtiva);
-                }
-              }
-            }
-          }
-          if (atualizouAtiva && !_viagensAtivasController.isClosed) {
-            _viagensAtivasController.add(List.unmodifiable(_viagensAtivasMemoria));
-          }
-        });
-      } catch (_) {}
+    if (_inicializado) {
+      _garantirEscutaFirestore();
+      return;
     }
+    _garantirEscutaFirestore();
     // Marca a flag como verdadeira para prevenir reinicialização
     _inicializado = true;
   // Fecha o método _inicializarDadosBase
+  }
+
+  void _garantirEscutaFirestore() {
+    if (_escutandoFirestore || !_isFirebaseDisponivel()) return;
+    _escutandoFirestore = true;
+    try {
+      FirebaseFirestore.instance.collection('veiculos').snapshots().listen((snap) {
+        _veiculosMemoria
+          ..clear()
+          ..addAll(snap.docs.map((d) => VeiculoModel.fromMap(d.data(), docId: d.id)));
+        if (!_veiculosController.isClosed) {
+          _veiculosController.add(ValidacaoViagem.filtrarVeiculosDisponiveis(_veiculosMemoria));
+        }
+      });
+      FirebaseFirestore.instance
+          .collection('usuarios')
+          .where('role', isEqualTo: 'paciente')
+          .snapshots()
+          .listen((snap) {
+        for (final d in snap.docs) {
+          final pac = PacienteModel.fromMap(d.data(), docId: d.id);
+          PacienteSyncService().atualizarPacienteEmMemoria(pac);
+          final podePropagar = pac.status != 4 ||
+              _todasViagensMemoria.any(
+                (v) =>
+                    !v.isCancelada &&
+                    !v.isConcluida &&
+                    v.passageiros.any(
+                      (p) => p.pacienteId == pac.id && p.statusEmbarque > 0,
+                    ),
+              );
+          if (podePropagar) {
+            atualizarStatusPassageiroNaViagem(
+              viagemId: '',
+              pacienteId: pac.id,
+              novoStatus: pac.status,
+            );
+          }
+        }
+      });
+      FirebaseFirestore.instance.collection('viagens').snapshots().listen((snap) {
+        final viagensCarregadas = <ViagemModel>[];
+        for (final d in snap.docs) {
+          var v = ViagemModel.fromMap(d.data(), docId: d.id);
+          // Garante que toda viagem ativa ou planejada possua códigos e hashes sincronizados para seus passageiros
+          if ((v.isAtiva || v.isPlanejada) && !v.isCancelada && !v.isConcluida) {
+            final (codigos, hashes, alterou) = _sincronizarCodigosDaViagem(
+              viagemId: v.id,
+              passageiros: v.passageiros,
+              passageirosIds: v.passageirosIds,
+              codigosExistentes: v.codigosAcesso,
+              hashesExistentes: v.codigosHash,
+            );
+            if (alterou) {
+              v = v.copyWith(codigosAcesso: codigos, codigosHash: hashes);
+              try {
+                FirebaseFirestore.instance
+                    .collection('viagens')
+                    .doc(v.id)
+                    .set({
+                      'codigosAcesso': codigos,
+                      'codigosHash': hashes,
+                    }, SetOptions(merge: true));
+              } catch (_) {}
+            }
+          }
+          viagensCarregadas.add(v);
+        }
+
+        sincronizarViagensRemotas(viagensCarregadas);
+      });
+    } catch (_) {
+      _escutandoFirestore = false;
+    }
+  }
+
+  ViagemModel _criarPlaceholderSessaoAtiva(SessaoVeiculoModel sessao, {String cidadeDestino = ''}) {
+    return ViagemModel(
+      id: 'sessao_ativa_${sessao.veiculoId}',
+      motoristaId: '',
+      motoristaNome: '',
+      veiculoId: sessao.veiculoId,
+      veiculoPlaca: sessao.veiculoPlaca,
+      veiculoModelo: sessao.veiculoModelo,
+      kmInicial: sessao.kmInicial,
+      cidadeDestino: cidadeDestino,
+      dataHoraInicio: sessao.dataHoraInicio,
+      status: 'ativa',
+      sessaoId: sessao.id,
+    );
+  }
+
+  /// Sincroniza a lista em memória com um snapshot de viagens vindo do Firestore.
+  void sincronizarViagensRemotas(List<ViagemModel> viagensCarregadas) {
+    final processadas = <ViagemModel>[];
+    for (var v in viagensCarregadas) {
+      if (v.id.startsWith('sessao_ativa_')) continue;
+      if (!v.isPlanejada &&
+          !v.isCancelada &&
+          !v.isConcluida &&
+          v.passageiros.isNotEmpty &&
+          v.passageiros.any((p) => p.statusEmbarque > 0) &&
+          todosPacientesVoltaram(v)) {
+        final agora = DateTime.now();
+        final codigosOriginais = Map<String, String>.from(v.codigosAcesso);
+        v = v.copyWith(
+          status: 'encerrada',
+          dataHoraFim: v.dataHoraFim ?? agora,
+          codigosAcesso: const {},
+        );
+        if (_sessaoAtiva != null &&
+            !_viagensConcluidasNaSessao.any((vc) => vc.id == v.id)) {
+          _viagensConcluidasNaSessao.add(
+            _enriquecerViagemParaRelatorio(
+              v.copyWith(codigosAcesso: codigosOriginais),
+            ),
+          );
+        }
+        if (_isFirebaseDisponivel()) {
+          unawaited(
+            FirebaseFirestore.instance
+                .collection('viagens')
+                .doc(v.id)
+                .set({
+                  'status': 'encerrada',
+                  'dataHoraFim': (v.dataHoraFim ?? agora).toIso8601String(),
+                  'codigosAcesso': <String, dynamic>{},
+                }, SetOptions(merge: true)),
+          );
+        }
+      }
+      processadas.add(v);
+    }
+
+    _todasViagensMemoria
+      ..clear()
+      ..addAll(processadas);
+    if (!_todasViagensController.isClosed) {
+      _todasViagensController.add(List.unmodifiable(_todasViagensMemoria));
+    }
+
+    // Sincroniza viagens que fazem parte da sessão ativa em memória, removendo as concluídas/canceladas
+    bool atualizouAtiva = false;
+    for (int i = _viagensAtivasMemoria.length - 1; i >= 0; i--) {
+      final atualMem = _viagensAtivasMemoria[i];
+      if (atualMem.id.startsWith('sessao_ativa_')) continue;
+      final vRemota = processadas
+          .where((v) => v.id == atualMem.id)
+          .firstOrNull;
+      if (vRemota != null) {
+        if (vRemota.isCancelada || vRemota.isConcluida || todosPacientesVoltaram(vRemota)) {
+          if (vRemota.isConcluida &&
+              !_viagensConcluidasNaSessao.any((vc) => vc.id == vRemota.id)) {
+            _viagensConcluidasNaSessao.add(
+              _enriquecerViagemParaRelatorio(
+                vRemota.copyWith(
+                  codigosAcesso: {
+                    ...atualMem.codigosAcesso,
+                    ...vRemota.codigosAcesso,
+                  },
+                ),
+                referenciaSessao: atualMem,
+              ),
+            );
+          }
+          final idRemovido = atualMem.id;
+          _viagensAtivasMemoria.removeAt(i);
+          atualizouAtiva = true;
+          if (_viagemAtiva?.id == idRemovido) {
+            if (_viagensAtivasMemoria.isNotEmpty) {
+              _viagemAtiva = _viagensAtivasMemoria.first;
+            } else if (_sessaoAtiva != null) {
+              final ph = _criarPlaceholderSessaoAtiva(
+                _sessaoAtiva!,
+                cidadeDestino: vRemota.cidadeDestino,
+              );
+              _viagensAtivasMemoria.add(ph);
+              _viagemAtiva = ph;
+            } else {
+              _viagemAtiva = null;
+            }
+            if (!_viagemAtivaController.isClosed) {
+              _viagemAtivaController.add(_viagemAtiva);
+            }
+          }
+        } else {
+          final vComVeiculoSessao = _sessaoAtiva != null
+              ? vRemota.copyWith(
+                  veiculoId: _sessaoAtiva!.veiculoId,
+                  veiculoPlaca: _sessaoAtiva!.veiculoPlaca,
+                  veiculoModelo: _sessaoAtiva!.veiculoModelo,
+                  kmInicial: _sessaoAtiva!.kmInicial,
+                  status: 'ativa',
+                )
+              : vRemota;
+          _viagensAtivasMemoria[i] = vComVeiculoSessao;
+          atualizouAtiva = true;
+          if (_viagemAtiva?.id == vRemota.id) {
+            _viagemAtiva = vComVeiculoSessao;
+            if (!_viagemAtivaController.isClosed) {
+              _viagemAtivaController.add(_viagemAtiva);
+            }
+          }
+        }
+      }
+    }
+
+    // Se houver uma sessão de veículo ativa, vincula eventuais novas viagens abertas (não concluídas)
+    if (_sessaoAtiva != null) {
+      final novasAbertas = processadas.where(
+        (v) =>
+            !v.isCancelada &&
+            !v.isConcluida &&
+            !todosPacientesVoltaram(v) &&
+            !_viagensAtivasMemoria.any((va) => va.id == v.id),
+      );
+      for (final na in novasAbertas) {
+        _viagensAtivasMemoria.removeWhere((va) => va.id.startsWith('sessao_ativa_'));
+        final vAtivada = na.copyWith(
+          veiculoId: _sessaoAtiva!.veiculoId,
+          veiculoPlaca: _sessaoAtiva!.veiculoPlaca,
+          veiculoModelo: _sessaoAtiva!.veiculoModelo,
+          kmInicial: _sessaoAtiva!.kmInicial,
+          status: 'ativa',
+          sessaoId: _sessaoAtiva!.id,
+        );
+        _viagensAtivasMemoria.add(vAtivada);
+        atualizouAtiva = true;
+      }
+      if (atualizouAtiva &&
+          (_viagemAtiva == null || _viagemAtiva!.id.startsWith('sessao_ativa_')) &&
+          _viagensAtivasMemoria.isNotEmpty) {
+        _viagemAtiva = _viagensAtivasMemoria.first;
+        if (!_viagemAtivaController.isClosed) {
+          _viagemAtivaController.add(_viagemAtiva);
+        }
+      }
+    }
+
+    if (atualizouAtiva && !_viagensAtivasController.isClosed) {
+      _viagensAtivasController.add(List.unmodifiable(_viagensAtivasMemoria));
+    }
+  }
+
+  /// Restaura automaticamente a sessão de veículo ativa do motorista ao abrir o app ou a tela,
+  /// para que ele só precise responder ao formulário de início de viagem após finalizar (gerar relatório).
+  void restaurarSessaoMotoristaSeAtiva({
+    required String motoristaId,
+    required String motoristaNome,
+    List<VeiculoModel>? frota,
+  }) {
+    if (_sessaoFinalizadaPeloMotorista) return;
+    if (_sessaoAtiva != null && _viagemAtiva != null) return;
+    if (motoristaId.trim().isEmpty) return;
+
+    final listaVeiculos = (frota != null && frota.isNotEmpty) ? frota : _veiculosMemoria;
+    final veiculoEmUso = listaVeiculos.where((v) {
+      if (!v.emUso) return false;
+      final motVeiculo = v.motoristaAtualId?.trim() ?? '';
+      return motVeiculo.isNotEmpty && motVeiculo == motoristaId.trim();
+    }).firstOrNull;
+
+    if (veiculoEmUso == null) return;
+
+    _sessaoAtiva ??= SessaoVeiculoModel(
+      id: 'sessao_${veiculoEmUso.id}',
+      motoristaId: motoristaId,
+      motoristaNome: motoristaNome,
+      veiculoId: veiculoEmUso.id,
+      veiculoPlaca: veiculoEmUso.placa,
+      veiculoModelo: veiculoEmUso.modelo,
+      kmInicial: veiculoEmUso.quilometragemAtual,
+      dataHoraInicio: DateTime.now(),
+      status: 'ativa',
+    );
+    if (!_sessaoAtivaController.isClosed) {
+      _sessaoAtivaController.add(_sessaoAtiva);
+    }
+
+    _viagensAtivasMemoria.removeWhere((va) => va.id.startsWith('sessao_ativa_'));
+    for (int i = 0; i < _todasViagensMemoria.length; i++) {
+      final base = _todasViagensMemoria[i];
+      if (base.isCancelada || base.isConcluida) continue;
+      if (base.id.startsWith('sessao_ativa_')) continue;
+      if (todosPacientesVoltaram(base)) continue;
+
+      final vAtivada = base.copyWith(
+        veiculoId: veiculoEmUso.id,
+        veiculoPlaca: veiculoEmUso.placa,
+        veiculoModelo: veiculoEmUso.modelo,
+        kmInicial: veiculoEmUso.quilometragemAtual,
+        status: 'ativa',
+        sessaoId: _sessaoAtiva!.id,
+      );
+      if (!_viagensAtivasMemoria.any((va) => va.id == vAtivada.id)) {
+        _viagensAtivasMemoria.add(vAtivada);
+      }
+    }
+
+    if (_viagensAtivasMemoria.isEmpty) {
+      _viagensAtivasMemoria.add(_criarPlaceholderSessaoAtiva(_sessaoAtiva!));
+    }
+
+    _viagemAtiva = _viagensAtivasMemoria.first;
+    if (!_viagemAtivaController.isClosed) {
+      _viagemAtivaController.add(_viagemAtiva);
+    }
+    if (!_viagensAtivasController.isClosed) {
+      _viagensAtivasController.add(List.unmodifiable(_viagensAtivasMemoria));
+    }
   }
 
   /// Gera códigos de acesso únicos (4 a 5 dígitos) e seus respectivos hashes SHA-256
@@ -703,26 +1254,25 @@ class ViagemService {
       status: 'ativa',
     );
 
+    _sessaoFinalizadaPeloMotorista = false;
     _sessaoAtiva = novaSessao;
     _sessaoAtivaController.add(_sessaoAtiva);
     _veiculosController.add(
       ValidacaoViagem.filtrarVeiculosDisponiveis(_veiculosMemoria),
     );
 
-    // Vincula viagens planejadas do motorista para a data de hoje, se houver
-    final hoje = DateTime.now();
-    final viagensDoDia = _todasViagensMemoria.where((v) {
-      final d = v.dataOperacional;
-      return d.year == hoje.year &&
-          d.month == hoje.month &&
-          d.day == hoje.day &&
-          v.motoristaId == motoristaId &&
-          !v.isCancelada;
+    // Vincula todas as viagens abertas (não concluídas e não canceladas), sem vincular motorista fixo
+    _viagensConcluidasNaSessao.clear();
+    _viagensAtivasMemoria.removeWhere((va) => va.id.startsWith('sessao_ativa_'));
+    final viagensAbertas = _todasViagensMemoria.where((v) {
+      if (v.isCancelada || v.isConcluida) return false;
+      if (v.id.startsWith('sessao_ativa_')) return false;
+      return !todosPacientesVoltaram(v);
     }).toList();
 
     final List<String> viagensIdsSessao = [];
     final List<ViagemModel> viagensAtivadasParaPersistir = [];
-    for (final v in viagensDoDia) {
+    for (final v in viagensAbertas) {
       if (!_viagensAtivasMemoria.any((va) => va.id == v.id)) {
         final (codigosSinc, hashesSinc, _) = _sincronizarCodigosDaViagem(
           viagemId: v.id,
@@ -733,6 +1283,8 @@ class ViagemService {
         );
         final vAtivada = v.copyWith(
           sessaoId: novaSessao.id,
+          motoristaId: '',
+          motoristaNome: '',
           veiculoId: veiculo.id,
           veiculoPlaca: veiculo.placa,
           veiculoModelo: veiculo.modelo,
@@ -910,15 +1462,16 @@ class ViagemService {
           _viagemAtivaController.add(_viagemAtiva);
         }
         if (_isFirebaseDisponivel()) {
-          try {
-            await FirebaseFirestore.instance
+          unawaited(
+            FirebaseFirestore.instance
                 .collection('viagens')
                 .doc(viagemId)
                 .set({
                   'codigosAcesso': {pacienteId: codigoExistente},
                   'codigosHash': {pacienteId: hashEsperado},
-                }, SetOptions(merge: true));
-          } catch (_) {}
+                }, SetOptions(merge: true))
+                .catchError((_) {}),
+          );
         }
       }
       return codigoExistente;
@@ -957,17 +1510,18 @@ class ViagemService {
       }
     }
 
-    // 6. Persiste os mapas de códigos e hashes no Firestore de forma atômica
+    // 6. Persiste os mapas de códigos e hashes no Firestore de forma assíncrona não-bloqueante
     if (_isFirebaseDisponivel()) {
-      try {
-        await FirebaseFirestore.instance
+      unawaited(
+        FirebaseFirestore.instance
             .collection('viagens')
             .doc(viagemId)
             .set({
               'codigosAcesso': {pacienteId: novoCodigo},
               'codigosHash': {pacienteId: novoHash},
-            }, SetOptions(merge: true));
-      } catch (_) {}
+            }, SetOptions(merge: true))
+            .catchError((_) {}),
+      );
     }
 
     return novoCodigo;
@@ -1115,6 +1669,7 @@ class ViagemService {
     // Fecha verificação do índice na memória
     }
 
+    _sessaoFinalizadaPeloMotorista = false;
     // Se não houver sessão ativa prévia, inicializa a Sessão de Veículo do condutor
     if (_sessaoAtiva == null || _sessaoAtiva!.veiculoId != veiculo.id) {
       _sessaoAtiva = SessaoVeiculoModel(
@@ -1132,110 +1687,85 @@ class ViagemService {
     }
 
     // Linha em branco separadora entre atualização de memória e criação da viagem
-    // Verifica se já existe horário agendado pelo administrador (ativado na sessão ou planejado)
-    // para este motorista/veículo hoje, aproveitando seus passageiros e códigos de acesso
-    final idxAgendadaAtiva = _viagensAtivasMemoria.indexWhere(
-      (v) =>
-          (v.id.startsWith('horario_') || v.passageiros.isNotEmpty) &&
-          (v.motoristaId == motoristaId || v.veiculoId == veiculo.id),
+    // Se o Firebase estiver ativo e a memória ainda não tiver carregado as viagens planejadas, consulta rapidamente
+    if (_isFirebaseDisponivel()) {
+      try {
+        final snapViagens = await FirebaseFirestore.instance
+            .collection('viagens')
+            .get();
+        for (final doc in snapViagens.docs) {
+          final vr = ViagemModel.fromMap(doc.data(), docId: doc.id);
+          if (vr.id.startsWith('sessao_ativa_')) continue;
+          final idxExistente = _todasViagensMemoria.indexWhere((tv) => tv.id == vr.id);
+          if (idxExistente == -1) {
+            _todasViagensMemoria.add(vr);
+          } else {
+            _todasViagensMemoria[idxExistente] = vr;
+          }
+        }
+      } catch (_) {}
+    }
+
+    // O formulário de início de viagem NÃO gera uma nova viagem no banco/sistema:
+    // vincula apenas as viagens existentes abertas (não canceladas, não concluídas e com pacientes pendentes),
+    // sem associar um motorista fixo às viagens.
+    _viagensConcluidasNaSessao.clear();
+    _viagensAtivasMemoria.removeWhere(
+      (va) =>
+          va.id.startsWith('sessao_ativa_') ||
+          va.isCancelada ||
+          va.isConcluida ||
+          todosPacientesVoltaram(va),
     );
-    final idxPlanejada = _todasViagensMemoria.indexWhere(
-      (v) =>
-          v.isPlanejada &&
-          !v.isCancelada &&
-          (v.motoristaId == motoristaId || v.veiculoId == veiculo.id),
-    );
+
+    final List<ViagemModel> viagensExistentesParaPersistir = [];
+    for (int i = 0; i < _todasViagensMemoria.length; i++) {
+      final base = _todasViagensMemoria[i];
+      if (base.isCancelada || base.isConcluida) continue;
+      if (base.id.startsWith('sessao_ativa_')) continue;
+      if (todosPacientesVoltaram(base)) continue;
+
+      final (codigosSinc, hashesSinc, _) = _sincronizarCodigosDaViagem(
+        viagemId: base.id,
+        passageiros: base.passageiros,
+        passageirosIds: base.passageirosIds,
+        codigosExistentes: base.codigosAcesso,
+        hashesExistentes: base.codigosHash,
+      );
+      final vAtivada = base.copyWith(
+        motoristaId: '',
+        motoristaNome: '',
+        veiculoId: veiculo.id,
+        veiculoPlaca: veiculo.placa,
+        veiculoModelo: veiculo.modelo,
+        kmInicial: kmInicial,
+        status: 'ativa',
+        sessaoId: _sessaoAtiva?.id,
+        codigosAcesso: codigosSinc,
+        codigosHash: hashesSinc,
+      );
+      _todasViagensMemoria[i] = vAtivada;
+      viagensExistentesParaPersistir.add(vAtivada);
+
+      final idxAtiva = _viagensAtivasMemoria.indexWhere((va) => va.id == vAtivada.id);
+      if (idxAtiva != -1) {
+        _viagensAtivasMemoria[idxAtiva] = vAtivada;
+      } else {
+        _viagensAtivasMemoria.add(vAtivada);
+      }
+    }
 
     final ViagemModel novaViagem;
-    if (idxAgendadaAtiva != -1) {
-      final base = _viagensAtivasMemoria[idxAgendadaAtiva];
-      final (codigosSinc, hashesSinc, _) = _sincronizarCodigosDaViagem(
-        viagemId: base.id,
-        passageiros: base.passageiros,
-        passageirosIds: base.passageirosIds,
-        codigosExistentes: base.codigosAcesso,
-        hashesExistentes: base.codigosHash,
-      );
-      novaViagem = base.copyWith(
-        motoristaId: motoristaId,
-        motoristaNome: motoristaNome,
-        veiculoId: veiculo.id,
-        veiculoPlaca: veiculo.placa,
-        veiculoModelo: veiculo.modelo,
-        kmInicial: kmInicial,
-        status: 'ativa',
-        sessaoId: _sessaoAtiva?.id,
-        codigosAcesso: codigosSinc,
-        codigosHash: hashesSinc,
-      );
-      _viagensAtivasMemoria[idxAgendadaAtiva] = novaViagem;
-      final idxTodas = _todasViagensMemoria.indexWhere((tv) => tv.id == novaViagem.id);
-      if (idxTodas != -1) {
-        _todasViagensMemoria[idxTodas] = novaViagem;
-      } else {
-        _todasViagensMemoria.add(novaViagem);
-      }
-    } else if (idxPlanejada != -1) {
-      final base = _todasViagensMemoria[idxPlanejada];
-      final (codigosSinc, hashesSinc, _) = _sincronizarCodigosDaViagem(
-        viagemId: base.id,
-        passageiros: base.passageiros,
-        passageirosIds: base.passageirosIds,
-        codigosExistentes: base.codigosAcesso,
-        hashesExistentes: base.codigosHash,
-      );
-      novaViagem = base.copyWith(
-        motoristaId: motoristaId,
-        motoristaNome: motoristaNome,
-        veiculoId: veiculo.id,
-        veiculoPlaca: veiculo.placa,
-        veiculoModelo: veiculo.modelo,
-        kmInicial: kmInicial,
-        status: 'ativa',
-        sessaoId: _sessaoAtiva?.id,
-        codigosAcesso: codigosSinc,
-        codigosHash: hashesSinc,
-      );
-      _todasViagensMemoria[idxPlanejada] = novaViagem;
-      _viagensAtivasMemoria.add(novaViagem);
+    if (_viagensAtivasMemoria.isNotEmpty) {
+      novaViagem = _viagensAtivasMemoria.first;
     } else {
-      // ------------------------------------------------------------------------
-      // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
-      // Instancia o objeto ViagemModel com os dados da viagem
-      // ------------------------------------------------------------------------
-      // Cria a nova instância de ViagemModel com status 'ativa'
-      novaViagem = ViagemModel(
-        // Gera ID baseado em timestamp
-        id: 'viagem_${DateTime.now().millisecondsSinceEpoch}',
-        // Atribui o ID do motorista
-        motoristaId: motoristaId,
-        // Atribui o nome do motorista
-        motoristaNome: motoristaNome,
-        // Atribui o ID do veículo
-        veiculoId: veiculo.id,
-        // Atribui a placa do veículo
-        veiculoPlaca: veiculo.placa,
-        // Atribui o modelo do veículo
-        veiculoModelo: veiculo.modelo,
-        // Atribui a leitura de KM de partida
-        kmInicial: kmInicial,
-        // Atribui a cidade de destino
+      // Nenhuma viagem aberta cadastrada pelo administrador: cria apenas placeholder de sessão
+      // em memória para a tela do motorista, SEM adicionar em _todasViagensMemoria e SEM salvar na coleção 'viagens'.
+      novaViagem = _criarPlaceholderSessaoAtiva(
+        _sessaoAtiva!,
         cidadeDestino: cidadeDestino,
-        // Atribui o momento do início da viagem
-        dataHoraInicio: DateTime.now(),
-        // Define a situação operacional como ativa
-        status: 'ativa',
-        // Vincula à sessão de veículo ativa
-        sessaoId: _sessaoAtiva?.id,
       );
-
-      // ------------------------------------------------------------------------
-      // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
-      // Atualiza a variável e notifica os fluxos de dados
-      // ------------------------------------------------------------------------
-      // Atualiza a lista interna de N viagens ativas
       _viagensAtivasMemoria.add(novaViagem);
-      _todasViagensMemoria.add(novaViagem);
     }
 
     // Atualiza a propriedade interna de viagem ativa principal
@@ -1273,16 +1803,13 @@ class ViagemService {
               'quilometragemAtual': kmInicial,
             }, SetOptions(merge: true));
 
-        // Linha em branco separadora entre atualização de veículo e criação de viagem
-        // --------------------------------------------------------------------
-        // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
-        // Cria o documento da viagem na coleção 'viagens'
-        // --------------------------------------------------------------------
-        // Cria o novo documento de viagem na coleção 'viagens'
-        await FirebaseFirestore.instance
-            .collection('viagens')
-            .doc(novaViagem.id)
-            .set(novaViagem.toMap());
+        // Atualiza apenas as viagens existentes (não cria documento novo na coleção 'viagens')
+        for (final vp in viagensExistentesParaPersistir) {
+          await FirebaseFirestore.instance
+              .collection('viagens')
+              .doc(vp.id)
+              .set(vp.toMap(), SetOptions(merge: true));
+        }
 
         // Linha em branco separadora entre criação da viagem e atualização de usuário
         // --------------------------------------------------------------------
@@ -1315,66 +1842,321 @@ class ViagemService {
   }
 
   // Linha em branco separadora entre iniciarViagem e encerrarViagem
+  /// Atualiza o status de embarque de um passageiro dentro da viagem ativa/planejada,
+  /// mantendo o Gerenciador de Viagens do Administrador em perfeita sincronia.
+  /// Quando todos os pacientes vinculados à viagem ficam com status concluído (status == 4),
+  /// a viagem finaliza instantaneamente e deixa de aparecer para os motoristas.
+  Future<void> atualizarStatusPassageiroNaViagem({
+    required String viagemId,
+    required String pacienteId,
+    required int novoStatus,
+  }) async {
+    if (pacienteId.isEmpty) return;
+
+    ViagemModel? atualizarModelo(ViagemModel v, {bool preservarCodigosSeConcluir = false}) {
+      if (v.passageiros.isEmpty) return null;
+      bool mudou = false;
+      final novosPassageiros = v.passageiros.map((p) {
+        if (p.pacienteId == pacienteId && p.statusEmbarque != novoStatus) {
+          mudou = true;
+          return p.copyWith(statusEmbarque: novoStatus);
+        }
+        final stEfetivo = resolverStatusEfetivoPassageiro(p);
+        if (p.statusEmbarque != stEfetivo) {
+          mudou = true;
+          return p.copyWith(statusEmbarque: stEfetivo);
+        }
+        return p;
+      }).toList();
+      if (!mudou) return null;
+      var atualizada = v.copyWith(passageiros: novosPassageiros);
+      if (!atualizada.isCancelada &&
+          !atualizada.isConcluida &&
+          todosPacientesVoltaram(atualizada)) {
+        final codigosOriginais = Map<String, String>.from(atualizada.codigosAcesso);
+        atualizada = atualizada.copyWith(
+          status: 'encerrada',
+          dataHoraFim: DateTime.now(),
+          codigosAcesso: preservarCodigosSeConcluir ? codigosOriginais : const {},
+        );
+      }
+      return atualizada;
+    }
+
+    final viagensParaPersistir = <ViagemModel>[];
+
+    bool alterouTodas = false;
+    for (int i = 0; i < _todasViagensMemoria.length; i++) {
+      final v = _todasViagensMemoria[i];
+      if (v.id == viagemId ||
+          (!v.isCancelada &&
+              !v.isConcluida &&
+              v.passageiros.any((p) => p.pacienteId == pacienteId))) {
+        final codigosAntes = Map<String, String>.from(v.codigosAcesso);
+        final att = atualizarModelo(v);
+        if (att != null) {
+          if (att.isConcluida &&
+              _sessaoAtiva != null &&
+              !_viagensConcluidasNaSessao.any((vc) => vc.id == att.id)) {
+            _viagensConcluidasNaSessao.add(
+              _enriquecerViagemParaRelatorio(
+                att.copyWith(codigosAcesso: codigosAntes),
+                referenciaSessao: v,
+              ),
+            );
+          }
+          _todasViagensMemoria[i] = att;
+          viagensParaPersistir.add(att);
+          alterouTodas = true;
+        }
+      }
+    }
+    if (alterouTodas) {
+      _todasViagensController.add(List.unmodifiable(_todasViagensMemoria));
+    }
+
+    bool alterouAtivas = false;
+    for (int i = _viagensAtivasMemoria.length - 1; i >= 0; i--) {
+      final v = _viagensAtivasMemoria[i];
+      if (v.id == viagemId || v.passageiros.any((p) => p.pacienteId == pacienteId)) {
+        final codigosAntes = Map<String, String>.from(v.codigosAcesso);
+        final att = atualizarModelo(v);
+        if (att != null) {
+          if (att.isConcluida) {
+            final idxConcl = _viagensConcluidasNaSessao.indexWhere((vc) => vc.id == att.id);
+            final enriquecida = _enriquecerViagemParaRelatorio(
+              att.copyWith(codigosAcesso: codigosAntes),
+              referenciaSessao: v,
+            );
+            if (idxConcl == -1) {
+              _viagensConcluidasNaSessao.add(enriquecida);
+            } else {
+              _viagensConcluidasNaSessao[idxConcl] = enriquecida;
+            }
+            _viagensAtivasMemoria.removeAt(i);
+          } else {
+            _viagensAtivasMemoria[i] = att;
+          }
+          alterouAtivas = true;
+          if (!viagensParaPersistir.any((vp) => vp.id == att.id)) {
+            viagensParaPersistir.add(att);
+          }
+        }
+      }
+    }
+
+    if (_viagemAtiva != null &&
+        (_viagemAtiva!.id == viagemId ||
+            _viagemAtiva!.passageiros.any((p) => p.pacienteId == pacienteId))) {
+      final vAntes = _viagemAtiva!;
+      final codigosAntes = Map<String, String>.from(vAntes.codigosAcesso);
+      final att = atualizarModelo(vAntes);
+      if (att != null) {
+        if (att.isConcluida) {
+          final idxConcl = _viagensConcluidasNaSessao.indexWhere((vc) => vc.id == att.id);
+          final enriquecida = _enriquecerViagemParaRelatorio(
+            att.copyWith(codigosAcesso: codigosAntes),
+            referenciaSessao: vAntes,
+          );
+          if (idxConcl == -1) {
+            _viagensConcluidasNaSessao.add(enriquecida);
+          } else {
+            _viagensConcluidasNaSessao[idxConcl] = enriquecida;
+          }
+          if (_viagensAtivasMemoria.isNotEmpty) {
+            _viagemAtiva = _viagensAtivasMemoria.first;
+          } else if (_sessaoAtiva != null) {
+            final ph = _criarPlaceholderSessaoAtiva(
+              _sessaoAtiva!,
+              cidadeDestino: att.cidadeDestino,
+            );
+            _viagensAtivasMemoria.add(ph);
+            _viagemAtiva = ph;
+            alterouAtivas = true;
+          } else {
+            _viagemAtiva = null;
+          }
+        } else {
+          _viagemAtiva = att;
+        }
+        _viagemAtivaController.add(_viagemAtiva);
+        if (!viagensParaPersistir.any((vp) => vp.id == att.id)) {
+          viagensParaPersistir.add(att);
+        }
+      }
+    } else if (alterouAtivas &&
+        _viagemAtiva != null &&
+        !_viagensAtivasMemoria.any((va) => va.id == _viagemAtiva!.id)) {
+      if (_viagensAtivasMemoria.isNotEmpty) {
+        _viagemAtiva = _viagensAtivasMemoria.first;
+      } else if (_sessaoAtiva != null) {
+        final ph = _criarPlaceholderSessaoAtiva(_sessaoAtiva!);
+        _viagensAtivasMemoria.add(ph);
+        _viagemAtiva = ph;
+      } else {
+        _viagemAtiva = null;
+      }
+      _viagemAtivaController.add(_viagemAtiva);
+    }
+
+    if (alterouAtivas) {
+      _viagensAtivasController.add(List.unmodifiable(_viagensAtivasMemoria));
+    }
+
+    if (viagensParaPersistir.isNotEmpty && _isFirebaseDisponivel()) {
+      unawaited(
+        Future(() async {
+          for (final vp in viagensParaPersistir) {
+            if (vp.id.startsWith('sessao_ativa_')) continue;
+            try {
+              final dados = <String, dynamic>{
+                'passageiros': vp.passageiros.map((p) => p.toMap()).toList(),
+                'status': vp.status,
+              };
+              if (vp.isConcluida) {
+                dados['dataHoraFim'] =
+                    (vp.dataHoraFim ?? DateTime.now()).toIso8601String();
+                dados['codigosAcesso'] = <String, dynamic>{};
+              }
+              await FirebaseFirestore.instance
+                  .collection('viagens')
+                  .doc(vp.id)
+                  .set(dados, SetOptions(merge: true));
+            } catch (_) {}
+          }
+        }),
+      );
+    }
+  }
+
   // ----------------------------------------------------------------------------
   // ENCERRAMENTO DE VIAGENS E SESSÃO (Issue #65: Suporte a N Viagens & LGPD)
   // ----------------------------------------------------------------------------
-  /// Encerra uma viagem específica ou todas as viagens ativas da sessão.
+  /// Encerra a jornada do motorista atual e, caso todos os pacientes da viagem
+  /// já tenham retornado (status == 4), finaliza também a viagem em si.
   ///
-  /// - Segurança & LGPD: Invalida e purga imediatamente os códigos de acesso em texto plano
-  ///   (`codigosAcesso` esvaziado), preservando apenas os hashes para fins de auditoria;
-  /// - Encerramento de Sessão: Quando a última viagem ativa da sessão é encerrada,
-  ///   conclui a [SessaoVeiculoModel] associada e libera o veículo na frota.
+  /// - Quando o motorista finaliza a própria viagem, a sessão dele é encerrada e o veículo
+  ///   é liberado para que o motorista retorne ao formulário de início de viagem;
+  /// - A viagem só é finalizada (`status = 'encerrada'`) se todos os pacientes não cancelados
+  ///   tiverem voltado (`status == 4`), independente do motorista.
   Future<void> encerrarViagem({
     String? viagemId,
+    ViagemModel? viagemExplicita,
     int? kmFinal,
     int? kmRodado,
+    List<PacienteModel>? pacientes,
   }) async {
-    // Determina a viagem a ser encerrada (especificada por ID ou _viagemAtiva atual)
-    final idAlvo = viagemId ?? _viagemAtiva?.id;
-    if (idAlvo == null) return;
+    // Determina a viagem a ser encerrada (especificada por objeto, ID ou _viagemAtiva atual)
+    final idAlvo = viagemExplicita?.id ?? viagemId ?? _viagemAtiva?.id;
+    if (idAlvo == null || idAlvo.isEmpty) return;
 
     final index = _viagensAtivasMemoria.indexWhere((v) => v.id == idAlvo);
-    final ViagemModel viagem = index != -1
-        ? _viagensAtivasMemoria[index]
-        : (_viagemAtiva?.id == idAlvo ? _viagemAtiva! : _viagemAtiva!);
+    final tvIdxInicial = _todasViagensMemoria.indexWhere((tv) => tv.id == idAlvo);
 
-    final veiculoId = viagem.veiculoId;
+    ViagemModel? viagemLocalizada;
+    if (index != -1) {
+      viagemLocalizada = _viagensAtivasMemoria[index];
+    } else if (tvIdxInicial != -1) {
+      viagemLocalizada = _todasViagensMemoria[tvIdxInicial];
+    } else if (_viagemAtiva?.id == idAlvo) {
+      viagemLocalizada = _viagemAtiva;
+    } else if (viagemExplicita != null) {
+      viagemLocalizada = viagemExplicita;
+    }
 
-    // 1. Atualiza e purga a viagem (invalida códigos em texto plano para segurança)
-    final viagemEncerrada = viagem.copyWith(
-      status: 'encerrada',
-      kmFinal: kmFinal ?? viagem.kmFinal,
-      kmRodado: kmRodado ?? viagem.kmRodado,
-      dataHoraFim: DateTime.now(),
-      // Purgando códigos em texto plano: expira credenciais ativas
-      codigosAcesso: const {},
+    if (viagemLocalizada == null) return;
+    final ViagemModel viagem = viagemLocalizada;
+    final ehPlaceholderSessao = viagem.id.startsWith('sessao_ativa_');
+    final veiculoId = viagem.veiculoId.isNotEmpty
+        ? viagem.veiculoId
+        : (_sessaoAtiva?.veiculoId ?? '');
+    final agoraFim = DateTime.now();
+
+    // Sincroniza os status reais dos passageiros sem forçar para 4 os pacientes que ainda não voltaram
+    final passageirosSincronizados = viagem.passageiros.map((p) {
+      final st = resolverStatusEfetivoPassageiro(
+        p,
+        pacientesContexto: pacientes,
+      );
+      return p.copyWith(statusEmbarque: st);
+    }).toList();
+
+    final kmFinalCalculado = kmFinal ?? viagem.kmFinal;
+    final kmRodadoCalculado = kmRodado ??
+        viagem.kmRodado ??
+        ((kmFinalCalculado != null && kmFinalCalculado >= viagem.kmInicial)
+            ? (kmFinalCalculado - viagem.kmInicial)
+            : null);
+
+    final viagemComPassageirosSinc = viagem.copyWith(
+      passageiros: passageirosSincronizados,
     );
 
+    // Verifica se todos os pacientes da viagem já retornaram (status == 4, ou 5 se cancelado)
+    final bool todosVoltaram = viagem.isConcluida ||
+        viagem.passageiros.isEmpty ||
+        todosPacientesVoltaram(
+          viagemComPassageirosSinc,
+          pacientesContexto: pacientes,
+        );
+
+    // 1. A viagem só finaliza ('encerrada') se todos os pacientes tiverem voltado;
+    //    caso contrário permanece 'ativa' aguardando o retorno dos demais pacientes.
+    final ViagemModel viagemAtualizada = todosVoltaram
+        ? viagem.copyWith(
+            status: 'encerrada',
+            motoristaId: '',
+            motoristaNome: '',
+            removerSessaoId: true,
+            kmFinal: kmFinalCalculado,
+            kmRodado: kmRodadoCalculado,
+            dataHoraFim: viagem.dataHoraFim ?? agoraFim,
+            passageiros: passageirosSincronizados,
+            // Purgando códigos em texto plano: expira credenciais ativas quando a viagem finaliza
+            codigosAcesso: const {},
+          )
+        : viagem.copyWith(
+            status: 'ativa',
+            motoristaId: '',
+            motoristaNome: '',
+            removerSessaoId: true,
+            kmFinal: kmFinalCalculado,
+            kmRodado: kmRodadoCalculado,
+            passageiros: passageirosSincronizados,
+          );
+
+    // 2. Remove da lista de viagens ativas da sessão do motorista atual para redirecioná-lo ao início
     if (index != -1) {
       _viagensAtivasMemoria.removeAt(index);
       _viagensAtivasController.add(List.unmodifiable(_viagensAtivasMemoria));
     }
 
-    final tvIdx = _todasViagensMemoria.indexWhere((tv) => tv.id == idAlvo);
-    if (tvIdx != -1) {
-      _todasViagensMemoria[tvIdx] = viagemEncerrada;
+    if (!ehPlaceholderSessao) {
+      final tvIdx = _todasViagensMemoria.indexWhere((tv) => tv.id == idAlvo);
+      if (tvIdx != -1) {
+        _todasViagensMemoria[tvIdx] = viagemAtualizada;
+      } else {
+        _todasViagensMemoria.add(viagemAtualizada);
+      }
       _todasViagensController.add(List.unmodifiable(_todasViagensMemoria));
     }
 
-    // 2. Se a viagem encerrada era a viagem ativa visualizada, avança para a próxima ou zera
+    // 3. Se a viagem encerrada era a viagem ativa visualizada pelo motorista, avança para a próxima ou zera
     if (_viagemAtiva?.id == idAlvo) {
       _viagemAtiva = _viagensAtivasMemoria.isNotEmpty ? _viagensAtivasMemoria.first : null;
       _viagemAtivaController.add(_viagemAtiva);
     }
 
-    // 3. Se não houver mais nenhuma viagem ativa na jornada, encerra a sessão e libera o veículo
+    // 4. Se não houver mais nenhuma viagem ativa na jornada do motorista, encerra a sessão dele e libera o veículo
     final sessaoFinalizada = _viagensAtivasMemoria.isEmpty;
+    final sessaoIdEncerrada = _sessaoAtiva?.id;
     if (sessaoFinalizada) {
+      _sessaoFinalizadaPeloMotorista = true;
       _sessaoAtiva = _sessaoAtiva?.copyWith(
         status: 'encerrada',
-        kmFinal: kmFinal,
-        kmRodado: kmRodado,
-        dataHoraFim: DateTime.now(),
+        kmFinal: kmFinalCalculado,
+        kmRodado: kmRodadoCalculado,
+        dataHoraFim: agoraFim,
       );
       _sessaoAtivaController.add(_sessaoAtiva);
       _sessaoAtiva = null;
@@ -1385,7 +2167,7 @@ class ViagemService {
         _veiculosMemoria[veicIndex] = _veiculosMemoria[veicIndex].copyWith(
           emUso: false,
           motoristaAtualId: null,
-          quilometragemAtual: kmFinal ?? _veiculosMemoria[veicIndex].quilometragemAtual,
+          quilometragemAtual: kmFinalCalculado ?? _veiculosMemoria[veicIndex].quilometragemAtual,
         );
       }
 
@@ -1394,55 +2176,132 @@ class ViagemService {
       );
     }
 
-    // 4. Persiste as alterações no Cloud Firestore
+    // 5. Persiste as alterações no Cloud Firestore de forma assíncrona não-bloqueante
     if (_isFirebaseDisponivel()) {
-      try {
-        // Atualiza a viagem como encerrada e com códigos purgados
-        final dadosViagem = <String, dynamic>{
-          'status': 'encerrada',
-          'dataHoraFim': DateTime.now().toIso8601String(),
-          'codigosAcesso': {},
-        };
-        if (kmFinal != null) dadosViagem['kmFinal'] = kmFinal;
-        if (kmRodado != null) dadosViagem['kmRodado'] = kmRodado;
+      unawaited(
+        Future(() async {
+          try {
+            if (!ehPlaceholderSessao) {
+              final dadosViagem = <String, dynamic>{
+                'status': viagemAtualizada.status,
+                'motoristaId': '',
+                'motoristaNome': '',
+                if (todosVoltaram)
+                  'dataHoraFim':
+                      (viagemAtualizada.dataHoraFim ?? agoraFim).toIso8601String(),
+                if (todosVoltaram) 'codigosAcesso': <String, dynamic>{},
+                if (passageirosSincronizados.isNotEmpty)
+                  'passageiros': passageirosSincronizados.map((p) => p.toMap()).toList(),
+              };
+              if (kmFinalCalculado != null) dadosViagem['kmFinal'] = kmFinalCalculado;
+              if (kmRodadoCalculado != null) dadosViagem['kmRodado'] = kmRodadoCalculado;
 
-        await FirebaseFirestore.instance
-            .collection('viagens')
-            .doc(viagem.id)
-            .set(dadosViagem, SetOptions(merge: true));
+              await FirebaseFirestore.instance
+                  .collection('viagens')
+                  .doc(viagem.id)
+                  .set(dadosViagem, SetOptions(merge: true));
+            }
 
-        // Se a sessão foi finalizada por completo, libera veículo e motorista
-        if (sessaoFinalizada) {
-          final dadosVeiculo = <String, dynamic>{
-            'emUso': false,
-            'motoristaAtualId': null,
-          };
-          if (kmFinal != null) dadosVeiculo['quilometragemAtual'] = kmFinal;
+            if (sessaoFinalizada) {
+              if (sessaoIdEncerrada != null && sessaoIdEncerrada.isNotEmpty) {
+                final dadosSessao = <String, dynamic>{
+                  'status': 'encerrada',
+                  'dataHoraFim': agoraFim.toIso8601String(),
+                };
+                if (kmFinalCalculado != null) {
+                  dadosSessao['kmFinal'] = kmFinalCalculado;
+                }
+                if (kmRodadoCalculado != null) {
+                  dadosSessao['kmRodado'] = kmRodadoCalculado;
+                }
+                await FirebaseFirestore.instance
+                    .collection('sessoes_veiculo')
+                    .doc(sessaoIdEncerrada)
+                    .set(dadosSessao, SetOptions(merge: true));
+              }
 
-          await FirebaseFirestore.instance
-              .collection('veiculos')
-              .doc(veiculoId)
-              .set(dadosVeiculo, SetOptions(merge: true));
+              final dadosVeiculo = <String, dynamic>{
+                'emUso': false,
+                'motoristaAtualId': null,
+              };
+              if (kmFinalCalculado != null) {
+                dadosVeiculo['quilometragemAtual'] = kmFinalCalculado;
+              }
 
-          if (viagem.motoristaId.isNotEmpty) {
-            await FirebaseFirestore.instance
-                .collection('usuarios')
-                .doc(viagem.motoristaId)
-                .set({'emViagem': false}, SetOptions(merge: true));
-          }
-        }
-      } catch (_) {}
+              if (veiculoId.isNotEmpty) {
+                await FirebaseFirestore.instance
+                    .collection('veiculos')
+                    .doc(veiculoId)
+                    .set(dadosVeiculo, SetOptions(merge: true));
+              }
+            }
+          } catch (_) {}
+        }),
+      );
     }
   }
 
   /// Encerra em lote todas as N viagens ativas vinculadas à sessão atual do condutor.
-  Future<void> encerrarTodasViagens({int? kmFinal, int? kmRodado}) async {
-    final viagensParaEncerrar = List<ViagemModel>.from(_viagensAtivasMemoria);
-    for (final v in viagensParaEncerrar) {
-      await encerrarViagem(viagemId: v.id, kmFinal: kmFinal, kmRodado: kmRodado);
+  Future<void> encerrarTodasViagens({
+    int? kmFinal,
+    int? kmRodado,
+    List<ViagemModel>? viagensExplicitas,
+    List<PacienteModel>? pacientes,
+  }) async {
+    _sessaoFinalizadaPeloMotorista = true;
+    final mapaParaEncerrar = <String, ViagemModel>{};
+
+    for (final vc in _viagensConcluidasNaSessao) {
+      if (vc.id.isNotEmpty) mapaParaEncerrar[vc.id] = vc;
     }
-    if (_viagemAtiva != null) {
-      await encerrarViagem(kmFinal: kmFinal, kmRodado: kmRodado);
+    if (viagensExplicitas != null) {
+      for (final v in viagensExplicitas) {
+        if (v.id.isNotEmpty) mapaParaEncerrar[v.id] = v;
+      }
+    }
+    for (final v in _viagensAtivasMemoria) {
+      if (v.id.isNotEmpty) mapaParaEncerrar[v.id] = v;
+    }
+    if (_viagemAtiva != null && _viagemAtiva!.id.isNotEmpty) {
+      mapaParaEncerrar[_viagemAtiva!.id] = _viagemAtiva!;
+    }
+
+    // Também inclui qualquer Horário ativo em _todasViagensMemoria do mesmo veículo
+    final refViagem = mapaParaEncerrar.values.firstOrNull;
+    if (refViagem != null) {
+      final placaRef = _normalizarPlacaInterna(refViagem.veiculoPlaca);
+      for (final tv in _todasViagensMemoria) {
+        if (tv.isCancelada || tv.isConcluida) continue;
+        final mesmoVeiculo = (refViagem.veiculoId.isNotEmpty &&
+                tv.veiculoId == refViagem.veiculoId) ||
+            (placaRef.isNotEmpty &&
+                _normalizarPlacaInterna(tv.veiculoPlaca) == placaRef);
+        if (tv.isAtiva && mesmoVeiculo) {
+          mapaParaEncerrar[tv.id] = tv;
+        }
+      }
+    }
+
+    for (final v in mapaParaEncerrar.values.toList()) {
+      await encerrarViagem(
+        viagemId: v.id,
+        viagemExplicita: v,
+        kmFinal: kmFinal,
+        kmRodado: kmRodado,
+        pacientes: pacientes,
+      );
+    }
+
+    _viagensConcluidasNaSessao.clear();
+
+    // Garante limpeza completa do estado ativo da sessão
+    if (_viagensAtivasMemoria.isNotEmpty || _viagemAtiva != null || _sessaoAtiva != null) {
+      _viagensAtivasMemoria.clear();
+      _viagemAtiva = null;
+      _sessaoAtiva = null;
+      _viagensAtivasController.add(const <ViagemModel>[]);
+      _viagemAtivaController.add(null);
+      _sessaoAtivaController.add(null);
     }
   }
 
@@ -1620,15 +2479,17 @@ class ViagemService {
   }
 
   /// Cria um novo Horário de Saída no gerenciador diário (apenas Administrador).
+  /// O veículo não precisa ser definido na criação, pois é escolhido pelo motorista ao iniciar a viagem.
+  /// As viagens não possuem um motorista vinculado a elas na criação/edição.
   Future<ResultadoOperacaoViagem> criarHorarioViagem({
     required DateTime data,
     required String horario,
-    required String veiculoId,
-    required String veiculoPlaca,
-    required String veiculoModelo,
-    required int capacidadeVeiculo,
-    required String motoristaId,
-    required String motoristaNome,
+    String veiculoId = '',
+    String veiculoPlaca = '',
+    String veiculoModelo = '',
+    int capacidadeVeiculo = 0,
+    String motoristaId = '',
+    String motoristaNome = '',
     required String cidadeDestino,
     List<PassageiroViagemModel> passageiros = const [],
     String? observacoes,
@@ -1650,36 +2511,43 @@ class ViagemService {
     final dataAlvo = DateTime(data.year, data.month, data.day);
     final viagensDoDia = obterViagensPorData(dataAlvo);
 
-    // 3. Validação de conflito de motorista
-    final validacaoMotorista = ValidacaoViagem.validarConflitoMotorista(
-      motoristaId: motoristaId,
-      data: data,
-      horario: horario,
-      viagensDoDia: viagensDoDia,
-    );
-    if (!validacaoMotorista.valido) {
-      return ResultadoOperacaoViagem.erro(validacaoMotorista.mensagemErro!);
+    // 3. Validação de conflito de motorista (apenas se um motorista foi explicitamente informado)
+    if (motoristaId.trim().isNotEmpty) {
+      final validacaoMotorista = ValidacaoViagem.validarConflitoMotorista(
+        motoristaId: motoristaId,
+        data: data,
+        horario: horario,
+        viagensDoDia: viagensDoDia,
+      );
+      if (!validacaoMotorista.valido) {
+        return ResultadoOperacaoViagem.erro(validacaoMotorista.mensagemErro!);
+      }
     }
 
-    // 4. Validação de conflito de veículo
-    final validacaoVeiculo = ValidacaoViagem.validarConflitoVeiculo(
-      veiculoId: veiculoId,
-      data: data,
-      horario: horario,
-      viagensDoDia: viagensDoDia,
-    );
-    if (!validacaoVeiculo.valido) {
-      return ResultadoOperacaoViagem.erro(validacaoVeiculo.mensagemErro!);
+    // 4. Validação de conflito de veículo (apenas se um veículo foi explicitamente informado)
+    if (veiculoId.trim().isNotEmpty) {
+      final validacaoVeiculo = ValidacaoViagem.validarConflitoVeiculo(
+        veiculoId: veiculoId,
+        data: data,
+        horario: horario,
+        viagensDoDia: viagensDoDia,
+      );
+      if (!validacaoVeiculo.valido) {
+        return ResultadoOperacaoViagem.erro(validacaoVeiculo.mensagemErro!);
+      }
     }
 
-    // 5. Validação de capacidade
-    final totalAssentos = passageiros.fold<int>(0, (acc, p) => acc + p.assentosOcupados);
-    final validacaoCapacidade = ValidacaoViagem.validarCapacidade(
-      totalPassageirosComAcompanhantes: totalAssentos,
-      capacidadeVeiculo: capacidadeVeiculo,
-    );
-    if (!validacaoCapacidade.valido) {
-      return ResultadoOperacaoViagem.erro(validacaoCapacidade.mensagemErro!);
+    // 5. Validação de capacidade (apenas se capacidade de veículo positiva foi informada)
+    if (capacidadeVeiculo > 0) {
+      final totalAssentos =
+          passageiros.fold<int>(0, (acc, p) => acc + p.assentosOcupados);
+      final validacaoCapacidade = ValidacaoViagem.validarCapacidade(
+        totalPassageirosComAcompanhantes: totalAssentos,
+        capacidadeVeiculo: capacidadeVeiculo,
+      );
+      if (!validacaoCapacidade.valido) {
+        return ResultadoOperacaoViagem.erro(validacaoCapacidade.mensagemErro!);
+      }
     }
 
     // 6. Validação dos passageiros e acompanhantes
@@ -1757,6 +2625,13 @@ class ViagemService {
     );
 
     // 8. Gravação na memória e notificação das streams
+    // Reseta para 0 o status em memória/banco dos pacientes adicionados com statusEmbarque == 0
+    // para que uma viagem recém-criada não herde status concluído (4) de viagens anteriores
+    PacienteSyncService().resetarStatusPacientesParaNovaViagem(
+      passageiros
+          .where((p) => p.statusEmbarque == 0)
+          .map((p) => p.pacienteId),
+    );
     _todasViagensMemoria.add(novaViagem);
     _todasViagensController.add(List.unmodifiable(_todasViagensMemoria));
 
@@ -1807,26 +2682,30 @@ class ViagemService {
     final dataAlvo = viagem.dataOperacional;
     final viagensDoDia = obterViagensPorData(dataAlvo);
 
-    final validacaoMotorista = ValidacaoViagem.validarConflitoMotorista(
-      motoristaId: viagem.motoristaId,
-      data: viagem.dataHoraInicio,
-      horario: viagem.tituloHorario,
-      viagensDoDia: viagensDoDia,
-      viagemIdAtual: viagem.id,
-    );
-    if (!validacaoMotorista.valido) {
-      return ResultadoOperacaoViagem.erro(validacaoMotorista.mensagemErro!);
+    if (viagem.motoristaId.trim().isNotEmpty) {
+      final validacaoMotorista = ValidacaoViagem.validarConflitoMotorista(
+        motoristaId: viagem.motoristaId,
+        data: viagem.dataHoraInicio,
+        horario: viagem.tituloHorario,
+        viagensDoDia: viagensDoDia,
+        viagemIdAtual: viagem.id,
+      );
+      if (!validacaoMotorista.valido) {
+        return ResultadoOperacaoViagem.erro(validacaoMotorista.mensagemErro!);
+      }
     }
 
-    final validacaoVeiculo = ValidacaoViagem.validarConflitoVeiculo(
-      veiculoId: viagem.veiculoId,
-      data: viagem.dataHoraInicio,
-      horario: viagem.tituloHorario,
-      viagensDoDia: viagensDoDia,
-      viagemIdAtual: viagem.id,
-    );
-    if (!validacaoVeiculo.valido) {
-      return ResultadoOperacaoViagem.erro(validacaoVeiculo.mensagemErro!);
+    if (viagem.veiculoId.trim().isNotEmpty) {
+      final validacaoVeiculo = ValidacaoViagem.validarConflitoVeiculo(
+        veiculoId: viagem.veiculoId,
+        data: viagem.dataHoraInicio,
+        horario: viagem.tituloHorario,
+        viagensDoDia: viagensDoDia,
+        viagemIdAtual: viagem.id,
+      );
+      if (!validacaoVeiculo.valido) {
+        return ResultadoOperacaoViagem.erro(validacaoVeiculo.mensagemErro!);
+      }
     }
 
     if (capacidadeVeiculo != null && capacidadeVeiculo > 0) {
@@ -1901,6 +2780,11 @@ class ViagemService {
       passageirosIds: listaPassageirosIds,
     );
 
+    PacienteSyncService().resetarStatusPacientesParaNovaViagem(
+      viagemAtualizada.passageiros
+          .where((p) => p.statusEmbarque == 0)
+          .map((p) => p.pacienteId),
+    );
     _todasViagensMemoria[index] = viagemAtualizada;
     _todasViagensController.add(List.unmodifiable(_todasViagensMemoria));
 
@@ -2047,10 +2931,17 @@ class ViagemService {
         hashesExistentes: const {},
       );
 
+      final passageirosResetados = vo.passageiros
+          .map((p) => p.copyWith(statusEmbarque: 0))
+          .toList();
+      PacienteSyncService().resetarStatusPacientesParaNovaViagem(
+        passageirosResetados.map((p) => p.pacienteId),
+      );
+
       final novaViagem = ViagemModel(
         id: idDuplicada,
-        motoristaId: vo.motoristaId,
-        motoristaNome: vo.motoristaNome,
+        motoristaId: '',
+        motoristaNome: '',
         veiculoId: vo.veiculoId,
         veiculoPlaca: vo.veiculoPlaca,
         veiculoModelo: vo.veiculoModelo,
@@ -2061,7 +2952,7 @@ class ViagemService {
         dataHoraInicio: novaHora,
         status: 'planejada',
         observacoes: vo.observacoes,
-        passageiros: List.from(vo.passageiros),
+        passageiros: passageirosResetados,
         passageirosIds: List.from(vo.passageirosIds),
         codigosAcesso: codigosDup,
         codigosHash: hashesDup,
@@ -2115,6 +3006,11 @@ class ViagemService {
           .toList(),
     );
 
+    PacienteSyncService().resetarStatusPacientesParaNovaViagem(
+      viagemAtualizada.passageiros
+          .where((p) => p.statusEmbarque == 0)
+          .map((p) => p.pacienteId),
+    );
     _todasViagensMemoria[index] = viagemAtualizada;
     _todasViagensController.add(List.unmodifiable(_todasViagensMemoria));
 
@@ -2162,8 +3058,10 @@ class ViagemService {
   // Abre o corpo do método resetParaTestes
   }) {
     // Restaura a sessão ativa
+    _sessaoFinalizadaPeloMotorista = false;
     _sessaoAtiva = sessaoAtivaInicial;
     _sessaoAtivaController.add(_sessaoAtiva);
+    _viagensConcluidasNaSessao.clear();
 
     // Restaura as viagens ativas
     _viagensAtivasMemoria.clear();

@@ -107,6 +107,11 @@ class PacienteSyncService {
   final Map<String, PacienteModel> _pacientesMemoria = {};
   final Map<String, List<Map<String, dynamic>>> _historicoMemoria = {};
   final Map<String, StreamController<PacienteModel?>> _controllersMemoria = {};
+  final StreamController<PacienteModel> _globalController =
+      StreamController<PacienteModel>.broadcast();
+
+  /// Stream global broadcast emitida sempre que qualquer paciente sofre transição de status ou prontidão.
+  Stream<PacienteModel> get alteracoesGlobaisStream => _globalController.stream;
 
   /// Reinicia o estado em memória para execução de suítes de teste limpas.
   void resetParaTestes([List<PacienteModel>? pacientesIniciais]) {
@@ -121,6 +126,101 @@ class PacienteSyncService {
     if (pacientesIniciais != null) {
       for (final p in pacientesIniciais) {
         _pacientesMemoria[p.id] = p;
+      }
+    }
+  }
+
+  /// Registra um paciente no cache em memória caso ainda não exista (útil para passageiros vindos de Horários).
+  void registrarPacienteEmMemoriaSeAusente(PacienteModel paciente) {
+    if (paciente.id.isEmpty) return;
+    _pacientesMemoria.putIfAbsent(paciente.id, () => paciente);
+  }
+
+  /// Atualiza o estado de um paciente no cache em memória.
+  void atualizarPacienteEmMemoria(PacienteModel paciente) {
+    if (paciente.id.isEmpty) return;
+    _pacientesMemoria[paciente.id] = paciente;
+  }
+
+  /// Retorna o estado atual do paciente em memória, se disponível.
+  PacienteModel? obterPacienteMemoria(String pacienteId) =>
+      _pacientesMemoria[pacienteId];
+
+  /// Reseta o status dos pacientes informados para 0 (Aguardando) ao serem incluídos em um novo Horário de Viagem.
+  void resetarStatusPacientesParaNovaViagem(Iterable<String> pacienteIds) {
+    final agora = _agoraUtc();
+    for (final pid in pacienteIds) {
+      if (pid.trim().isEmpty) continue;
+      final mem = _pacientesMemoria[pid];
+      if (mem != null && mem.status != 0) {
+        final resetado = mem.copyWith(
+          status: 0,
+          prontoRetorno: false,
+          limparJanelaReversao: true,
+        );
+        _pacientesMemoria[pid] = resetado;
+        final ctrl = _controllersMemoria[pid];
+        if (ctrl != null && !ctrl.isClosed) {
+          ctrl.add(resetado);
+        }
+        if (!_globalController.isClosed) {
+          _globalController.add(resetado);
+        }
+      }
+      if (_isFirebaseDisponivel) {
+        unawaited(
+          FirebaseFirestore.instance
+              .collection('usuarios')
+              .doc(pid)
+              .set({
+                'status': 0,
+                'prontoRetorno': false,
+                'janelaReversao': FieldValue.delete(),
+                'atualizadoEm': agora.toIso8601String(),
+              }, SetOptions(merge: true))
+              .catchError((_) {}),
+        );
+      }
+    }
+  }
+
+  /// Marca como concluídos (status 4) todos os passageiros da viagem encerrada que não estejam cancelados (status 5).
+  Future<void> concluirPacientesDaViagem(Iterable<String> pacienteIds) async {
+    final agora = _agoraUtc();
+    for (final pid in pacienteIds) {
+      if (pid.trim().isEmpty) continue;
+      final mem = _pacientesMemoria[pid];
+      if (mem != null && mem.status != 5 && mem.status != 4) {
+        final atualizado = mem.copyWith(
+          status: 4,
+          prontoRetorno: false,
+          limparJanelaReversao: true,
+        );
+        _pacientesMemoria[pid] = atualizado;
+        final ctrl = _controllersMemoria[pid];
+        if (ctrl != null && !ctrl.isClosed) {
+          ctrl.add(atualizado);
+        }
+        if (!_globalController.isClosed) {
+          _globalController.add(atualizado);
+        }
+      }
+      if (_isFirebaseDisponivel) {
+        try {
+          final docRef = FirebaseFirestore.instance.collection('usuarios').doc(pid);
+          final snap = await docRef.get();
+          if (snap.exists && snap.data() != null) {
+            final pRemoto = PacienteModel.fromMap(snap.data()!, docId: snap.id);
+            if (pRemoto.status != 5 && pRemoto.status != 4) {
+              await docRef.set({
+                'status': 4,
+                'prontoRetorno': false,
+                'janelaReversao': FieldValue.delete(),
+                'atualizadoEm': agora.toIso8601String(),
+              }, SetOptions(merge: true));
+            }
+          }
+        } catch (_) {}
       }
     }
   }
@@ -177,7 +277,87 @@ class PacienteSyncService {
 
     final agora = _agoraUtc();
 
-    // 2. Se Firebase estiver disponível, executa via transação atômica ACID no Cloud Firestore
+    // 2. Se o paciente já está em memória (ex.: tela do motorista carregada),
+    //    aplica a transição otimista em 0ms e sincroniza no Firestore em background
+    //    para garantir resposta instantânea na interface.
+    if (_isFirebaseDisponivel && _pacientesMemoria.containsKey(pacienteId)) {
+      final pacienteMem = _pacientesMemoria[pacienteId]!;
+      if (idempotencyKey != null &&
+          pacienteMem.ultimaIdempotencyKey == idempotencyKey) {
+        return ResultadoOperacaoPaciente.sucesso(
+          paciente: pacienteMem,
+          mensagem: 'Operação já processada anteriormente (idempotente).',
+          foiIdempotente: true,
+        );
+      }
+
+      final regra = TransicaoPacienteService.podeTransitar(
+        statusAtual: pacienteMem.status,
+        prontoRetornoAtual: pacienteMem.prontoRetorno,
+        acao: acao,
+        atorRole: atorRole,
+        janelaAtiva: pacienteMem.janelaReversao,
+        agora: agora,
+      );
+
+      if (!regra.permitido) {
+        return ResultadoOperacaoPaciente.erro(
+          regra.motivoRecusa ?? 'Transição recusada pelas regras do sistema.',
+          paciente: pacienteMem,
+        );
+      }
+
+      JanelaReversaoModel? novaJanela;
+      if (regra.duracaoJanelaSegundos != null && regra.acaoReversao != null) {
+        novaJanela = JanelaReversaoModel(
+          acao: regra.acaoReversao!,
+          iniciadoEm: agora,
+          expiraEm: agora.add(Duration(seconds: regra.duracaoJanelaSegundos!)),
+          estadoAnterior: pacienteMem.status,
+          idempotencyKey: idempotencyKey,
+        );
+      }
+
+      final pacienteAtualizado = pacienteMem.copyWith(
+        status: regra.novoStatus,
+        prontoRetorno: regra.novoProntoRetorno,
+        janelaReversao: novaJanela,
+        limparJanelaReversao: novaJanela == null,
+        ultimaIdempotencyKey: idempotencyKey,
+      );
+
+      _pacientesMemoria[pacienteId] = pacienteAtualizado;
+      final ctrl = _controllersMemoria[pacienteId];
+      if (ctrl != null && !ctrl.isClosed) {
+        ctrl.add(pacienteAtualizado);
+      }
+      if (!_globalController.isClosed) {
+        _globalController.add(pacienteAtualizado);
+      }
+
+      final Map<String, dynamic> updateData = {
+        'status': regra.novoStatus,
+        'prontoRetorno': regra.novoProntoRetorno,
+        'ultimaIdempotencyKey': idempotencyKey,
+        'janelaReversao': novaJanela != null ? novaJanela.toMap() : FieldValue.delete(),
+        'atualizadoEm': agora.toIso8601String(),
+      };
+
+      unawaited(
+        FirebaseFirestore.instance
+            .collection('usuarios')
+            .doc(pacienteId)
+            .set(updateData, SetOptions(merge: true))
+            .catchError((_) {}),
+      );
+
+      return ResultadoOperacaoPaciente.sucesso(
+        paciente: pacienteAtualizado,
+        mensagem: _mensagemSucessoParaAcao(acao),
+      );
+    }
+
+    // 3. Se Firebase estiver disponível e o paciente ainda não estiver em memória, executa no Cloud Firestore
     if (_isFirebaseDisponivel) {
       final firestore = FirebaseFirestore.instance;
       final docRef = firestore.collection('usuarios').doc(pacienteId);
@@ -253,6 +433,15 @@ class PacienteSyncService {
               ultimaIdempotencyKey: idempotencyKey,
             );
 
+            _pacientesMemoria[pacienteId] = pacienteAtualizado;
+            final ctrl = _controllersMemoria[pacienteId];
+            if (ctrl != null && !ctrl.isClosed) {
+              ctrl.add(pacienteAtualizado);
+            }
+            if (!_globalController.isClosed) {
+              _globalController.add(pacienteAtualizado);
+            }
+
             return ResultadoOperacaoPaciente.sucesso(
               paciente: pacienteAtualizado,
               mensagem: _mensagemSucessoParaAcao(acao),
@@ -326,6 +515,15 @@ class PacienteSyncService {
             limparJanelaReversao: novaJanela == null,
             ultimaIdempotencyKey: idempotencyKey,
           );
+
+          _pacientesMemoria[pacienteId] = pacienteAtualizado;
+          final ctrl = _controllersMemoria[pacienteId];
+          if (ctrl != null && !ctrl.isClosed) {
+            ctrl.add(pacienteAtualizado);
+          }
+          if (!_globalController.isClosed) {
+            _globalController.add(pacienteAtualizado);
+          }
 
           return ResultadoOperacaoPaciente.sucesso(
             paciente: pacienteAtualizado,
@@ -413,6 +611,9 @@ class PacienteSyncService {
     final ctrl = _obterController(pacienteId);
     if (!ctrl.isClosed) {
       ctrl.add(pacienteAtualizado);
+    }
+    if (!_globalController.isClosed) {
+      _globalController.add(pacienteAtualizado);
     }
 
     return ResultadoOperacaoPaciente.sucesso(
