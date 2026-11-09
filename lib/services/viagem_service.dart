@@ -1640,29 +1640,39 @@ class ViagemService {
               return;
             }
             final docRef = FirebaseFirestore.instance.collection('veiculos').doc(veiculo.id);
-            final docSnap = await docRef.get();
-            if (docSnap.exists) {
-              final dados = docSnap.data() ?? {};
-              final emUsoRemoto = dados['emUso'] == true;
-              final motoristaOcupando = dados['motoristaAtualId'];
-              if (emUsoRemoto &&
-                  motoristaOcupando != null &&
-                  motoristaOcupando != motoristaId) {
-                throw FirebaseException(
-                  plugin: 'cloud_firestore',
-                  code: 'aborted',
-                  message:
-                      'O veículo ${veiculo.placa} foi colocado em uso por outro motorista.',
-                );
+            await FirebaseFirestore.instance.runTransaction((transaction) async {
+              final docSnap = await transaction.get(docRef);
+              if (docSnap.exists) {
+                final dados = docSnap.data() ?? {};
+                final emUsoRemoto = dados['emUso'] == true;
+                final motoristaOcupando = dados['motoristaAtualId'];
+                if (emUsoRemoto &&
+                    motoristaOcupando != null &&
+                    motoristaOcupando != motoristaId) {
+                  throw FirebaseException(
+                    plugin: 'cloud_firestore',
+                    code: 'aborted',
+                    message:
+                        'O veículo ${veiculo.placa} foi colocado em uso por outro motorista.',
+                  );
+                }
               }
-            }
 
-            await docRef.set({
-              'emUso': true,
-              'motoristaAtualId': motoristaId,
-              'quilometragemAtual': kmInicial,
-            }, SetOptions(merge: true));
-            _totalGravacoesFirestoreJornada++;
+              transaction.set(docRef, {
+                'emUso': true,
+                'motoristaAtualId': motoristaId,
+                'quilometragemAtual': kmInicial,
+                'status': 'emViagem',
+              }, SetOptions(merge: true));
+
+              if (motoristaId.isNotEmpty) {
+                final motoristaRef = FirebaseFirestore.instance
+                    .collection('usuarios')
+                    .doc(motoristaId);
+                transaction.set(motoristaRef, {'emViagem': true}, SetOptions(merge: true));
+              }
+            });
+            _totalGravacoesFirestoreJornada += 2;
 
             await FirebaseFirestore.instance
                 .collection('sessoes_veiculo')
@@ -2173,38 +2183,41 @@ class ViagemService {
             final docRef = FirebaseFirestore.instance
                 .collection('veiculos')
                 .doc(veiculo.id);
-            final docSnap = await docRef.get();
-            if (docSnap.exists) {
-              final dados = docSnap.data() ?? {};
-              final emUsoRemoto = dados['emUso'] == true;
-              final motoristaOcupando = dados['motoristaAtualId'];
-              // --------------------------------------------------------------
-              // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
-              // Verifica se o veículo está marcado em uso por motorista distinto
-              // --------------------------------------------------------------
-              if (emUsoRemoto &&
-                  motoristaOcupando != null &&
-                  motoristaOcupando != motoristaId) {
-                throw FirebaseException(
-                  plugin: 'cloud_firestore',
-                  code: 'aborted',
-                  message:
-                      'O veículo ${veiculo.placa} foi colocado em uso por outro motorista. Escolha outro veículo.',
-                );
-              }
-            }
 
-            // ----------------------------------------------------------------
-            // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
-            // Atualiza os dados de uso e quilometragem do veículo
-            // ----------------------------------------------------------------
-            // Grava no documento do veículo o status emUso, condutor e novo KM
-            await docRef.set({
-              'emUso': true,
-              'motoristaAtualId': motoristaId,
-              'quilometragemAtual': kmInicial,
-            }, SetOptions(merge: true));
-            _totalGravacoesFirestoreJornada++;
+            await FirebaseFirestore.instance.runTransaction((transaction) async {
+              final docSnap = await transaction.get(docRef);
+              if (docSnap.exists) {
+                final dados = docSnap.data() ?? {};
+                final emUsoRemoto = dados['emUso'] == true;
+                final motoristaOcupando = dados['motoristaAtualId'];
+                if (emUsoRemoto &&
+                    motoristaOcupando != null &&
+                    motoristaOcupando != motoristaId) {
+                  throw FirebaseException(
+                    plugin: 'cloud_firestore',
+                    code: 'aborted',
+                    message:
+                        'O veículo ${veiculo.placa} foi colocado em uso por outro motorista. Escolha outro veículo.',
+                  );
+                }
+              }
+
+              transaction.set(docRef, {
+                'emUso': true,
+                'motoristaAtualId': motoristaId,
+                'quilometragemAtual': kmInicial,
+                'status': 'emViagem',
+              }, SetOptions(merge: true));
+
+              if (motoristaId.isNotEmpty) {
+                FirebaseAuthService.motoristaEmViagemStatic = true;
+                final motoristaRef = FirebaseFirestore.instance
+                    .collection('usuarios')
+                    .doc(motoristaId);
+                transaction.set(motoristaRef, {'emViagem': true}, SetOptions(merge: true));
+              }
+            });
+            _totalGravacoesFirestoreJornada += 2;
 
             // Atualiza apenas as viagens existentes elegíveis (não cria documento novo na coleção 'viagens')
             for (final vp in viagensExistentesParaPersistir) {
@@ -2213,22 +2226,6 @@ class ViagemService {
                   .doc(vp.id)
                   .set(vp.toMap(), SetOptions(merge: true));
               _totalGravacoesFirestoreJornada++;
-            }
-
-            // Linha em branco separadora entre criação da viagem e atualização de usuário
-            // ----------------------------------------------------------------
-            // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
-            // Atualiza a propriedade emViagem do usuário motorista
-            // ----------------------------------------------------------------
-            // Atualiza a flag emViagem do documento do motorista na coleção 'usuarios'
-            if (motoristaId.isNotEmpty) {
-              FirebaseAuthService.motoristaEmViagemStatic = true;
-              await FirebaseFirestore.instance
-                  .collection('usuarios')
-                  .doc(motoristaId)
-                  .set({'emViagem': true}, SetOptions(merge: true));
-              _totalGravacoesFirestoreJornada++;
-            // Fecha checagem de motoristaId não vazio
             }
           // Captura erros de escrita remota expondo falha e rollback
           } on FirebaseException catch (e) {
