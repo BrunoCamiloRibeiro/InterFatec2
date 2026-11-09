@@ -1784,6 +1784,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                 width: 500,
                 height: 400,
                 child: ReorderableListView(
+                  // ignore: deprecated_member_use
                   onReorder: (oldIndex, newIndex) {
                     setReorderState(() {
                       if (newIndex > oldIndex) newIndex--;
