@@ -44,6 +44,7 @@ import '../models/user_role.dart';
 import '../models/veiculo_model.dart';
 import '../models/viagem_model.dart';
 import '../services/auth_service.dart';
+import '../services/paciente_sync_service.dart';
 import '../services/viagem_service.dart';
 
 /// Tela principal do Gerenciador de Horários do Dia (Perfil Administrador).
@@ -76,8 +77,10 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
   late DateTime _dataSelecionada;
   StreamSubscription<List<ViagemModel>>? _subViagens;
   StreamSubscription<List<VeiculoModel>>? _subVeiculos;
+  StreamSubscription<PacienteModel>? _subSyncPacientes;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _subFirestoreVeiculos;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _subFirestoreUsuarios;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _subFirestoreViagens;
 
   bool _isFirebaseDisponivel() {
     try {
@@ -89,7 +92,6 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
 
   List<ViagemModel> _todasViagensDoDia = [];
   List<VeiculoModel> _veiculosCadastrados = [];
-  List<MotoristaModel> _motoristasCadastrados = [];
   List<PacienteModel> _pacientesCadastrados = [];
 
   String _filtroTexto = '';
@@ -122,23 +124,35 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
         });
       }
     });
+
+    _subSyncPacientes = PacienteSyncService().alteracoesGlobaisStream.listen((p) {
+      _viagemService.atualizarStatusPassageiroNaViagem(
+        viagemId: '',
+        pacienteId: p.id,
+        novoStatus: p.status,
+      );
+      if (mounted) {
+        setState(() {
+          _todasViagensDoDia = _viagemService.obterViagensPorData(_dataSelecionada);
+        });
+      }
+    });
   }
 
   @override
   void dispose() {
     _subViagens?.cancel();
     _subVeiculos?.cancel();
+    _subSyncPacientes?.cancel();
     _subFirestoreVeiculos?.cancel();
     _subFirestoreUsuarios?.cancel();
+    _subFirestoreViagens?.cancel();
     super.dispose();
   }
 
   void _inicializarDadosBasePessoasEVeiculos() {
     _veiculosCadastrados = List<VeiculoModel>.from(
       widget.veiculosIniciais ?? _viagemService.todosVeiculos,
-    );
-    _motoristasCadastrados = List<MotoristaModel>.from(
-      widget.motoristasIniciais ?? const <MotoristaModel>[],
     );
     _pacientesCadastrados = List<PacienteModel>.from(
       widget.pacientesIniciais ?? const <PacienteModel>[],
@@ -163,7 +177,6 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
             .snapshots()
             .listen((snapshot) {
           if (!mounted) return;
-          final motoristas = <MotoristaModel>[];
           final pacientes = <PacienteModel>[];
           for (final doc in snapshot.docs) {
             final dados = doc.data();
@@ -182,16 +195,25 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                 .toString()
                 .toLowerCase()
                 .trim();
-            if (role == 'motorista') {
-              motoristas.add(MotoristaModel.fromMap(dados, docId: doc.id));
-            } else if (role == 'paciente' || role.isEmpty) {
+            if (role == 'paciente' || role.isEmpty) {
               pacientes.add(PacienteModel.fromMap(dados, docId: doc.id));
             }
           }
           setState(() {
-            _motoristasCadastrados = motoristas;
             _pacientesCadastrados = pacientes;
           });
+        });
+
+        _subFirestoreViagens = FirebaseFirestore.instance
+            .collection('viagens')
+            .snapshots()
+            .listen((snapshot) {
+          if (!mounted) return;
+          final viagensRemotas = snapshot.docs
+              .map((d) => ViagemModel.fromMap(d.data(), docId: d.id))
+              .toList();
+          _viagemService.sincronizarViagensRemotas(viagensRemotas);
+          _atualizarViagensDoDia();
         });
       } catch (_) {}
     }
@@ -276,9 +298,11 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
     int assentosOcupados = 0;
     int assentosTotais = 0;
     for (final v in _todasViagensDoDia.where((v) => !v.isCancelada)) {
-      assentosOcupados += v.totalAssentosOcupados;
+      assentosOcupados += _calcularAssentosComBaixa(v);
       final veic = _veiculosCadastrados.firstWhere(
-        (ve) => ve.id == v.veiculoId,
+        (ve) =>
+            (v.veiculoId.isNotEmpty && ve.id == v.veiculoId) ||
+            (v.veiculoPlaca.isNotEmpty && ve.placa == v.veiculoPlaca),
         orElse: () => VeiculoModel(
           id: v.veiculoId,
           placa: v.veiculoPlaca,
@@ -736,6 +760,39 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
     );
   }
 
+  int _resolverStatusEfetivoPassageiro(
+    ViagemModel viagem,
+    PassageiroViagemModel passageiro,
+  ) {
+    final pacSync = PacienteSyncService().obterPacienteMemoria(passageiro.pacienteId);
+    final pacCadastrado = _pacientesCadastrados
+        .where((p) => p.id == passageiro.pacienteId)
+        .firstOrNull;
+
+    int statusEfetivo = passageiro.statusEmbarque;
+    if (pacSync != null && (pacSync.status != 0 || statusEfetivo == 0)) {
+      statusEfetivo = pacSync.status;
+    } else if (pacCadastrado != null &&
+        (pacCadastrado.status != 0 || statusEfetivo == 0)) {
+      statusEfetivo = pacCadastrado.status;
+    }
+    if (viagem.isConcluida && statusEfetivo != 5) {
+      statusEfetivo = 4;
+    }
+    return statusEfetivo;
+  }
+
+  int _calcularAssentosComBaixa(ViagemModel viagem) {
+    int total = 0;
+    for (final p in viagem.passageiros) {
+      final st = _resolverStatusEfetivoPassageiro(viagem, p);
+      if (st >= 1 && st <= 3) {
+        total += p.assentosOcupados;
+      }
+    }
+    return total;
+  }
+
   Widget _construirCardHorario(ViagemModel viagem) {
     Color corBadge;
     String textoBadge;
@@ -746,7 +803,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
         break;
       case 'concluida':
       case 'encerrada':
-        corBadge = const Color(0xFF475569);
+        corBadge = const Color(0xFF15803D);
         textoBadge = 'CONCLUÍDA';
         break;
       case 'cancelada':
@@ -760,8 +817,12 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
         break;
     }
 
+    final temVeiculoDefinido =
+        viagem.veiculoId.trim().isNotEmpty || viagem.veiculoPlaca.trim().isNotEmpty;
     final veic = _veiculosCadastrados.firstWhere(
-      (v) => v.id == viagem.veiculoId,
+      (v) =>
+          (viagem.veiculoId.isNotEmpty && v.id == viagem.veiculoId) ||
+          (viagem.veiculoPlaca.isNotEmpty && v.placa == viagem.veiculoPlaca),
       orElse: () => VeiculoModel(
         id: viagem.veiculoId,
         placa: viagem.veiculoPlaca,
@@ -771,9 +832,14 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
       ),
     );
 
-    final capacidade = veic.capacidade > 0 ? veic.capacidade : 7;
-    final totalOcupados = viagem.totalAssentosOcupados;
-    final lotacaoUltrapassada = totalOcupados > capacidade;
+    final capacidade = temVeiculoDefinido
+        ? (veic.capacidade > 0 ? veic.capacidade : 7)
+        : 0;
+    final preenchidosBaixa = _calcularAssentosComBaixa(viagem);
+    final disponiveis = capacidade > 0
+        ? (capacidade - preenchidosBaixa).clamp(0, capacidade)
+        : 0;
+    final lotacaoUltrapassada = capacidade > 0 && preenchidosBaixa > capacidade;
 
     // Regra de borda: verificar se há pacientes sem CPF
     final temPacienteSemCpf = viagem.passageiros.any(
@@ -847,11 +913,9 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                   ),
                 ),
                 Text(
-                  'Motorista: ${viagem.motoristaNome}',
-                  style: const TextStyle(fontSize: 12, color: Color(0xFF475569)),
-                ),
-                Text(
-                  'Veículo: ${viagem.veiculoPlaca} (${viagem.veiculoModelo})',
+                  temVeiculoDefinido
+                      ? 'Veículo: ${viagem.veiculoPlaca} (${viagem.veiculoModelo})'
+                      : 'Veículo: A definir pelo motorista',
                   style: const TextStyle(fontSize: 12, color: Color(0xFF475569)),
                 ),
                 Container(
@@ -861,7 +925,9 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(
-                    'Assentos: $totalOcupados / $capacidade',
+                    temVeiculoDefinido
+                        ? 'Lugares: $preenchidosBaixa / $capacidade ($disponiveis disponíveis)'
+                        : 'Lugares com baixa: $preenchidosBaixa (veículo a definir)',
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.bold,
@@ -873,6 +939,45 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
             ),
           ),
           children: [
+            if (viagem.isConcluida)
+              Container(
+                key: Key('bannerViagemConcluida_${viagem.id}'),
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFDCFCE7),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: const Color(0xFF86EFAC)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.verified_rounded,
+                      size: 18,
+                      color: Color(0xFF15803D),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        [
+                          'Viagem concluída pelo motorista',
+                          if (viagem.kmInicial > 0) 'KM Saída: ${viagem.kmInicial}',
+                          if (viagem.kmFinal != null && viagem.kmFinal! > 0)
+                            'KM Retorno: ${viagem.kmFinal}',
+                          if (viagem.kmRodado != null && viagem.kmRodado! > 0)
+                            'KM Rodado: ${viagem.kmRodado} km',
+                        ].join(' • '),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF166534),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
             // Alerta se houver paciente sem documento
             if (temPacienteSemCpf)
               Container(
@@ -960,7 +1065,9 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                   ),
                 ),
                 Text(
-                  'Total de Vagas Ocupadas: $totalOcupados',
+                  temVeiculoDefinido
+                      ? 'Lugares Preenchidos (Baixa): $preenchidosBaixa • Disponíveis: $disponiveis'
+                      : 'Lugares Preenchidos (Baixa): $preenchidosBaixa',
                   style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
                 ),
               ],
@@ -993,6 +1100,29 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
     final temAcompanhante = passageiro.acompanhanteNome != null &&
         passageiro.acompanhanteNome!.trim().isNotEmpty;
     final codigoAcesso = viagem.codigosAcesso[passageiro.pacienteId]?.trim();
+
+    // Resolve o status em tempo real do passageiro (memória de sincronização, banco ou horário)
+    final pacSync = PacienteSyncService().obterPacienteMemoria(passageiro.pacienteId);
+    final pacCadastrado = _pacientesCadastrados
+        .where((p) => p.id == passageiro.pacienteId)
+        .firstOrNull;
+
+    int statusEfetivo = passageiro.statusEmbarque;
+    if (pacSync != null && (pacSync.status != 0 || statusEfetivo == 0)) {
+      statusEfetivo = pacSync.status;
+    } else if (pacCadastrado != null && (pacCadastrado.status != 0 || statusEfetivo == 0)) {
+      statusEfetivo = pacCadastrado.status;
+    }
+    if (viagem.isConcluida && statusEfetivo != 5) {
+      statusEfetivo = 4;
+    }
+
+    final prontoRetornoEfetivo = pacSync?.prontoRetorno ??
+        pacCadastrado?.prontoRetorno ??
+        false;
+
+    final (nomeStatus, corStatus, iconeStatus) =
+        PacienteModel.dadosStatus(statusEfetivo);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
@@ -1028,50 +1158,112 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  alignment: WrapAlignment.spaceBetween,
                   children: [
-                    Expanded(
-                      child: Text(
-                        passageiro.pacienteNome,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF0F172A),
-                        ),
+                    Text(
+                      passageiro.pacienteNome,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF0F172A),
                       ),
                     ),
-                    if (codigoAcesso != null && codigoAcesso.isNotEmpty) ...[
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF1E293B),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: const Color(0xFF3B82F6), width: 1),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(
-                              Icons.key,
-                              size: 12,
-                              color: Color(0xFF60A5FA),
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              'Código: $codigoAcesso',
-                              key: ValueKey('codigo_acesso_admin_${passageiro.pacienteId}'),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 11,
-                                letterSpacing: 0.8,
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Container(
+                          key: ValueKey('status_passageiro_admin_${passageiro.pacienteId}'),
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: corStatus.withValues(alpha: 0.14),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: corStatus.withValues(alpha: 0.45)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(iconeStatus, size: 12, color: corStatus),
+                              const SizedBox(width: 4),
+                              Flexible(
+                                child: Text(
+                                  nomeStatus,
+                                  style: TextStyle(
+                                    color: corStatus,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 11,
+                                  ),
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
+                        if (statusEfetivo == 2 && prontoRetornoEfetivo)
+                          Container(
+                            key: ValueKey('pronto_retorno_admin_${passageiro.pacienteId}'),
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFDCFCE7),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: const Color(0xFF16A34A)),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.notifications_active, size: 12, color: Color(0xFF15803D)),
+                                SizedBox(width: 4),
+                                Flexible(
+                                  child: Text(
+                                    'Pronto p/ Retorno',
+                                    style: TextStyle(
+                                      color: Color(0xFF15803D),
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        if (codigoAcesso != null && codigoAcesso.isNotEmpty)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF1E293B),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: const Color(0xFF3B82F6), width: 1),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.key,
+                                  size: 12,
+                                  color: Color(0xFF60A5FA),
+                                ),
+                                const SizedBox(width: 4),
+                                Flexible(
+                                  child: Text(
+                                    'Código: $codigoAcesso',
+                                    key: ValueKey('codigo_acesso_admin_${passageiro.pacienteId}'),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 11,
+                                      letterSpacing: 0.8,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
                   ],
                 ),
                 if (temAcompanhante)
@@ -1081,9 +1273,11 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                       children: [
                         const Icon(Icons.people_alt_outlined, size: 13, color: Color(0xFF0284C7)),
                         const SizedBox(width: 4),
-                        Text(
-                          'Acompanhante: ${passageiro.acompanhanteNome}',
-                          style: const TextStyle(fontSize: 11, color: Color(0xFF0284C7)),
+                        Expanded(
+                          child: Text(
+                            'Acompanhante: ${passageiro.acompanhanteNome}',
+                            style: const TextStyle(fontSize: 11, color: Color(0xFF0284C7)),
+                          ),
                         ),
                       ],
                     ),
@@ -1149,13 +1343,6 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
       text: viagemExistente?.observacoes ?? '',
     );
 
-    String? veiculoId = _veiculosCadastrados.any((v) => v.id == viagemExistente?.veiculoId)
-        ? viagemExistente!.veiculoId
-        : (_veiculosCadastrados.isNotEmpty ? _veiculosCadastrados.first.id : null);
-    String? motoristaId = _motoristasCadastrados.any((m) => m.id == viagemExistente?.motoristaId)
-        ? viagemExistente!.motoristaId
-        : (_motoristasCadastrados.isNotEmpty ? _motoristasCadastrados.first.id : null);
-
     List<PassageiroViagemModel> passageirosTemp = viagemExistente != null
         ? List<PassageiroViagemModel>.from(viagemExistente.passageiros)
         : [];
@@ -1167,18 +1354,8 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (context, setModalState) {
-            final veiculoSelecionado = _veiculosCadastrados
-                    .where((v) => v.id == veiculoId)
-                    .firstOrNull ??
-                (_veiculosCadastrados.isNotEmpty ? _veiculosCadastrados.first : null);
-            final motoristaSelecionado = _motoristasCadastrados
-                    .where((m) => m.id == motoristaId)
-                    .firstOrNull ??
-                (_motoristasCadastrados.isNotEmpty ? _motoristasCadastrados.first : null);
-
             final totalAssentos =
                 passageirosTemp.fold<int>(0, (acc, p) => acc + p.assentosOcupados);
-            final capacidade = veiculoSelecionado?.capacidade ?? 0;
 
             return AlertDialog(
               title: Text(eEdicao ? 'Editar Horário' : 'Novo Horário de Saída'),
@@ -1228,62 +1405,6 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                       ),
                       const SizedBox(height: 10),
 
-                      // Dropdown de Veículo
-                      DropdownButtonFormField<String>(
-                        key: const Key('dropdownVeiculo'),
-                        isExpanded: true,
-                        initialValue: veiculoId,
-                        decoration: const InputDecoration(
-                          labelText: 'Veículo Municipal *',
-                          isDense: true,
-                        ),
-                        items: _veiculosCadastrados.map((v) {
-                          return DropdownMenuItem(
-                            value: v.id,
-                            child: Text(
-                              '${v.placa} - ${v.modelo} (${v.capacidade} assentos)',
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          );
-                        }).toList(),
-                        onChanged: (val) {
-                          if (val != null) {
-                            setModalState(() {
-                              veiculoId = val;
-                            });
-                          }
-                        },
-                      ),
-                      const SizedBox(height: 10),
-
-                      // Dropdown de Motorista
-                      DropdownButtonFormField<String>(
-                        key: const Key('dropdownMotorista'),
-                        isExpanded: true,
-                        initialValue: motoristaId,
-                        decoration: const InputDecoration(
-                          labelText: 'Motorista Responsável *',
-                          isDense: true,
-                        ),
-                        items: _motoristasCadastrados.map((m) {
-                          return DropdownMenuItem(
-                            value: m.id,
-                            child: Text(
-                              '${m.nome} (CNH: ${m.cnh})',
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          );
-                        }).toList(),
-                        onChanged: (val) {
-                          if (val != null) {
-                            setModalState(() {
-                              motoristaId = val;
-                            });
-                          }
-                        },
-                      ),
-                      const SizedBox(height: 10),
-
                       // Observações
                       TextField(
                         controller: controllerObs,
@@ -1302,13 +1423,11 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                         runSpacing: 4,
                         children: [
                           Text(
-                            'Passageiros (${passageirosTemp.length}) - Lotação: $totalAssentos / $capacidade',
-                            style: TextStyle(
+                            'Passageiros (${passageirosTemp.length}) - Vagas previstas: $totalAssentos (veículo escolhido pelo motorista)',
+                            style: const TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.bold,
-                              color: totalAssentos > capacidade
-                                  ? Colors.red
-                                  : const Color(0xFF0F172A),
+                              color: Color(0xFF0F172A),
                             ),
                           ),
                           TextButton.icon(
@@ -1394,28 +1513,18 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                     foregroundColor: Colors.white,
                   ),
                   onPressed: () async {
-                    if (veiculoSelecionado == null || motoristaSelecionado == null || veiculoId == null || motoristaId == null) {
-                      setModalState(() {
-                        mensagemErroValidacao = 'Selecione um veículo e um motorista cadastrados.';
-                      });
-                      return;
-                    }
                     if (eEdicao) {
                       final viagemAtualizada = viagemExistente.copyWith(
                         nomeHorario: controllerHorario.text.trim(),
                         cidadeDestino: controllerDestino.text.trim(),
                         observacoes: controllerObs.text.trim(),
-                        veiculoId: veiculoSelecionado.id,
-                        veiculoPlaca: veiculoSelecionado.placa,
-                        veiculoModelo: veiculoSelecionado.modelo,
-                        motoristaId: motoristaSelecionado.id,
-                        motoristaNome: motoristaSelecionado.nome,
+                        motoristaId: '',
+                        motoristaNome: '',
                         passageiros: passageirosTemp,
                       );
 
                       final res = await _viagemService.atualizarHorarioViagem(
                         viagem: viagemAtualizada,
-                        capacidadeVeiculo: veiculoSelecionado.capacidade,
                         roleRequisitante: UserRole.admin,
                       );
 
@@ -1429,12 +1538,8 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                       final res = await _viagemService.criarHorarioViagem(
                         data: _dataSelecionada,
                         horario: controllerHorario.text.trim(),
-                        veiculoId: veiculoSelecionado.id,
-                        veiculoPlaca: veiculoSelecionado.placa,
-                        veiculoModelo: veiculoSelecionado.modelo,
-                        capacidadeVeiculo: veiculoSelecionado.capacidade,
-                        motoristaId: motoristaSelecionado.id,
-                        motoristaNome: motoristaSelecionado.nome,
+                        motoristaId: '',
+                        motoristaNome: '',
                         cidadeDestino: controllerDestino.text.trim(),
                         passageiros: passageirosTemp,
                         observacoes: controllerObs.text.trim(),
@@ -1450,6 +1555,22 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                     }
 
                     if (context.mounted) {
+                      final idsNovos = passageirosTemp
+                          .where((p) => p.statusEmbarque == 0)
+                          .map((p) => p.pacienteId)
+                          .toSet();
+                      if (idsNovos.isNotEmpty) {
+                        _pacientesCadastrados = _pacientesCadastrados.map((pac) {
+                          if (idsNovos.contains(pac.id)) {
+                            return pac.copyWith(
+                              status: 0,
+                              prontoRetorno: false,
+                              limparJanelaReversao: true,
+                            );
+                          }
+                          return pac;
+                        }).toList();
+                      }
                       Navigator.of(ctx).pop();
                       _atualizarViagensDoDia();
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -1476,11 +1597,26 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
     required int ordemSugerida,
     required String cidadeSugerida,
   }) async {
-    String? pacienteIdSelecionado = _pacientesCadastrados.isNotEmpty ? _pacientesCadastrados.first.id : null;
-    final controllerOrigem = TextEditingController(text: 'UBS Central Poloni');
-    final controllerDestino = TextEditingController(text: cidadeSugerida);
-    final controllerHorarioConsulta = TextEditingController(text: '09:00');
-    final controllerAcompNome = TextEditingController();
+    final primeiroPac = _pacientesCadastrados.firstOrNull;
+    String? pacienteIdSelecionado = primeiroPac?.id;
+    final controllerOrigem = TextEditingController(
+      text: (primeiroPac != null && primeiroPac.enderecoPaciente.trim().isNotEmpty)
+          ? primeiroPac.enderecoPaciente.trim()
+          : 'UBS Central Poloni',
+    );
+    final controllerDestino = TextEditingController(
+      text: (primeiroPac != null && primeiroPac.localConsulta.trim().isNotEmpty)
+          ? primeiroPac.localConsulta.trim()
+          : cidadeSugerida,
+    );
+    final controllerHorarioConsulta = TextEditingController(
+      text: (primeiroPac != null && primeiroPac.horarioConsulta.trim().isNotEmpty)
+          ? primeiroPac.horarioConsulta.trim()
+          : '09:00',
+    );
+    final controllerAcompNome = TextEditingController(
+      text: primeiroPac?.nomeAcompanhante ?? '',
+    );
     final controllerObs = TextEditingController();
 
     return showDialog<PassageiroViagemModel>(
@@ -1525,8 +1661,15 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                             setSubModalState(() {
                               pacienteIdSelecionado = val;
                               final novoP = _pacientesCadastrados.firstWhere((p) => p.id == val);
-                              if (novoP.nomeAcompanhante != null) {
-                                controllerAcompNome.text = novoP.nomeAcompanhante!;
+                              controllerAcompNome.text = novoP.nomeAcompanhante ?? '';
+                              if (novoP.horarioConsulta.trim().isNotEmpty) {
+                                controllerHorarioConsulta.text = novoP.horarioConsulta.trim();
+                              }
+                              if (novoP.localConsulta.trim().isNotEmpty) {
+                                controllerDestino.text = novoP.localConsulta.trim();
+                              }
+                              if (novoP.enderecoPaciente.trim().isNotEmpty) {
+                                controllerOrigem.text = novoP.enderecoPaciente.trim();
                               }
                             });
                           }

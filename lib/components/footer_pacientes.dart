@@ -73,9 +73,13 @@ class FooterPacientes extends StatelessWidget {
   // Atributo viagem: instância com os dados da viagem atual em andamento (opcional)
   // Tipo: ViagemModel? anulável
   final ViagemModel? viagem;
+  // Lista opcional de todas as viagens ativas da sessão do motorista
+  final List<ViagemModel>? viagens;
   // Atributo pacientes: lista contendo os pacientes vinculados ao transporte (opcional)
   // Tipo: List<PacienteModel>? anulável
   final List<PacienteModel>? pacientes;
+  // Callback opcional acionado assim que a viagem é encerrada pelo motorista
+  final VoidCallback? onViagemEncerrada;
 
   // Linha em branco separadora entre atributos e construtor
   // Comentário original do autor mantido byte a byte:
@@ -90,8 +94,12 @@ class FooterPacientes extends StatelessWidget {
     required this.lugaresTotais,
     // Parâmetro nomeado opcional: objeto da viagem ativa
     this.viagem,
+    // Parâmetro nomeado opcional: lista de viagens ativas da sessão
+    this.viagens,
     // Parâmetro nomeado opcional: lista de pacientes transportados
     this.pacientes,
+    // Parâmetro nomeado opcional: callback ao encerrar viagem
+    this.onViagemEncerrada,
   // Fecha a lista de parâmetros do construtor
   });
 
@@ -154,21 +162,39 @@ class FooterPacientes extends StatelessWidget {
               ),
               // Widget SizedBox: espaçamento horizontal constante de 8 pixels lógicos
               const SizedBox(width: 8),
-              // Widget Text: exibe a contagem formatada de lugares preenchidos e totais
-              Text(
-                // Interpolação de strings exibindo 'Lugares: X / Y'
-                'Lugares: $lugaresPreenchidos / $lugaresTotais',
-                // Propriedade style: formatação tipográfica em negrito
-                style: TextStyle(
-                  // Tamanho da fonte de 14 pixels lógicos
-                  fontSize: 14,
-                  // Peso da fonte em negrito
-                  fontWeight: FontWeight.bold,
-                  // Cor azul acinzentado escuro harmonizada com o ícone
-                  color: Colors.blueGrey[900],
-                // Fecha a TextStyle de contagem
-                ),
-              // Fecha o widget Text de contagem
+              // Coluna compacta com lugares preenchidos/totais e lugares disponíveis
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Widget Text: exibe a contagem formatada de lugares preenchidos e totais
+                  Text(
+                    // Interpolação de strings exibindo 'Lugares: X / Y'
+                    'Lugares: $lugaresPreenchidos / $lugaresTotais',
+                    // Propriedade style: formatação tipográfica em negrito
+                    style: TextStyle(
+                      // Tamanho da fonte de 14 pixels lógicos
+                      fontSize: 14,
+                      // Peso da fonte em negrito
+                      fontWeight: FontWeight.bold,
+                      // Cor azul acinzentado escuro harmonizada com o ícone
+                      color: Colors.blueGrey[900],
+                    // Fecha a TextStyle de contagem
+                    ),
+                  // Fecha o widget Text de contagem
+                  ),
+                  Text(
+                    'Disponíveis: ${(lugaresTotais - lugaresPreenchidos).clamp(0, lugaresTotais)}',
+                    key: const Key('textoLugaresDisponiveisFooter'),
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: (lugaresTotais - lugaresPreenchidos) > 0
+                          ? const Color(0xFF059669)
+                          : const Color(0xFFE11D48),
+                    ),
+                  ),
+                ],
               ),
             // Fecha a lista children da Row de assentos
             ],
@@ -276,7 +302,13 @@ class FooterPacientes extends StatelessWidget {
               // Comentário original do autor mantido byte a byte:
               // Abre o POPUP do Formulário de Encerramento (Retorno, Km Retorno, Km Rodado e Emissão PDF)
               // Função showDialog: exibe caixa de diálogo modal flutuante na tela
-              showDialog(
+              final viagensParaEncerrar = (viagens != null && viagens!.isNotEmpty)
+                  ? viagens!
+                  : (ViagemService().viagensAtivas.isNotEmpty
+                      ? ViagemService().viagensAtivas
+                      : (viagem != null ? <ViagemModel>[viagem!] : const <ViagemModel>[]));
+
+              showDialog<bool>(
                 // Contexto de build da tela
                 context: context,
                 // Função builder que instancia o FormularioEncerramento
@@ -286,9 +318,11 @@ class FooterPacientes extends StatelessWidget {
                     // Repassa o objeto da viagem ativa
                     viagem: viagem,
                     // Repassa a lista de todas as N viagens ativas (Issue #65)
-                    viagens: ViagemService().viagensAtivas,
+                    viagens: viagensParaEncerrar,
                     // Repassa a lista de pacientes transportados
                     pacientes: pacientes,
+                    // Notifica o encerramento para redirecionar o motorista ao início de viagem
+                    onViagemEncerrada: onViagemEncerrada,
                   // Fecha a instanciação de FormularioEncerramento
                   );
                 // Fecha a função builder do diálogo

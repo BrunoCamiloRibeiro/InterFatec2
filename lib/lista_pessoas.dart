@@ -102,6 +102,7 @@ class PessoaItem {
   /// Campos específicos preservados para edição sem perdas
   final String? endereco;
   final String? localConsulta;
+  final String? horarioConsulta;
   final String? cnh;
   final String? veiculoModelo;
   final String? veiculoPlaca;
@@ -124,6 +125,7 @@ class PessoaItem {
     this.ativo = true,
     this.endereco,
     this.localConsulta,
+    this.horarioConsulta,
     this.cnh,
     this.veiculoModelo,
     this.veiculoPlaca,
@@ -160,6 +162,7 @@ class PessoaItem {
       ativo: p.ativo,
       endereco: p.enderecoPaciente,
       localConsulta: p.localConsulta,
+      horarioConsulta: p.horarioConsulta.isNotEmpty ? p.horarioConsulta : null,
       nomeAcompanhante: p.nomeAcompanhante,
       cpfAcompanhante: p.cpfAcompanhante,
       telAcompanhante: p.telAcompanhante,

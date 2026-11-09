@@ -6,7 +6,7 @@
 //
 // O QUE ESTE ARQUIVO FAZ:
 // Fornece a classe de configuração DefaultFirebaseOptions com as credenciais e
-// identificadores do projeto Google Firebase (projeto 'trans-saude') específicos
+// identificadores do projeto Google Firebase (projeto 'trans-saude2') específicos
 // para cada plataforma suportada (Web, Android e Windows), resolvidos
 // dinamicamente pelo getter estático currentPlatform.
 //
@@ -70,34 +70,34 @@ class DefaultFirebaseOptions {
 
   // Configurações do projeto Firebase para a plataforma Web
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyCzLEzx6_MAtebRQ-Vv0j27y26NCX2scL0',
-    authDomain: 'trans-saude.firebaseapp.com',
-    projectId: 'trans-saude',
-    storageBucket: 'trans-saude.firebasestorage.app',
-    messagingSenderId: '221136277930',
-    appId: '1:221136277930:web:c5676a4ccee86a763c5bd3',
+    apiKey: 'AIzaSyBZD3GsIY68mllCD0_y63T14UXnNnG_dl8',
+    authDomain: 'trans-saude2.firebaseapp.com',
+    projectId: 'trans-saude2',
+    storageBucket: 'trans-saude2.firebasestorage.app',
+    messagingSenderId: '1010712989031',
+    appId: '1:1010712989031:web:6bdcd79a001d67953db3c2',
   );
 
   // Linha em branco separadora entre constantes de plataforma
 
   // Configurações do projeto Firebase para a plataforma Android
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyCzLEzx6_MAtebRQ-Vv0j27y26NCX2scL0',
-    projectId: 'trans-saude',
-    storageBucket: 'trans-saude.firebasestorage.app',
-    appId: '1:221136277930:web:c5676a4ccee86a763c5bd3',
-    messagingSenderId: '221136277930',
+    apiKey: 'AIzaSyBZD3GsIY68mllCD0_y63T14UXnNnG_dl8',
+    projectId: 'trans-saude2',
+    storageBucket: 'trans-saude2.firebasestorage.app',
+    appId: '1:1010712989031:web:6bdcd79a001d67953db3c2',
+    messagingSenderId: '1010712989031',
   );
 
   // Linha em branco separadora entre constantes de plataforma
 
   // Configurações do projeto Firebase para a plataforma Windows
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyCzLEzx6_MAtebRQ-Vv0j27y26NCX2scL0',
-    authDomain: 'trans-saude.firebaseapp.com',
-    projectId: 'trans-saude',
-    storageBucket: 'trans-saude.firebasestorage.app',
-    appId: '1:221136277930:web:c5676a4ccee86a763c5bd3',
-    messagingSenderId: '221136277930',
+    apiKey: 'AIzaSyBZD3GsIY68mllCD0_y63T14UXnNnG_dl8',
+    authDomain: 'trans-saude2.firebaseapp.com',
+    projectId: 'trans-saude2',
+    storageBucket: 'trans-saude2.firebasestorage.app',
+    appId: '1:1010712989031:web:6bdcd79a001d67953db3c2',
+    messagingSenderId: '1010712989031',
   );
 }

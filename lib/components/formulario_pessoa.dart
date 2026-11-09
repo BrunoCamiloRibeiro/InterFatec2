@@ -61,6 +61,30 @@ class _MascaraTelefoneFormatter extends TextInputFormatter {
   }
 }
 
+/// Formatador de máscara para Horário de Consulta: HH:mm
+class _MascaraHorarioConsultaFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final digitos = newValue.text.replaceAll(RegExp(r'\D'), '');
+    if (digitos.length > 4) return oldValue;
+
+    final buffer = StringBuffer();
+    for (int i = 0; i < digitos.length; i++) {
+      if (i == 2) buffer.write(':');
+      buffer.write(digitos[i]);
+    }
+
+    final formatado = buffer.toString();
+    return TextEditingValue(
+      text: formatado,
+      selection: TextSelection.collapsed(offset: formatado.length),
+    );
+  }
+}
+
 /// Diálogo Modal de Formulário para Criação e Edição de Pessoas
 class FormularioPessoa extends StatefulWidget {
   /// Pessoa para edição (se nulo, opera em modo de criação)
@@ -90,6 +114,7 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
   // Campos específicos de Paciente
   late TextEditingController _enderecoController;
   late TextEditingController _consultaController;
+  late TextEditingController _horarioConsultaController;
   bool _temAcompanhante = false;
   late TextEditingController _nomeAcompController;
   late TextEditingController _cpfAcompController;
@@ -123,6 +148,7 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
     // Inicializa campos contextuais com os valores já existentes (preservando CNH na edição)
     _enderecoController = TextEditingController(text: p?.endereco ?? '');
     _consultaController = TextEditingController(text: p?.localConsulta ?? '');
+    _horarioConsultaController = TextEditingController(text: p?.horarioConsulta ?? '');
     final temAcompInicial = p?.nomeAcompanhante != null && p!.nomeAcompanhante!.trim().isNotEmpty;
     _temAcompanhante = temAcompInicial;
     _nomeAcompController = TextEditingController(text: p?.nomeAcompanhante ?? '');
@@ -153,6 +179,7 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
     _telefoneController.dispose();
     _enderecoController.dispose();
     _consultaController.dispose();
+    _horarioConsultaController.dispose();
     _nomeAcompController.dispose();
     _cpfAcompController.dispose();
     _telAcompController.dispose();
@@ -194,6 +221,11 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
     final consultaInput = _consultaController.text.trim();
     final consultaFinal = consultaInput.isNotEmpty ? consultaInput : (widget.pessoaParaEditar?.localConsulta ?? '');
 
+    final horarioConsultaInput = _horarioConsultaController.text.trim();
+    final horarioConsultaFinal = horarioConsultaInput.isNotEmpty
+        ? horarioConsultaInput
+        : (widget.pessoaParaEditar?.horarioConsulta ?? '');
+
     final enderecoInput = _enderecoController.text.trim();
     final enderecoFinal = enderecoInput.isNotEmpty ? enderecoInput : (widget.pessoaParaEditar?.endereco ?? '');
 
@@ -216,11 +248,15 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
       badgeCor = const Color(0xFF2563EB);
       badgeLabel = 'Paciente';
       final temConsulta = consultaFinal.isNotEmpty;
+      final temHorario = horarioConsultaFinal.isNotEmpty;
       final temAcomp = nomeAcompFinal.isNotEmpty;
-      if (temConsulta && temAcomp) {
-        detalheExtra = 'Consulta: $consultaFinal • Acomp: $nomeAcompFinal';
-      } else if (temConsulta) {
-        detalheExtra = 'Consulta: $consultaFinal';
+      final consultaComHorario = temConsulta && temHorario
+          ? '$consultaFinal ($horarioConsultaFinal)'
+          : (temConsulta ? consultaFinal : (temHorario ? horarioConsultaFinal : ''));
+      if (consultaComHorario.isNotEmpty && temAcomp) {
+        detalheExtra = 'Consulta: $consultaComHorario • Acomp: $nomeAcompFinal';
+      } else if (consultaComHorario.isNotEmpty) {
+        detalheExtra = 'Consulta: $consultaComHorario';
       } else if (temAcomp) {
         detalheExtra = 'Acomp: $nomeAcompFinal';
       }
@@ -256,6 +292,7 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
 
           if (role == 'paciente') {
             payload['localConsulta'] = consultaFinal;
+            payload['horarioConsulta'] = horarioConsultaFinal;
             payload['enderecoPaciente'] = enderecoFinal;
             if (nomeAcompFinal.isNotEmpty) {
               payload['nomeAcompanhante'] = nomeAcompFinal;
@@ -295,6 +332,7 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
 
           if (role == 'paciente') {
             payload['localConsulta'] = consultaFinal;
+            payload['horarioConsulta'] = horarioConsultaFinal;
             payload['enderecoPaciente'] = enderecoFinal;
             payload['localSaida'] = 'Residência';
             payload['status'] = 0;
@@ -335,6 +373,7 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
         ativo: true,
         endereco: enderecoFinal.isNotEmpty ? enderecoFinal : null,
         localConsulta: consultaFinal.isNotEmpty ? consultaFinal : null,
+        horarioConsulta: horarioConsultaFinal.isNotEmpty ? horarioConsultaFinal : null,
         cnh: cnhFinal.isNotEmpty ? cnhFinal : null,
         veiculoModelo: modeloFinal.isNotEmpty ? modeloFinal : null,
         veiculoPlaca: placaFinal.isNotEmpty ? placaFinal : null,
@@ -554,6 +593,23 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
                       labelText: 'Local da Consulta Médica',
                       hintText: 'Ex: Hospital de Base, AME Bauru',
                       prefixIcon: Icon(Icons.local_hospital_outlined, size: 20),
+                      isDense: true,
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    key: const Key('campoHorarioConsultaPessoa'),
+                    controller: _horarioConsultaController,
+                    keyboardType: TextInputType.datetime,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      _MascaraHorarioConsultaFormatter(),
+                    ],
+                    decoration: const InputDecoration(
+                      labelText: 'Horário da Consulta',
+                      hintText: 'Ex: 08:30',
+                      prefixIcon: Icon(Icons.access_time_outlined, size: 20),
                       isDense: true,
                       border: OutlineInputBorder(),
                     ),

@@ -1,4 +1,4 @@
-﻿// ============================================================================
+// ============================================================================
 // ARQUIVO: test/relatorio_pdf_test.dart
 // ----------------------------------------------------------------------------
 // O QUE FAZ:
@@ -53,6 +53,7 @@ import 'package:trans_saude/services/relatorio_pdf_service.dart';
 
 // Função principal de entrada da suíte de testes do relatório PDF
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   // Agrupa os testes de regras de negócio, layout e paginação do relatório PDF
   group('RelatorioPdfService - Testes de Regra de Negócio e Paginação', () {
     // Variável para a fonte Liberation Sans Regular carregada
@@ -356,6 +357,28 @@ void main() {
           tempDir.deleteSync(recursive: true);
         }
       }
+    });
+
+    test('8. Viagem com ID longo de horário e 9 pacientes na Página 1 gera PDF sem sobreposição nem estouro', () async {
+      final viagemIdLongo = viagemBase.copyWith(
+        id: 'horario_2026_11_8_1762645200123',
+      );
+      final pacientesNove = List.generate(
+        9,
+        (i) => criarPacienteFicticio(i + 1, comAcompanhante: i.isEven),
+      );
+
+      final pdfBytes = await RelatorioPdfService.gerarRoteiroViagemPdf(
+        viagem: viagemIdLongo,
+        pacientes: pacientesNove,
+        retornoInformado: '17:30',
+        kmSaidaInformado: 85420,
+        kmRetornoInformado: 85620,
+        kmRodadoInformado: 200,
+      );
+
+      expect(pdfBytes, isNotNull);
+      expect(pdfBytes.length, greaterThan(1500));
     });
   });
 }

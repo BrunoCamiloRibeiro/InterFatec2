@@ -71,6 +71,8 @@ class FormularioEncerramento extends StatefulWidget {
   // Tipo: void Function(String retorno, String kmRetorno, String kmRodado)? anulável
   final void Function(String retorno, String kmRetorno, String kmRodado)?
   onConfirmar;
+  // Callback opcional acionado após o fechamento efetivo da viagem para redirecionar o motorista
+  final VoidCallback? onViagemEncerrada;
 
   // Linha em branco separadora entre atributos e construtor
 
@@ -86,6 +88,8 @@ class FormularioEncerramento extends StatefulWidget {
     this.pacientes,
     // Parâmetro nomeado opcional: callback de confirmação
     this.onConfirmar,
+    // Parâmetro nomeado opcional: callback ao encerrar viagem
+    this.onViagemEncerrada,
   // Fecha a lista de parâmetros do construtor
   });
 
@@ -112,6 +116,8 @@ class _FormularioEncerramentoState extends State<FormularioEncerramento> {
   // Controlador de texto para o campo de quilômetros totais rodados
   // Elemento: Instância de TextEditingController
   final TextEditingController _kmRodadoController = TextEditingController();
+  // Trava contra múltiplos cliques concorrentes no encerramento
+  bool _processando = false;
 
   // Linha em branco separadora entre controladores e dispose
 
@@ -404,11 +410,13 @@ class _FormularioEncerramentoState extends State<FormularioEncerramento> {
         // Widget TextButton: botão para cancelar a operação e fechar o diálogo
         TextButton(
           // Callback acionado ao clicar em Cancelar
-          onPressed: () {
-            // Fecha o diálogo modal desempilhando a rota
-            Navigator.of(context).pop();
-          // Fecha o onPressed
-          },
+          onPressed: _processando
+              ? null
+              : () {
+                  // Fecha o diálogo modal desempilhando a rota
+                  Navigator.of(context).pop();
+                // Fecha o onPressed
+                },
           // Rótulo textual do botão Cancelar
           child: Text(
             'Cancelar',
@@ -433,91 +441,157 @@ class _FormularioEncerramentoState extends State<FormularioEncerramento> {
           // Fecha a chamada de ElevatedButton.styleFrom
           ),
           // Callback assíncrono executado ao clicar em Confirmar
-          onPressed: () async {
-            // Extrai o texto aparado do campo de retorno
-            final retorno = _retornoController.text.trim();
-            // Extrai o texto aparado do campo de km retorno
-            final kmRetorno = _kmRetornoController.text.trim();
-            // Extrai o texto aparado do campo de km rodado
-            final kmRodado = _kmRodadoController.text.trim();
+          onPressed: _processando
+              ? null
+              : () async {
+                  setState(() {
+                    _processando = true;
+                  });
 
-            // Notifica o callback onConfirmar repassando os valores informados
-            widget.onConfirmar?.call(retorno, kmRetorno, kmRodado);
+                  // Extrai o texto aparado do campo de retorno
+                  final retorno = _retornoController.text.trim();
+                  // Extrai o texto aparado do campo de km retorno
+                  final kmRetorno = _kmRetornoController.text.trim();
+                  // Extrai o texto aparado do campo de km rodado
+                  final kmRodado = _kmRodadoController.text.trim();
 
-            // Identifica as viagens a serem processadas (N viagens em lote ou viagem única)
-            final List<ViagemModel> viagensAlvo =
-                (widget.viagens != null && widget.viagens!.isNotEmpty)
-                    ? widget.viagens!
-                    : (widget.viagem != null
-                        ? [widget.viagem!]
-                        : const <ViagemModel>[]);
+                  // Notifica o callback onConfirmar repassando os valores informados
+                  widget.onConfirmar?.call(retorno, kmRetorno, kmRodado);
 
-            // Converte a string de KM retorno para inteiro numérico
-            final kmRetornoNum = int.tryParse(kmRetorno);
-            // Converte a string de KM rodado para inteiro numérico
-            final kmRodadoNum = int.tryParse(kmRodado);
+                  // Identifica todas as viagens a serem processadas (incluindo as que auto-concluíram durante a sessão do motorista)
+                  final listaParaRelatorio = ViagemService().obterViagensParaRelatorio(
+                    viagensExplicitas: widget.viagens,
+                    viagemUnica: widget.viagem,
+                  );
 
-            // Finaliza as viagens e a sessão do veículo no serviço
-            await ViagemService().encerrarTodasViagens(
-              kmFinal: kmRetornoNum,
-              kmRodado: kmRodadoNum,
-            );
+                  // Cria snapshot imutável das viagens preservando os códigos de acesso para o PDF
+                  final List<ViagemModel> viagensSnapshot = listaParaRelatorio
+                      .map(
+                        (v) => v.copyWith(
+                          codigosAcesso: Map<String, String>.from(v.codigosAcesso),
+                          passageiros: List.from(v.passageiros),
+                        ),
+                      )
+                      .toList();
+                  final List<PacienteModel>? pacientesSnapshot =
+                      widget.pacientes != null
+                          ? List<PacienteModel>.from(widget.pacientes!)
+                          : null;
 
-            // Checagem de disponibilidade: se há viagens e pacientes informados, gera e exibe o PDF
-            if (viagensAlvo.isNotEmpty && widget.pacientes != null) {
+                  // Converte a string de KM retorno para inteiro numérico
+                  final kmRetornoNum = int.tryParse(kmRetorno);
+                  // Converte a string de KM rodado para inteiro numérico
+                  final kmRodadoNum = int.tryParse(kmRodado);
 
-              if (viagensAlvo.length > 1) {
-                // Emissão em lote atômica de todas as N viagens ativas (Issue #65)
-                final lote = await RelatorioPdfService.gerarLoteViagensPdf(
-                  viagens: viagensAlvo,
-                  pacientes: widget.pacientes!,
-                  retornoInformado: retorno.isNotEmpty ? retorno : null,
-                  kmRetornoInformado: kmRetornoNum,
-                  kmRodadoInformado: kmRodadoNum,
-                );
+                  // Reconstrói viagem e lista completa de pacientes atendidos na sessão (mesmo de viagens já auto-concluídas)
+                  Uint8List? pdfBytes;
+                  String nomeArquivoPdf = 'Roteiro_Viagem_TFD.pdf';
+                  try {
+                    final vBase = viagensSnapshot.isNotEmpty
+                        ? viagensSnapshot.first
+                        : (widget.viagem ??
+                            ViagemService().viagemAtiva ??
+                            ViagemModel(
+                              id: 'relatorio_${DateTime.now().millisecondsSinceEpoch}',
+                              motoristaId: '',
+                              motoristaNome: '',
+                              veiculoId: '',
+                              veiculoPlaca: '',
+                              veiculoModelo: '',
+                              kmInicial: 0,
+                              cidadeDestino: 'TFD',
+                              dataHoraInicio: DateTime.now(),
+                              status: 'encerrada',
+                            ));
 
-                for (final v in viagensAlvo) {
-                  final bytes = lote[v.id];
-                  if (bytes != null) {
-                    await Printing.layoutPdf(
-                      name: 'Roteiro_Viagem_${v.id}_${v.veiculoPlaca}.pdf',
-                      onLayout: (format) async => bytes,
+                    final mapaPacientesConsolidados = <String, PacienteModel>{};
+                    final codigosConsolidados = <String, String>{
+                      ...vBase.codigosAcesso,
+                    };
+                    final idsPassageirosConsolidados = <String>[];
+                    final destinos = <String>[];
+
+                    if (viagensSnapshot.isNotEmpty) {
+                      for (final v in viagensSnapshot) {
+                        if (v.cidadeDestino.trim().isNotEmpty &&
+                            !destinos.contains(v.cidadeDestino.trim())) {
+                          destinos.add(v.cidadeDestino.trim());
+                        }
+                        codigosConsolidados.addAll(v.codigosAcesso);
+                        final pacsDaViagem = ViagemService()
+                            .obterPacientesParaViagemRelatorio(
+                          v,
+                          pacientesInformados: pacientesSnapshot,
+                        );
+                        for (final p in pacsDaViagem) {
+                          mapaPacientesConsolidados[p.id] = p;
+                          if (!idsPassageirosConsolidados.contains(p.id)) {
+                            idsPassageirosConsolidados.add(p.id);
+                          }
+                        }
+                      }
+                    } else if (pacientesSnapshot != null) {
+                      for (final p in pacientesSnapshot) {
+                        mapaPacientesConsolidados[p.id] = p;
+                        if (!idsPassageirosConsolidados.contains(p.id)) {
+                          idsPassageirosConsolidados.add(p.id);
+                        }
+                      }
+                    }
+
+                    final viagemParaPdf = vBase.copyWith(
+                      cidadeDestino: destinos.isNotEmpty
+                          ? destinos.join(' / ')
+                          : vBase.cidadeDestino,
+                      passageirosIds: idsPassageirosConsolidados,
+                      codigosAcesso: codigosConsolidados,
                     );
-                  }
-                }
-              } else {
-                // Emissão individual preservando comportamento e assinaturas pré-existentes
-                final v = viagensAlvo.first;
-                await Printing.layoutPdf(
-                  // Nome do arquivo gerado
-                  name: 'Roteiro_Viagem_${v.veiculoPlaca}.pdf',
-                  // Callback gerador que constrói os bytes do documento PDF via RelatorioPdfService
-                  onLayout: (format) async {
-                    // Invocação do serviço de relatório oficial
-                    return RelatorioPdfService.gerarRoteiroViagemPdf(
-                      viagem: v,
-                      pacientes: widget.pacientes!,
+                    final listaPacientesPdf =
+                        mapaPacientesConsolidados.values.toList();
+
+                    final placaLimpa = viagemParaPdf.veiculoPlaca.trim().isNotEmpty
+                        ? viagemParaPdf.veiculoPlaca.trim()
+                        : 'TFD';
+                    nomeArquivoPdf = 'Roteiro_Viagem_$placaLimpa.pdf';
+                    pdfBytes = await RelatorioPdfService.gerarRoteiroViagemPdf(
+                      viagem: viagemParaPdf,
+                      pacientes: listaPacientesPdf,
                       retornoInformado: retorno.isNotEmpty ? retorno : null,
                       kmRetornoInformado: kmRetornoNum,
                       kmRodadoInformado: kmRodadoNum,
-                    // Fecha a chamada de gerarRoteiroViagemPdf
                     );
-                  // Fecha a função assíncrona onLayout
-                  },
-                // Fecha a chamada de Printing.layoutPdf
-                );
-              }
-            // Fecha o bloco condicional de geração de PDF
-            }
+                  } catch (_) {}
 
-            // Cláusula de segurança: fecha o diálogo apenas se o contexto do widget permanecer montado
-            if (context.mounted) {
-              // Desempilha e fecha o diálogo modal
-              Navigator.of(context).pop();
-            // Fecha a checagem context.mounted
-            }
-          // Fecha a função assíncrona de onPressed
-          },
+                  // 1. Finaliza a viagem própria do motorista e atualiza o serviço imediatamente
+                  await ViagemService().encerrarTodasViagens(
+                    kmFinal: kmRetornoNum,
+                    kmRodado: kmRodadoNum,
+                    viagensExplicitas: viagensSnapshot,
+                    pacientes: pacientesSnapshot,
+                  );
+
+                  // 2. Abre a pré-visualização/impressão nativa do PDF no dispositivo antes de desmontar o diálogo
+                  if (pdfBytes != null &&
+                      pdfBytes.isNotEmpty &&
+                      WidgetsBinding.instance is WidgetsFlutterBinding) {
+                    try {
+                      final bytes = pdfBytes;
+                      await Printing.layoutPdf(
+                        name: nomeArquivoPdf,
+                        onLayout: (format) async => bytes,
+                      );
+                    } catch (_) {}
+                  }
+
+                  // 3. Notifica a tela do motorista para limpar o estado local e redirecionar ao FormularioInicioViagem
+                  widget.onViagemEncerrada?.call();
+
+                  // 4. Fecha o diálogo modal garantindo redirecionamento para o início de viagem
+                  if (context.mounted) {
+                    Navigator.of(context).pop(true);
+                  }
+                // Fecha a função assíncrona de onPressed
+                },
           // Rótulo textual do botão Confirmar
           child: const Text(
             'Confirmar',

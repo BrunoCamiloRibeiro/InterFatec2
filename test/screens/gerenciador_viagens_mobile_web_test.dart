@@ -157,8 +157,8 @@ void main() {
       expect(find.text('Novo Horário de Saída'), findsOneWidget);
       expect(find.byKey(const Key('campoNomeHorario')), findsOneWidget);
       expect(find.byKey(const Key('campoCidadeDestino')), findsOneWidget);
-      expect(find.byKey(const Key('dropdownVeiculo')), findsOneWidget);
-      expect(find.byKey(const Key('dropdownMotorista')), findsOneWidget);
+      expect(find.byKey(const Key('dropdownVeiculo')), findsNothing);
+      expect(find.byKey(const Key('dropdownMotorista')), findsNothing);
       expect(find.byKey(const Key('botaoSalvarHorarioModal')), findsOneWidget);
 
       // Fecha o diálogo
