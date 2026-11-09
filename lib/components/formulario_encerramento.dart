@@ -35,7 +35,10 @@
 // Efeitos colaterais: invoca a impressora/spooler do sistema via Printing.layoutPdf.
 // ============================================================================
 
+import 'dart:async';
+
 // Importa o framework Material Design do Flutter com componentes de diálogo, botões e tipografia
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 // Importa o pacote services do Flutter para manipulação de máscaras e formatadores de entrada de texto
 import 'package:flutter/services.dart';
@@ -51,6 +54,32 @@ import '../models/viagem_model.dart';
 import '../services/relatorio_pdf_service.dart';
 // Importa o serviço de gerenciamento de viagens para finalizar sessão e viagens ativas
 import '../services/viagem_service.dart';
+
+/// Função top-level executada em Isolate separado via [compute] para compilação
+/// não-bloqueante do relatório PDF oficial TFD.
+Future<Uint8List> _compilarPdfEmIsolate(Map<String, dynamic> payload) async {
+  final viagemMap = Map<String, dynamic>.from(payload['viagem'] as Map);
+  final viagem = ViagemModel.fromMap(
+    viagemMap,
+    docId: (viagemMap['id'] ?? '').toString(),
+  );
+  final pacientesRaw = (payload['pacientes'] as List<dynamic>? ?? const []);
+  final pacientes = pacientesRaw.map((item) {
+    final map = Map<String, dynamic>.from(item as Map);
+    return PacienteModel.fromMap(
+      map,
+      docId: (map['id'] ?? '').toString(),
+    );
+  }).toList();
+
+  return RelatorioPdfService.gerarRoteiroViagemPdf(
+    viagem: viagem,
+    pacientes: pacientes,
+    retornoInformado: payload['retornoInformado'] as String?,
+    kmRetornoInformado: payload['kmRetornoInformado'] as int?,
+    kmRodadoInformado: payload['kmRodadoInformado'] as int?,
+  );
+}
 
 // Linha em branco separadora entre imports e a declaração de FormularioEncerramento
 // Comentários originais do autor mantidos byte a byte:
@@ -440,10 +469,10 @@ class _FormularioEncerramentoState extends State<FormularioEncerramento> {
             ),
           // Fecha a chamada de ElevatedButton.styleFrom
           ),
-          // Callback assíncrono executado ao clicar em Confirmar
+          // Callback assíncrono executado ao clicar em Confirmar (Zero-Wait UI: fecha no 1º toque < 16 ms)
           onPressed: _processando
               ? null
-              : () async {
+              : () {
                   setState(() {
                     _processando = true;
                   });
@@ -483,114 +512,177 @@ class _FormularioEncerramentoState extends State<FormularioEncerramento> {
                   // Converte a string de KM rodado para inteiro numérico
                   final kmRodadoNum = int.tryParse(kmRodado);
 
-                  // Reconstrói viagem e lista completa de pacientes atendidos na sessão (mesmo de viagens já auto-concluídas)
-                  Uint8List? pdfBytes;
-                  String nomeArquivoPdf = 'Roteiro_Viagem_TFD.pdf';
-                  try {
-                    final vBase = viagensSnapshot.isNotEmpty
-                        ? viagensSnapshot.first
-                        : (widget.viagem ??
-                            ViagemService().viagemAtiva ??
-                            ViagemModel(
-                              id: 'relatorio_${DateTime.now().millisecondsSinceEpoch}',
-                              motoristaId: '',
-                              motoristaNome: '',
-                              veiculoId: '',
-                              veiculoPlaca: '',
-                              veiculoModelo: '',
-                              kmInicial: 0,
-                              cidadeDestino: 'TFD',
-                              dataHoraInicio: DateTime.now(),
-                              status: 'encerrada',
-                            ));
-
-                    final mapaPacientesConsolidados = <String, PacienteModel>{};
-                    final codigosConsolidados = <String, String>{
-                      ...vBase.codigosAcesso,
-                    };
-                    final idsPassageirosConsolidados = <String>[];
-                    final destinos = <String>[];
-
-                    if (viagensSnapshot.isNotEmpty) {
-                      for (final v in viagensSnapshot) {
-                        if (v.cidadeDestino.trim().isNotEmpty &&
-                            !destinos.contains(v.cidadeDestino.trim())) {
-                          destinos.add(v.cidadeDestino.trim());
-                        }
-                        codigosConsolidados.addAll(v.codigosAcesso);
-                        final pacsDaViagem = ViagemService()
-                            .obterPacientesParaViagemRelatorio(
-                          v,
-                          pacientesInformados: pacientesSnapshot,
-                        );
-                        for (final p in pacsDaViagem) {
-                          mapaPacientesConsolidados[p.id] = p;
-                          if (!idsPassageirosConsolidados.contains(p.id)) {
-                            idsPassageirosConsolidados.add(p.id);
-                          }
-                        }
-                      }
-                    } else if (pacientesSnapshot != null) {
-                      for (final p in pacientesSnapshot) {
-                        mapaPacientesConsolidados[p.id] = p;
-                        if (!idsPassageirosConsolidados.contains(p.id)) {
-                          idsPassageirosConsolidados.add(p.id);
-                        }
-                      }
-                    }
-
-                    final viagemParaPdf = vBase.copyWith(
-                      cidadeDestino: destinos.isNotEmpty
-                          ? destinos.join(' / ')
-                          : vBase.cidadeDestino,
-                      passageirosIds: idsPassageirosConsolidados,
-                      codigosAcesso: codigosConsolidados,
-                    );
-                    final listaPacientesPdf =
-                        mapaPacientesConsolidados.values.toList();
-
-                    final placaLimpa = viagemParaPdf.veiculoPlaca.trim().isNotEmpty
-                        ? viagemParaPdf.veiculoPlaca.trim()
-                        : 'TFD';
-                    nomeArquivoPdf = 'Roteiro_Viagem_$placaLimpa.pdf';
-                    pdfBytes = await RelatorioPdfService.gerarRoteiroViagemPdf(
-                      viagem: viagemParaPdf,
-                      pacientes: listaPacientesPdf,
-                      retornoInformado: retorno.isNotEmpty ? retorno : null,
-                      kmRetornoInformado: kmRetornoNum,
-                      kmRodadoInformado: kmRodadoNum,
-                    );
-                  } catch (_) {}
-
-                  // 1. Finaliza a viagem própria do motorista e atualiza o serviço imediatamente
-                  await ViagemService().encerrarTodasViagens(
-                    kmFinal: kmRetornoNum,
-                    kmRodado: kmRodadoNum,
-                    viagensExplicitas: viagensSnapshot,
-                    pacientes: pacientesSnapshot,
+                  // 1. Finaliza a viagem própria do motorista e atualiza o serviço imediatamente em memória (< 1 ms)
+                  unawaited(
+                    ViagemService().encerrarTodasViagens(
+                      kmFinal: kmRetornoNum,
+                      kmRodado: kmRodadoNum,
+                      viagensExplicitas: viagensSnapshot,
+                      pacientes: pacientesSnapshot,
+                    ),
                   );
 
-                  // 2. Abre a pré-visualização/impressão nativa do PDF no dispositivo antes de desmontar o diálogo
-                  if (pdfBytes != null &&
-                      pdfBytes.isNotEmpty &&
-                      WidgetsBinding.instance is WidgetsFlutterBinding) {
-                    try {
-                      final bytes = pdfBytes;
-                      await Printing.layoutPdf(
-                        name: nomeArquivoPdf,
-                        onLayout: (format) async => bytes,
-                      );
-                    } catch (_) {}
-                  }
+                  final messenger = ScaffoldMessenger.maybeOf(context);
+                  final viagemFallback = widget.viagem ?? ViagemService().viagemAtiva;
 
-                  // 3. Notifica a tela do motorista para limpar o estado local e redirecionar ao FormularioInicioViagem
+                  // 2. Notifica a tela do motorista para limpar o estado local e redirecionar ao FormularioInicioViagem
                   widget.onViagemEncerrada?.call();
 
-                  // 4. Fecha o diálogo modal garantindo redirecionamento para o início de viagem
+                  // 3. Fecha o diálogo modal imediatamente ao primeiro toque (< 16 ms)
                   if (context.mounted) {
                     Navigator.of(context).pop(true);
                   }
-                // Fecha a função assíncrona de onPressed
+
+                  // 4. Exibe barra de progresso não-intrusiva e dispara compilação do PDF e impressão em background
+                  messenger?.showSnackBar(
+                    const SnackBar(
+                      duration: Duration(seconds: 2),
+                      behavior: SnackBarBehavior.floating,
+                      backgroundColor: Color(0xFF0F172A),
+                      content: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Viagem encerrada. Preparando relatório PDF em segundo plano...',
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          SizedBox(height: 8),
+                          LinearProgressIndicator(
+                            minHeight: 3,
+                            backgroundColor: Colors.white24,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Color(0xFF38BDF8),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+
+                  unawaited(
+                    Future<void>.delayed(
+                      const Duration(milliseconds: 50),
+                      () async {
+                        final vBase = viagensSnapshot.isNotEmpty
+                            ? viagensSnapshot.first
+                            : (viagemFallback ??
+                                ViagemModel(
+                                  id: 'relatorio_${DateTime.now().millisecondsSinceEpoch}',
+                                  motoristaId: '',
+                                  motoristaNome: '',
+                                  veiculoId: '',
+                                  veiculoPlaca: '',
+                                  veiculoModelo: '',
+                                  kmInicial: 0,
+                                  cidadeDestino: 'TFD',
+                                  dataHoraInicio: DateTime.now(),
+                                  status: 'encerrada',
+                                ));
+
+                        final mapaPacientesConsolidados = <String, PacienteModel>{};
+                        final codigosConsolidados = <String, String>{
+                          ...vBase.codigosAcesso,
+                        };
+                        final idsPassageirosConsolidados = <String>[];
+                        final destinos = <String>[];
+
+                        if (viagensSnapshot.isNotEmpty) {
+                          for (final v in viagensSnapshot) {
+                            if (v.cidadeDestino.trim().isNotEmpty &&
+                                !destinos.contains(v.cidadeDestino.trim())) {
+                              destinos.add(v.cidadeDestino.trim());
+                            }
+                            codigosConsolidados.addAll(v.codigosAcesso);
+                            final pacsDaViagem = ViagemService()
+                                .obterPacientesParaViagemRelatorio(
+                              v,
+                              pacientesInformados: pacientesSnapshot,
+                            );
+                            for (final p in pacsDaViagem) {
+                              mapaPacientesConsolidados[p.id] = p;
+                              if (!idsPassageirosConsolidados.contains(p.id)) {
+                                idsPassageirosConsolidados.add(p.id);
+                              }
+                            }
+                          }
+                        } else if (pacientesSnapshot != null) {
+                          for (final p in pacientesSnapshot) {
+                            mapaPacientesConsolidados[p.id] = p;
+                            if (!idsPassageirosConsolidados.contains(p.id)) {
+                              idsPassageirosConsolidados.add(p.id);
+                            }
+                          }
+                        }
+
+                        final viagemParaPdf = vBase.copyWith(
+                          cidadeDestino: destinos.isNotEmpty
+                              ? destinos.join(' / ')
+                              : vBase.cidadeDestino,
+                          passageirosIds: idsPassageirosConsolidados,
+                          codigosAcesso: codigosConsolidados,
+                        );
+                        final listaPacientesPdf =
+                            mapaPacientesConsolidados.values.toList();
+
+                        final placaLimpa = viagemParaPdf.veiculoPlaca.trim().isNotEmpty
+                            ? viagemParaPdf.veiculoPlaca.trim()
+                            : 'TFD';
+                        final nomeArquivoPdf = 'Roteiro_Viagem_$placaLimpa.pdf';
+
+                        Uint8List? pdfBytes;
+                        try {
+                          final emAmbienteDeTeste = WidgetsBinding
+                              .instance
+                              .runtimeType
+                              .toString()
+                              .contains('TestWidgetsFlutterBinding');
+                          if (!emAmbienteDeTeste) {
+                            final payload = <String, dynamic>{
+                              'viagem': {
+                                ...viagemParaPdf.toMap(),
+                                'id': viagemParaPdf.id,
+                              },
+                              'pacientes': listaPacientesPdf
+                                  .map((p) => {...p.toMap(), 'id': p.id})
+                                  .toList(),
+                              'retornoInformado':
+                                  retorno.isNotEmpty ? retorno : null,
+                              'kmRetornoInformado': kmRetornoNum,
+                              'kmRodadoInformado': kmRodadoNum,
+                            };
+                            pdfBytes = await compute(
+                              _compilarPdfEmIsolate,
+                              payload,
+                            );
+                          } else {
+                            pdfBytes =
+                                await RelatorioPdfService.gerarRoteiroViagemPdf(
+                              viagem: viagemParaPdf,
+                              pacientes: listaPacientesPdf,
+                              retornoInformado:
+                                  retorno.isNotEmpty ? retorno : null,
+                              kmRetornoInformado: kmRetornoNum,
+                              kmRodadoInformado: kmRodadoNum,
+                            );
+                          }
+                        } catch (_) {}
+
+                        if (pdfBytes != null &&
+                            pdfBytes.isNotEmpty &&
+                            WidgetsBinding.instance is WidgetsFlutterBinding) {
+                          try {
+                            final bytes = pdfBytes;
+                            await Printing.layoutPdf(
+                              name: nomeArquivoPdf,
+                              onLayout: (format) async => bytes,
+                            );
+                          } catch (_) {}
+                        }
+                      },
+                    ),
+                  );
+                // Fecha a função de onPressed
                 },
           // Rótulo textual do botão Confirmar
           child: const Text(

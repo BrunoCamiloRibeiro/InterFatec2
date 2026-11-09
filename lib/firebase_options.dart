@@ -85,7 +85,7 @@ class DefaultFirebaseOptions {
     apiKey: 'AIzaSyBZD3GsIY68mllCD0_y63T14UXnNnG_dl8',
     projectId: 'trans-saude2',
     storageBucket: 'trans-saude2.firebasestorage.app',
-    appId: '1:1010712989031:web:6bdcd79a001d67953db3c2',
+    appId: '1:1010712989031:android:6bdcd79a001d67953db3c2',
     messagingSenderId: '1010712989031',
   );
 

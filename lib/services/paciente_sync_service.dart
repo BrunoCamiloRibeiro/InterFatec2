@@ -109,9 +109,26 @@ class PacienteSyncService {
   final Map<String, StreamController<PacienteModel?>> _controllersMemoria = {};
   final StreamController<PacienteModel> _globalController =
       StreamController<PacienteModel>.broadcast();
+  final StreamController<({String pacienteId, String mensagem, PacienteModel estadoRevertido})>
+      _falhasSincronizacaoController = StreamController<
+          ({String pacienteId, String mensagem, PacienteModel estadoRevertido})>.broadcast();
+
+  /// Hook opcional para simular escrita assíncrona remota e falhas de rede/permissão em testes.
+  @visibleForTesting
+  Future<void> Function(String pacienteId, Map<String, dynamic> dados)?
+      executorRemotoOverride;
+
+  int _totalGravacoesFirestore = 0;
+
+  /// Total de gravações despachadas ao Firestore na jornada (FinOps).
+  int get totalGravacoesFirestore => _totalGravacoesFirestore;
 
   /// Stream global broadcast emitida sempre que qualquer paciente sofre transição de status ou prontidão.
   Stream<PacienteModel> get alteracoesGlobaisStream => _globalController.stream;
+
+  /// Stream emitida quando uma mutação otimista em background falha no Firestore e sofre rollback.
+  Stream<({String pacienteId, String mensagem, PacienteModel estadoRevertido})>
+      get falhasSincronizacaoStream => _falhasSincronizacaoController.stream;
 
   /// Reinicia o estado em memória para execução de suítes de teste limpas.
   void resetParaTestes([List<PacienteModel>? pacientesIniciais]) {
@@ -122,6 +139,8 @@ class PacienteSyncService {
     }
     _controllersMemoria.clear();
     relogioOverride = null;
+    executorRemotoOverride = null;
+    _totalGravacoesFirestore = 0;
 
     if (pacientesIniciais != null) {
       for (final p in pacientesIniciais) {
@@ -279,8 +298,9 @@ class PacienteSyncService {
 
     // 2. Se o paciente já está em memória (ex.: tela do motorista carregada),
     //    aplica a transição otimista em 0ms e sincroniza no Firestore em background
-    //    para garantir resposta instantânea na interface.
-    if (_isFirebaseDisponivel && _pacientesMemoria.containsKey(pacienteId)) {
+    //    para garantir resposta instantânea na interface, com rollback automático se falhar.
+    if ((_isFirebaseDisponivel || executorRemotoOverride != null) &&
+        _pacientesMemoria.containsKey(pacienteId)) {
       final pacienteMem = _pacientesMemoria[pacienteId]!;
       if (idempotencyKey != null &&
           pacienteMem.ultimaIdempotencyKey == idempotencyKey) {
@@ -343,13 +363,53 @@ class PacienteSyncService {
         'atualizadoEm': agora.toIso8601String(),
       };
 
-      unawaited(
-        FirebaseFirestore.instance
-            .collection('usuarios')
-            .doc(pacienteId)
-            .set(updateData, SetOptions(merge: true))
-            .catchError((_) {}),
-      );
+      void reverterMutacaoOtimista(Object erro) {
+        _pacientesMemoria[pacienteId] = pacienteMem;
+        final ctrlRevert = _controllersMemoria[pacienteId];
+        if (ctrlRevert != null && !ctrlRevert.isClosed) {
+          ctrlRevert.add(pacienteMem);
+        }
+        if (!_globalController.isClosed) {
+          _globalController.add(pacienteMem);
+        }
+        final codigo = erro is FirebaseException ? erro.code : 'network-error';
+        final msg =
+            'Falha ao sincronizar com o servidor ($codigo). A alteração de ${pacienteMem.nome} foi revertida.';
+        if (!_falhasSincronizacaoController.isClosed) {
+          _falhasSincronizacaoController.add((
+            pacienteId: pacienteId,
+            mensagem: msg,
+            estadoRevertido: pacienteMem,
+          ));
+        }
+      }
+
+      if (executorRemotoOverride != null || _isFirebaseDisponivel) {
+        unawaited(
+          Future.microtask(() async {
+            try {
+              if (executorRemotoOverride != null) {
+                await executorRemotoOverride!(pacienteId, updateData);
+                _totalGravacoesFirestore++;
+                return;
+              }
+              await FirebaseFirestore.instance
+                  .collection('usuarios')
+                  .doc(pacienteId)
+                  .set(updateData, SetOptions(merge: true));
+              _totalGravacoesFirestore++;
+            } on FirebaseException catch (e) {
+              debugPrint(
+                'Falha FirebaseException em transição otimista (${e.code}): ${e.message}',
+              );
+              reverterMutacaoOtimista(e);
+            } catch (e) {
+              debugPrint('Falha de rede em transição otimista: $e');
+              reverterMutacaoOtimista(e);
+            }
+          }),
+        );
+      }
 
       return ResultadoOperacaoPaciente.sucesso(
         paciente: pacienteAtualizado,

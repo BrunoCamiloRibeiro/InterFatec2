@@ -27,6 +27,7 @@
 // ============================================================================
 
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
@@ -51,8 +52,26 @@ class LocalizacaoMotoristaService {
       _motoristasAtivosController =
       StreamController<List<LocalizacaoMotoristaModel>>.broadcast();
 
+  /// Limiares de FinOps para contenção de cota no plano Spark:
+  /// Persiste remotamente apenas quando houver deslocamento > 200m E intervalo >= 60s.
+  static const double distanciaMinimaTelemetriaMetros = 200.0;
+  static const Duration intervaloMinimoTelemetria = Duration(seconds: 60);
+
   final Map<String, LocalizacaoMotoristaModel> _motoristasAtivosMemoria = {};
+  final Map<String, ({double lat, double lng, DateTime timestamp})>
+      _ultimaCoordenadaPersistida = {};
+  String? _transmissaoAtivaMotoristaId;
+  String? _transmissaoAtivaViagemId;
+  bool _iniciandoTransmissao = false;
   bool _inicializado = false;
+  int _totalGravacoesRemotasGps = 0;
+
+  StreamSubscription<List<ViagemModel>>? _subViagensLocal;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
+      _subLocalizacoesFirestore;
+
+  /// Total acumulado de gravações de telemetria GPS despachadas (FinOps).
+  int get totalGravacoesRemotasGps => _totalGravacoesRemotasGps;
 
   /// Retorna a lista síncrona atual de motoristas ativos em memória
   List<LocalizacaoMotoristaModel> get motoristasAtivos =>
@@ -60,8 +79,56 @@ class LocalizacaoMotoristaService {
 
   /// Stream reativa de todos os motoristas ativos em trânsito no momento
   Stream<List<LocalizacaoMotoristaModel>> obterMotoristasAtivosStream() {
+    if (!_inicializado) {
+      _inicializarOuvintes();
+    }
     _motoristasAtivosController.add(motoristasAtivos);
     return _motoristasAtivosController.stream;
+  }
+
+  /// Calcula a distância geodésica (Haversine) em metros entre duas coordenadas.
+  static double calcularDistanciaMetros(
+    double lat1,
+    double lon1,
+    double lat2,
+    double lon2,
+  ) {
+    const double raioTerraMetros = 6371000.0;
+    final double dLat = (lat2 - lat1) * (math.pi / 180.0);
+    final double dLon = (lon2 - lon1) * (math.pi / 180.0);
+    final double a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(lat1 * (math.pi / 180.0)) *
+            math.cos(lat2 * (math.pi / 180.0)) *
+            math.sin(dLon / 2) *
+            math.sin(dLon / 2);
+    final double c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+    return raioTerraMetros * c;
+  }
+
+  /// Avalia o throttler/debouncer de estado: só autoriza escrita remota se for
+  /// a posição inicial da sessão OU se houver deslocamento real > 200m E intervalo >= 60s.
+  bool devePersistirTelemetriaGps({
+    required String motoristaId,
+    required double latitude,
+    required double longitude,
+    DateTime? instante,
+  }) {
+    final agora = instante ?? DateTime.now();
+    final anterior = _ultimaCoordenadaPersistida[motoristaId];
+    if (anterior == null) {
+      return true;
+    }
+    final intervalo = agora.difference(anterior.timestamp);
+    if (intervalo < intervaloMinimoTelemetria) {
+      return false;
+    }
+    final deslocamentoMetros = calcularDistanciaMetros(
+      anterior.lat,
+      anterior.lng,
+      latitude,
+      longitude,
+    );
+    return deslocamentoMetros > distanciaMinimaTelemetriaMetros;
   }
 
   bool _isFirebaseDisponivel() {
@@ -79,77 +146,20 @@ class LocalizacaoMotoristaService {
 
     // 1. Escuta viagens do ViagemService local
     try {
-      ViagemService().todasViagensStream.listen((viagens) {
+      _subViagensLocal?.cancel();
+      _subViagensLocal = ViagemService().todasViagensStream.listen((viagens) {
         _sincronizarComViagens(viagens);
       });
     } catch (e) {
       debugPrint('ViagemService stream listener error: $e');
     }
 
-    // 2. Se o Firebase estiver ativo, escuta viagens e motoristas remotos
+    // 2. Se o Firebase estiver ativo, escuta apenas a coleção dedicada de telemetria
     if (_isFirebaseDisponivel()) {
       try {
-        FirebaseFirestore.instance
-            .collection('viagens')
-            .snapshots()
-            .listen((snapshot) {
-          final viagens = snapshot.docs
-              .map((doc) => ViagemModel.fromMap(doc.data(), docId: doc.id))
-              .toList();
-          _sincronizarComViagens(viagens);
-        }, onError: (_) {});
-
-        // Escuta documentos de motoristas na coleção 'usuarios' que possuam coordenadas GPS ativas
-        FirebaseFirestore.instance
-            .collection('usuarios')
-            .where('role', isEqualTo: 'motorista')
-            .snapshots()
-            .listen((snapshot) {
-          bool alterou = false;
-          for (final doc in snapshot.docs) {
-            final dados = doc.data();
-            final emViagem = dados['emViagem'] == true;
-            final latRaw = dados['latitude'];
-            final lngRaw = dados['longitude'];
-            final double? lat = (latRaw is num)
-                ? latRaw.toDouble()
-                : double.tryParse(latRaw?.toString() ?? '');
-            final double? lng = (lngRaw is num)
-                ? lngRaw.toDouble()
-                : double.tryParse(lngRaw?.toString() ?? '');
-
-            if (emViagem && lat != null && lng != null) {
-              final nome = (dados['nome'] ?? '').toString().trim();
-              final placa = (dados['veiculoPlaca'] ?? '').toString().trim();
-              final modelo = (dados['veiculoModelo'] ?? '').toString().trim();
-              final destino = (dados['cidadeDestino'] ?? '').toString().trim();
-              _motoristasAtivosMemoria[doc.id] = LocalizacaoMotoristaModel(
-                id: 'loc_${doc.id}',
-                motoristaId: doc.id,
-                motoristaNome: nome.isNotEmpty ? nome : 'Motorista',
-                veiculoPlaca: placa,
-                veiculoModelo: modelo,
-                cidadeDestino: destino,
-                latitude: lat,
-                longitude: lng,
-                ultimaAtualizacao: DateTime.now(),
-                emViagem: true,
-                viagemId: dados['viagemAtivaId']?.toString(),
-              );
-              alterou = true;
-            } else if (dados['emViagem'] == false &&
-                _motoristasAtivosMemoria.containsKey(doc.id)) {
-              _motoristasAtivosMemoria.remove(doc.id);
-              alterou = true;
-            }
-          }
-          if (alterou) {
-            _motoristasAtivosController.add(motoristasAtivos);
-          }
-        }, onError: (_) {});
-
         // Escuta coleção dedicada de localizações de motoristas, se disponível
-        FirebaseFirestore.instance
+        _subLocalizacoesFirestore?.cancel();
+        _subLocalizacoesFirestore = FirebaseFirestore.instance
             .collection('localizacoes_motoristas')
             .where('emViagem', isEqualTo: true)
             .snapshots()
@@ -159,11 +169,23 @@ class LocalizacaoMotoristaService {
             _motoristasAtivosMemoria[loc.motoristaId] = loc;
           }
           _motoristasAtivosController.add(motoristasAtivos);
-        }, onError: (_) {});
+        }, onError: (Object erro) {
+          debugPrint('Erro no listener de localizacoes_motoristas: $erro');
+        });
       } catch (e) {
         debugPrint('Firestore location listeners error: $e');
       }
     }
+  }
+
+  /// Encerra as subscrições de escuta associadas ao escopo da sessão/tela (FinOps).
+  void encerrarEscutas() {
+    pararTransmissaoGpsMotorista();
+    _subViagensLocal?.cancel();
+    _subViagensLocal = null;
+    _subLocalizacoesFirestore?.cancel();
+    _subLocalizacoesFirestore = null;
+    _inicializado = false;
   }
 
   void _sincronizarComViagens(List<ViagemModel> viagens) {
@@ -234,8 +256,9 @@ class LocalizacaoMotoristaService {
     required double latitude,
     required double longitude,
     String? viagemId,
+    DateTime? instanteReferencia,
   }) async {
-    final agora = DateTime.now();
+    final agora = instanteReferencia ?? DateTime.now();
     final registro = LocalizacaoMotoristaModel(
       id: 'loc_$motoristaId',
       motoristaId: motoristaId,
@@ -253,67 +276,40 @@ class LocalizacaoMotoristaService {
     _motoristasAtivosMemoria[motoristaId] = registro;
     _motoristasAtivosController.add(motoristasAtivos);
 
+    // FinOps Throttler/Debouncer com trava de estado:
+    // Só autoriza gravação remota se houver deslocamento > 200m E intervalo >= 60s
+    // (ou se for a coordenada inicial da jornada), suspendendo gravações com veículo parado.
+    if (!devePersistirTelemetriaGps(
+      motoristaId: motoristaId,
+      latitude: latitude,
+      longitude: longitude,
+      instante: agora,
+    )) {
+      return;
+    }
+
+    _ultimaCoordenadaPersistida[motoristaId] = (
+      lat: latitude,
+      lng: longitude,
+      timestamp: agora,
+    );
+    _totalGravacoesRemotasGps++;
+
     if (_isFirebaseDisponivel()) {
-      // 1. Atualiza na coleção 'viagens' (documento da viagem ativa ou viagens do motorista)
-      try {
-        if (viagemId != null && viagemId.isNotEmpty) {
-          await FirebaseFirestore.instance
-              .collection('viagens')
-              .doc(viagemId)
-              .set({
-            'ultimaLatitude': latitude,
-            'ultimaLongitude': longitude,
-            'ultimaAtualizacaoLocalizacao': agora.toIso8601String(),
-            'status': 'ativa',
-          }, SetOptions(merge: true));
-        } else {
-          final snap = await FirebaseFirestore.instance
-              .collection('viagens')
-              .where('motoristaId', isEqualTo: motoristaId)
-              .get();
-          for (final doc in snap.docs) {
-            final st = (doc.data()['status'] ?? '').toString();
-            if (st == 'ativa' || st == 'planejada') {
-              await doc.reference.set({
-                'ultimaLatitude': latitude,
-                'ultimaLongitude': longitude,
-                'ultimaAtualizacaoLocalizacao': agora.toIso8601String(),
-                'status': 'ativa',
-              }, SetOptions(merge: true));
-            }
-          }
-        }
-      } catch (e) {
-        debugPrint('Erro ao persistir localização na viagem: $e');
-      }
-
-      // 2. Atualiza no documento do motorista na coleção 'usuarios'
-      if (motoristaId.isNotEmpty && motoristaId != 'motorista_atual') {
-        try {
-          await FirebaseFirestore.instance
-              .collection('usuarios')
-              .doc(motoristaId)
-              .set({
-            'latitude': latitude,
-            'longitude': longitude,
-            'ultimaAtualizacaoLocalizacao': agora.toIso8601String(),
-            'emViagem': true,
-            if (veiculoPlaca.isNotEmpty) 'veiculoPlaca': veiculoPlaca,
-            if (veiculoModelo.isNotEmpty) 'veiculoModelo': veiculoModelo,
-            if (cidadeDestino.isNotEmpty) 'cidadeDestino': cidadeDestino,
-            if (viagemId != null && viagemId.isNotEmpty)
-              'viagemAtivaId': viagemId,
-          }, SetOptions(merge: true));
-        } catch (_) {}
-      }
-
-      // 3. Tenta atualizar na coleção dedicada 'localizacoes_motoristas' de forma isolada
+      // Isola a telemetria GPS exclusivamente na coleção 'localizacoes_motoristas',
+      // eliminando gravações contínuas nos documentos transacionais de 'viagens' e 'usuarios'.
       try {
         await FirebaseFirestore.instance
             .collection('localizacoes_motoristas')
             .doc(motoristaId)
             .set(registro.toMap(), SetOptions(merge: true));
-      } catch (_) {}
+      } on FirebaseException catch (e) {
+        debugPrint(
+          'Falha Firebase ao persistir telemetria GPS [${e.code}]: ${e.message}',
+        );
+      } catch (e) {
+        debugPrint('Erro ao persistir telemetria GPS: $e');
+      }
     }
   }
 
@@ -348,21 +344,18 @@ class LocalizacaoMotoristaService {
   /// Remove ou inativa o motorista da lista quando sua viagem for encerrada
   void removerOuInativarMotorista(String motoristaId) {
     _motoristasAtivosMemoria.remove(motoristaId);
+    _ultimaCoordenadaPersistida.remove(motoristaId);
     _motoristasAtivosController.add(motoristasAtivos);
 
     if (_isFirebaseDisponivel()) {
       try {
         FirebaseFirestore.instance
-            .collection('usuarios')
-            .doc(motoristaId)
-            .set({'emViagem': false}, SetOptions(merge: true));
-      } catch (_) {}
-      try {
-        FirebaseFirestore.instance
             .collection('localizacoes_motoristas')
             .doc(motoristaId)
             .set({'emViagem': false}, SetOptions(merge: true));
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('Erro ao inativar localização do motorista: $e');
+      }
     }
   }
 
@@ -431,6 +424,15 @@ class LocalizacaoMotoristaService {
     required String cidadeDestino,
     String? viagemId,
   }) async {
+    // Trava de idempotência para evitar re-entrância por listeners de snapshot
+    if (_transmissaoAtivaMotoristaId == motoristaId &&
+        _transmissaoAtivaViagemId == viagemId &&
+        (_iniciandoTransmissao || _gpsStreamSubscription != null)) {
+      return true;
+    }
+    _transmissaoAtivaMotoristaId = motoristaId;
+    _transmissaoAtivaViagemId = viagemId;
+    _iniciandoTransmissao = true;
     try {
       final posInicial = await obterPosicaoDispositivoAtual();
       if (posInicial != null) {
@@ -446,12 +448,15 @@ class LocalizacaoMotoristaService {
         );
       }
 
-      // Escuta stream contínua de movimentação
+      // Escuta stream contínua de movimentação filtrada por deslocamento mínimo de 200m
+      // (suspende emissões quando o veículo está parado).
       _gpsStreamSubscription?.cancel();
+      _gpsPeriodicTimer?.cancel();
+      _gpsPeriodicTimer = null;
       _gpsStreamSubscription = Geolocator.getPositionStream(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
-          distanceFilter: 5,
+          distanceFilter: 200,
         ),
       ).listen((pos) {
         atualizarLocalizacaoMotorista(
@@ -465,26 +470,10 @@ class LocalizacaoMotoristaService {
           viagemId: viagemId,
         );
       });
-
-      // Atualiza periodicamente mesmo quando o veículo está parado no semáforo/embarque
-      _gpsPeriodicTimer?.cancel();
-      _gpsPeriodicTimer = Timer.periodic(const Duration(seconds: 15), (_) async {
-        final pos = await obterPosicaoDispositivoAtual();
-        if (pos != null) {
-          await atualizarLocalizacaoMotorista(
-            motoristaId: motoristaId,
-            motoristaNome: motoristaNome,
-            veiculoPlaca: veiculoPlaca,
-            veiculoModelo: veiculoModelo,
-            cidadeDestino: cidadeDestino,
-            latitude: pos.latitude,
-            longitude: pos.longitude,
-            viagemId: viagemId,
-          );
-        }
-      });
+      _iniciandoTransmissao = false;
       return true;
     } catch (e) {
+      _iniciandoTransmissao = false;
       debugPrint('Erro ao iniciar transmissão GPS do motorista: $e');
       return false;
     }
@@ -492,6 +481,9 @@ class LocalizacaoMotoristaService {
 
   /// Encerra a transmissão contínua de GPS do motorista
   void pararTransmissaoGpsMotorista() {
+    _transmissaoAtivaMotoristaId = null;
+    _transmissaoAtivaViagemId = null;
+    _iniciandoTransmissao = false;
     _gpsStreamSubscription?.cancel();
     _gpsStreamSubscription = null;
     _gpsPeriodicTimer?.cancel();
@@ -506,6 +498,9 @@ class LocalizacaoMotoristaService {
   /// Método para reset em bateria de testes unitários
   @visibleForTesting
   void redefinirParaTestes({List<LocalizacaoMotoristaModel>? dadosIniciais}) {
+    pararTransmissaoGpsMotorista();
+    _ultimaCoordenadaPersistida.clear();
+    _totalGravacoesRemotasGps = 0;
     _motoristasAtivosMemoria.clear();
     if (dadosIniciais != null) {
       for (final m in dadosIniciais) {

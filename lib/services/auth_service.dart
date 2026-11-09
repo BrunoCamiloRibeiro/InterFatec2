@@ -66,6 +66,7 @@ import '../models/paciente_model.dart';
 import '../models/user_role.dart';
 import '../models/viagem_model.dart';
 import 'codigo_acesso_service.dart';
+import 'localizacao_motorista_service.dart';
 import 'viagem_service.dart';
 
 // Linha em branco separadora entre imports e a classe de exceção
@@ -1138,6 +1139,11 @@ class FirebaseAuthService implements AuthService {
   Future<void> logout() async {
     // Limpa o cache estático em memória de perfis e reseta sessão de paciente
     clearRoleCache();
+    // Encerra ouvintes de sessão ativa (SessionScope) para evitar vazamento de cotas após logout
+    try {
+      ViagemService().encerrarEscutasFirestore();
+      LocalizacaoMotoristaService().encerrarEscutas();
+    } catch (_) {}
     // Executa o logout no FirebaseAuth
     try {
       await auth.signOut();
