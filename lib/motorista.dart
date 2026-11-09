@@ -58,6 +58,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 // Importa o conjunto completo de componentes Material Design do Flutter
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 // Importa o modelo de dados que representa um motorista no sistema
 import 'package:trans_saude/models/motorista_model.dart';
 // Importa o modelo de dados que representa um paciente no sistema
@@ -133,9 +134,12 @@ class _MotoristaState extends State<Motorista> {
   StreamSubscription<List<ViagemModel>>? _subViagensAtivas;
 
   // Inscrições para escutar a frota de veículos e viagens diretamente do Firestore
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _subMotoristaFirestore;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _subVeiculosFirestore;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _subViagensFirestore;
   StreamSubscription<PacienteModel>? _subSyncPacientes;
+  StreamSubscription<({String pacienteId, String mensagem, PacienteModel estadoRevertido})>? _subFalhasSync;
+  StreamSubscription<String>? _subErrosViagem;
   Stream<QuerySnapshot<Map<String, dynamic>>>? _streamSnapshotsPacientesFirestore;
   Stream<List<PacienteModel>>? _streamPacientesMapeadosFirestore;
 
@@ -288,6 +292,76 @@ class _MotoristaState extends State<Motorista> {
         setState(() {});
       }
     });
+
+    _subFalhasSync = _syncService.falhasSincronizacaoStream.listen((falha) {
+      final idViagemAlvo = _viagemAtiva?.id;
+      if (idViagemAlvo != null && !idViagemAlvo.startsWith('sessao_ativa_')) {
+        _viagemService.atualizarStatusPassageiroNaViagem(
+          viagemId: idViagemAlvo,
+          pacienteId: falha.pacienteId,
+          novoStatus: falha.estadoRevertido.status,
+          persistirRemoto: false,
+        );
+      }
+      unawaited(HapticFeedback.heavyImpact());
+      unawaited(SystemSound.play(SystemSoundType.alert));
+      if (mounted) {
+        setState(() {
+          _viagensAtivas = _viagemService.viagensAtivas;
+          if (_viagensAtivas.isNotEmpty) {
+            if (_indiceViagemAtual >= _viagensAtivas.length) {
+              _indiceViagemAtual = _viagensAtivas.length - 1;
+            }
+            _viagemAtiva = _viagensAtivas[_indiceViagemAtual];
+          } else {
+            _viagemAtiva = _viagemService.viagemAtiva;
+          }
+        });
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              backgroundColor: const Color(0xFFB83227),
+              content: Text(
+                falha.mensagem,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+      }
+    });
+
+    _subErrosViagem = _viagemService.errosSincronizacaoStream.listen((mensagemErro) {
+      unawaited(HapticFeedback.heavyImpact());
+      unawaited(SystemSound.play(SystemSoundType.alert));
+      if (mounted) {
+        setState(() {
+          _viagensAtivas = _viagemService.viagensAtivas;
+          if (_viagensAtivas.isNotEmpty) {
+            if (_indiceViagemAtual >= _viagensAtivas.length) {
+              _indiceViagemAtual = _viagensAtivas.length - 1;
+            }
+            _viagemAtiva = _viagensAtivas[_indiceViagemAtual];
+          } else {
+            _viagemAtiva = _viagemService.viagemAtiva;
+          }
+          _capacidadeVeiculo = _resolverCapacidadeVeiculo();
+        });
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              backgroundColor: const Color(0xFFB83227),
+              content: Text(
+                mensagemErro,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+      }
+    });
   // Fechamento do método initState
   }
 
@@ -360,9 +434,12 @@ class _MotoristaState extends State<Motorista> {
     // Cancela as inscrições nas streams de viagem ativa, N viagens e Firestore
     _subViagemAtiva?.cancel();
     _subViagensAtivas?.cancel();
+    _subMotoristaFirestore?.cancel();
     _subVeiculosFirestore?.cancel();
     _subViagensFirestore?.cancel();
     _subSyncPacientes?.cancel();
+    _subFalhasSync?.cancel();
+    _subErrosViagem?.cancel();
     // Invoca o descarte da classe pai
     super.dispose();
   // Fechamento do método dispose
@@ -451,8 +528,14 @@ class _MotoristaState extends State<Motorista> {
           });
         });
 
+    final agora = DateTime.now();
+    final inicioDiaIso = DateTime(agora.year, agora.month, agora.day)
+        .subtract(const Duration(hours: 6))
+        .toIso8601String();
+    _subViagensFirestore?.cancel();
     _subViagensFirestore = FirebaseFirestore.instance
         .collection('viagens')
+        .where('dataHoraInicio', isGreaterThanOrEqualTo: inicioDiaIso)
         .snapshots()
         .listen((snapshot) {
           if (!mounted || snapshot.docs.isEmpty) return;
@@ -539,8 +622,9 @@ class _MotoristaState extends State<Motorista> {
   // Consulta os dados do motorista na coleção 'usuarios' do Firestore
   // Inicia um ouvinte em tempo real no Firestore para obter a capacidade do veículo do motorista
   void _ouvirDadosMotorista() {
+    _subMotoristaFirestore?.cancel();
     // Acessa a instância global do Firestore
-    FirebaseFirestore.instance
+    _subMotoristaFirestore = FirebaseFirestore.instance
         // Navega até a coleção raiz 'usuarios'
         .collection('usuarios')
         // Filtra os usuários com papel funcional de motorista
@@ -891,12 +975,10 @@ class _MotoristaState extends State<Motorista> {
                 .where((x) => x.pacienteId == p.id)
                 .firstOrNull;
             int st = p.status;
-            if (pv != null && pv.statusEmbarque > st) {
+            if (pv != null && pv.statusEmbarque != st) {
               st = pv.statusEmbarque;
             }
-            if (pMem != null &&
-                pMem.status > st &&
-                !(st == 0 && pMem.status == 4)) {
+            if (pMem != null && !(st == 0 && pMem.status == 4)) {
               st = pMem.status;
             }
             if (st != p.status || (pMem != null && pMem.prontoRetorno != p.prontoRetorno)) {
@@ -1173,7 +1255,8 @@ class _MotoristaState extends State<Motorista> {
                           return false;
                         }
 
-                        // Centraliza o disparo da mutação no serviço oficial (PacienteSyncService / TransicaoPacienteService)
+                        // Centraliza o disparo da mutação otimista no serviço oficial (< 16 ms, persistência remota em background)
+                        _syncService.registrarPacienteEmMemoriaSeAusente(paciente);
                         final resultado = await _syncService.avancarEtapaMotorista(
                           pacienteId: paciente.id,
                           motoristaId: _motoristaId ?? 'motorista',
@@ -1186,10 +1269,12 @@ class _MotoristaState extends State<Motorista> {
                           final idViagemAlvo = _viagemAtiva?.id;
                           if (idViagemAlvo != null &&
                               !idViagemAlvo.startsWith('sessao_ativa_')) {
-                            await _viagemService.atualizarStatusPassageiroNaViagem(
-                              viagemId: idViagemAlvo,
-                              pacienteId: paciente.id,
-                              novoStatus: proximoStatus,
+                            unawaited(
+                              _viagemService.atualizarStatusPassageiroNaViagem(
+                                viagemId: idViagemAlvo,
+                                pacienteId: paciente.id,
+                                novoStatus: proximoStatus,
+                              ),
                             );
                           }
                           if (mounted) {
@@ -1211,33 +1296,38 @@ class _MotoristaState extends State<Motorista> {
                               _viagemAtiva != null &&
                               !_viagemAtiva!.id.startsWith('sessao_ativa_') &&
                               !_viagemAtiva!.isConcluida) {
-                            final codigo =
-                                await _viagemService.gerarOuObterCodigoAcesso(
-                              viagemId: _viagemAtiva!.id,
-                              pacienteId: paciente.id,
+                            final idViagemCodigo = _viagemAtiva!.id;
+                            unawaited(
+                              _viagemService
+                                  .gerarOuObterCodigoAcesso(
+                                    viagemId: idViagemCodigo,
+                                    pacienteId: paciente.id,
+                                  )
+                                  .then((codigo) {
+                                    if (mounted &&
+                                        _viagemAtiva != null &&
+                                        !_viagemAtiva!.id.startsWith('sessao_ativa_') &&
+                                        !_viagemAtiva!.isConcluida) {
+                                      setState(() {
+                                        final novosCodigos = Map<String, String>.from(
+                                          _viagemAtiva!.codigosAcesso,
+                                        );
+                                        novosCodigos[paciente.id] = codigo;
+                                        final novosPassageiros = _viagemAtiva!.passageiros
+                                            .map(
+                                              (pv) => pv.pacienteId == paciente.id
+                                                  ? pv.copyWith(statusEmbarque: proximoStatus)
+                                                  : pv,
+                                            )
+                                            .toList();
+                                        _viagemAtiva = _viagemAtiva!.copyWith(
+                                          codigosAcesso: novosCodigos,
+                                          passageiros: novosPassageiros,
+                                        );
+                                      });
+                                    }
+                                  }),
                             );
-                            if (mounted &&
-                                _viagemAtiva != null &&
-                                !_viagemAtiva!.id.startsWith('sessao_ativa_') &&
-                                !_viagemAtiva!.isConcluida) {
-                              setState(() {
-                                final novosCodigos = Map<String, String>.from(
-                                  _viagemAtiva!.codigosAcesso,
-                                );
-                                novosCodigos[paciente.id] = codigo;
-                                final novosPassageiros = _viagemAtiva!.passageiros
-                                    .map(
-                                      (pv) => pv.pacienteId == paciente.id
-                                          ? pv.copyWith(statusEmbarque: proximoStatus)
-                                          : pv,
-                                    )
-                                    .toList();
-                                _viagemAtiva = _viagemAtiva!.copyWith(
-                                  codigosAcesso: novosCodigos,
-                                  passageiros: novosPassageiros,
-                                );
-                              });
-                            }
                           }
 
                           if (!context.mounted) return false;

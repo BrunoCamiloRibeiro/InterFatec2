@@ -109,6 +109,8 @@ class _PacienteState extends State<Paciente> {
   late final PacienteSyncService _syncService;
   late Stream<PacienteModel?> _pacienteStream;
   StreamSubscription<List<ViagemModel>>? _viagensSub;
+  StreamSubscription<PacienteModel>? _syncGlobalSub;
+  StreamSubscription<({String pacienteId, String mensagem, PacienteModel estadoRevertido})>? _falhasSyncSub;
   bool _processandoAcao = false;
 
   @override
@@ -121,11 +123,31 @@ class _PacienteState extends State<Paciente> {
         setState(() {});
       }
     });
+    _syncGlobalSub = _syncService.alteracoesGlobaisStream.listen((_) {
+      if (mounted) {
+        setState(() {});
+      }
+    });
+    _falhasSyncSub = _syncService.falhasSincronizacaoStream.listen((falha) {
+      if (mounted) {
+        setState(() {});
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              content: Text(falha.mensagem),
+              backgroundColor: const Color(0xFFDC2626),
+            ),
+          );
+      }
+    });
   }
 
   @override
   void dispose() {
     _viagensSub?.cancel();
+    _syncGlobalSub?.cancel();
+    _falhasSyncSub?.cancel();
     super.dispose();
   }
 
@@ -457,7 +479,9 @@ class _PacienteState extends State<Paciente> {
                   return null;
                 }
                 final base = PacienteModel.fromMap(dados, docId: doc.id);
-                return _enriquecerComDadosViagem(base);
+                final enriquecido = _enriquecerComDadosViagem(base);
+                _syncService.atualizarPacienteEmMemoria(enriquecido);
+                return enriquecido;
               }
               return _buscarPacienteEmViagem(docIdAlvo);
             });
@@ -482,7 +506,9 @@ class _PacienteState extends State<Paciente> {
                 continue;
               }
               final base = PacienteModel.fromMap(dados, docId: doc.id);
-              return _enriquecerComDadosViagem(base);
+              final enriquecido = _enriquecerComDadosViagem(base);
+              _syncService.atualizarPacienteEmMemoria(enriquecido);
+              return enriquecido;
             }
             return null;
           });

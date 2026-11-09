@@ -319,6 +319,7 @@ class _FormularioInicioViagemState extends State<FormularioInicioViagem> {
         kmInicial: kmDigitada,
         motoristaId: widget.motoristaId,
         motoristaNome: widget.motoristaNome,
+        cidadeDestino: _cidadeSelecionada,
       );
 
       // Aborta caso o widget tenha sido desmontado durante a requisição

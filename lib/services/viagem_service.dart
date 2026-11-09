@@ -69,6 +69,7 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 
 import '../models/paciente_model.dart';
 import '../models/sessao_veiculo_model.dart';
@@ -338,6 +339,170 @@ class ViagemService {
   bool _escutandoFirestore = false;
   bool _sessaoFinalizadaPeloMotorista = false;
   StreamSubscription<PacienteModel>? _subSyncPacientesInterno;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _subVeiculosRemoto;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _subPacientesRemoto;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _subViagensRemoto;
+
+  /// Mapa de sessões ativas por motorista para isolamento de concorrência real.
+  final Map<String, SessaoVeiculoModel> _sessoesAtivasPorMotorista = {};
+
+  /// Stream de erros de sincronização e rollback do Firestore (unavailable, permission-denied, resource-exhausted).
+  final StreamController<String> _errosSincronizacaoController =
+      StreamController<String>.broadcast();
+  Stream<String> get errosSincronizacaoStream =>
+      _errosSincronizacaoController.stream;
+
+  /// Contador de gravações remotas no Firestore para auditoria de FinOps (plano Spark).
+  int _totalGravacoesFirestoreJornada = 0;
+  int get totalGravacoesFirestoreJornada => _totalGravacoesFirestoreJornada;
+
+  /// Hook injetável para testes simularem falha de rede/permissão no meio de mutações em background.
+  @visibleForTesting
+  Future<void> Function(String operacao, Map<String, dynamic> payload)?
+      executorPersistenciaRemotaOverride;
+
+  void _tratarFalhaFirestore(
+    String operacao,
+    Object erro, {
+    VoidCallback? onRollback,
+  }) {
+    String codigo = 'unknown';
+    String detalhe = erro.toString();
+    if (erro is FirebaseException) {
+      codigo = erro.code;
+      detalhe = erro.message ?? erro.code;
+    }
+    debugPrint('Falha Firestore em [$operacao] ($codigo): $detalhe');
+    if (onRollback != null &&
+        (erro is FirebaseException ||
+            codigo == 'unavailable' ||
+            codigo == 'permission-denied' ||
+            codigo == 'resource-exhausted' ||
+            detalhe.contains('permission-denied') ||
+            detalhe.contains('unavailable') ||
+            detalhe.contains('resource-exhausted') ||
+            executorPersistenciaRemotaOverride != null)) {
+      onRollback();
+    }
+    if (!_errosSincronizacaoController.isClosed) {
+      _errosSincronizacaoController.add(
+        'Falha de sincronização ($codigo) em $operacao: $detalhe',
+      );
+    }
+  }
+
+  String _obterInicioDoDiaOperacionalIso([DateTime? referencia]) {
+    final ref = referencia ?? DateTime.now();
+    return DateTime(ref.year, ref.month, ref.day).toIso8601String();
+  }
+
+  String _normalizarTextoRota(String valor) {
+    return valor
+        .trim()
+        .toUpperCase()
+        .replaceAll(RegExp(r'[ÁÀÂÃ]'), 'A')
+        .replaceAll(RegExp(r'[ÉÈÊ]'), 'E')
+        .replaceAll(RegExp(r'[ÍÌÎ]'), 'I')
+        .replaceAll(RegExp(r'[ÓÒÔÕ]'), 'O')
+        .replaceAll(RegExp(r'[ÚÙÛ]'), 'U')
+        .replaceAll('Ç', 'C');
+  }
+
+  /// Verifica se uma viagem aberta pode ser assumida por um motorista/veículo sem sobrescrever frotas paralelas.
+  bool _viagemElegivelParaSessao(
+    ViagemModel v, {
+    required String motoristaId,
+    required String veiculoId,
+    required String veiculoPlaca,
+    String? cidadeDestino,
+    String? sessaoId,
+  }) {
+    if (v.isCancelada || v.isConcluida) return false;
+    if (v.id.startsWith('sessao_ativa_')) return false;
+    if (todosPacientesVoltaram(v)) return false;
+
+    final motViagem = v.motoristaId.trim();
+    final motAlvo = motoristaId.trim();
+    if (motViagem.isNotEmpty && motAlvo.isNotEmpty && motViagem != motAlvo) {
+      return false;
+    }
+
+    final sessaoViagem = v.sessaoId?.trim() ?? '';
+    final sessaoAlvo = sessaoId?.trim() ?? '';
+    if (sessaoViagem.isNotEmpty &&
+        sessaoAlvo.isNotEmpty &&
+        sessaoViagem != sessaoAlvo &&
+        v.isAtiva) {
+      return false;
+    }
+
+    final veicViagem = v.veiculoId.trim();
+    final veicAlvo = veiculoId.trim();
+    if (veicViagem.isNotEmpty && veicAlvo.isNotEmpty && veicViagem != veicAlvo) {
+      final outroEmUso = _veiculosMemoria.any(
+        (vm) => vm.id == veicViagem && vm.emUso && vm.motoristaAtualId != motAlvo,
+      );
+      if (v.isPlanejada || outroEmUso || sessaoViagem.isNotEmpty) {
+        return false;
+      }
+    }
+
+    final placaViagem = _normalizarPlacaInterna(v.veiculoPlaca);
+    final placaAlvo = _normalizarPlacaInterna(veiculoPlaca);
+    if (placaViagem.isNotEmpty &&
+        placaAlvo.isNotEmpty &&
+        placaViagem != placaAlvo) {
+      final outroEmUso = _veiculosMemoria.any(
+        (vm) =>
+            _normalizarPlacaInterna(vm.placa) == placaViagem &&
+            vm.emUso &&
+            vm.motoristaAtualId != motAlvo,
+      );
+      if (v.isPlanejada || outroEmUso || sessaoViagem.isNotEmpty) {
+        return false;
+      }
+    }
+
+    if (cidadeDestino != null &&
+        cidadeDestino.trim().isNotEmpty &&
+        v.cidadeDestino.trim().isNotEmpty) {
+      final rotaViagem = _normalizarTextoRota(v.cidadeDestino);
+      final rotaAlvo = _normalizarTextoRota(cidadeDestino);
+      final vinculadaExplicitamenteAoMotorista =
+          motViagem.isNotEmpty && motViagem == motAlvo;
+      final vinculadaExplicitamenteAoVeiculo =
+          (veicViagem.isNotEmpty && veicViagem == veicAlvo) ||
+          (placaViagem.isNotEmpty && placaViagem == placaAlvo);
+      if (rotaViagem != rotaAlvo &&
+          !vinculadaExplicitamenteAoMotorista &&
+          !vinculadaExplicitamenteAoVeiculo) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  /// Retorna as viagens ativas filtradas especificamente para um motorista ou sessão.
+  List<ViagemModel> obterViagensAtivasPorMotorista(
+    String motoristaId, {
+    String? veiculoId,
+  }) {
+    final sessaoMot = _sessoesAtivasPorMotorista[motoristaId];
+    final vid = veiculoId ?? sessaoMot?.veiculoId ?? '';
+    final sid = sessaoMot?.id ?? '';
+    return _todasViagensMemoria.where((v) {
+      if (v.isCancelada || v.isConcluida || todosPacientesVoltaram(v)) {
+        return false;
+      }
+      if (sid.isNotEmpty && v.sessaoId == sid) return true;
+      if (vid.isNotEmpty && v.veiculoId == vid && v.isAtiva) return true;
+      if (motoristaId.isNotEmpty && v.motoristaId == motoristaId && v.isAtiva) {
+        return true;
+      }
+      return false;
+    }).toList();
+  }
 
   /// Viagens que foram concluídas automaticamente (todos os pacientes em status 4) durante a sessão atual do motorista,
   /// preservadas até que o motorista gere o relatório e finalize a sessão do veículo.
@@ -726,15 +891,23 @@ class ViagemService {
     if (_escutandoFirestore || !_isFirebaseDisponivel()) return;
     _escutandoFirestore = true;
     try {
-      FirebaseFirestore.instance.collection('veiculos').snapshots().listen((snap) {
+      _subVeiculosRemoto?.cancel();
+      _subVeiculosRemoto = FirebaseFirestore.instance
+          .collection('veiculos')
+          .snapshots()
+          .listen((snap) {
         _veiculosMemoria
           ..clear()
           ..addAll(snap.docs.map((d) => VeiculoModel.fromMap(d.data(), docId: d.id)));
         if (!_veiculosController.isClosed) {
           _veiculosController.add(ValidacaoViagem.filtrarVeiculosDisponiveis(_veiculosMemoria));
         }
+      }, onError: (Object e) {
+        _tratarFalhaFirestore('escutar_veiculos', e);
       });
-      FirebaseFirestore.instance
+
+      _subPacientesRemoto?.cancel();
+      _subPacientesRemoto = FirebaseFirestore.instance
           .collection('usuarios')
           .where('role', isEqualTo: 'paciente')
           .snapshots()
@@ -756,15 +929,27 @@ class ViagemService {
               viagemId: '',
               pacienteId: pac.id,
               novoStatus: pac.status,
+              persistirRemoto: false,
             );
           }
         }
+      }, onError: (Object e) {
+        _tratarFalhaFirestore('escutar_pacientes', e);
       });
-      FirebaseFirestore.instance.collection('viagens').snapshots().listen((snap) {
+
+      // Filtro temporal estrito (FinOps): busca apenas viagens do dia operacional em diante,
+      // e NUNCA executa set()/update() dentro do listener de snapshots para evitar loops re-entrantes.
+      final inicioDoDiaIso = _obterInicioDoDiaOperacionalIso();
+      _subViagensRemoto?.cancel();
+      _subViagensRemoto = FirebaseFirestore.instance
+          .collection('viagens')
+          .where('dataHoraInicio', isGreaterThanOrEqualTo: inicioDoDiaIso)
+          .snapshots()
+          .listen((snap) {
         final viagensCarregadas = <ViagemModel>[];
         for (final d in snap.docs) {
           var v = ViagemModel.fromMap(d.data(), docId: d.id);
-          // Garante que toda viagem ativa ou planejada possua códigos e hashes sincronizados para seus passageiros
+          // Sincroniza códigos apenas em memória local (Zero escritas dentro do listener!)
           if ((v.isAtiva || v.isPlanejada) && !v.isCancelada && !v.isConcluida) {
             final (codigos, hashes, alterou) = _sincronizarCodigosDaViagem(
               viagemId: v.id,
@@ -775,25 +960,33 @@ class ViagemService {
             );
             if (alterou) {
               v = v.copyWith(codigosAcesso: codigos, codigosHash: hashes);
-              try {
-                FirebaseFirestore.instance
-                    .collection('viagens')
-                    .doc(v.id)
-                    .set({
-                      'codigosAcesso': codigos,
-                      'codigosHash': hashes,
-                    }, SetOptions(merge: true));
-              } catch (_) {}
             }
           }
           viagensCarregadas.add(v);
         }
 
         sincronizarViagensRemotas(viagensCarregadas);
+      }, onError: (Object e) {
+        _tratarFalhaFirestore('escutar_viagens', e);
       });
-    } catch (_) {
+    } on FirebaseException catch (e) {
       _escutandoFirestore = false;
+      _tratarFalhaFirestore('garantir_escuta_firestore', e);
+    } catch (e) {
+      _escutandoFirestore = false;
+      _tratarFalhaFirestore('garantir_escuta_firestore', e);
     }
+  }
+
+  /// Encerra os listeners ativos associados ao escopo da sessão/tela (FinOps).
+  void encerrarEscutasFirestore() {
+    _subVeiculosRemoto?.cancel();
+    _subVeiculosRemoto = null;
+    _subPacientesRemoto?.cancel();
+    _subPacientesRemoto = null;
+    _subViagensRemoto?.cancel();
+    _subViagensRemoto = null;
+    _escutandoFirestore = false;
   }
 
   ViagemModel _criarPlaceholderSessaoAtiva(SessaoVeiculoModel sessao, {String cidadeDestino = ''}) {
@@ -836,18 +1029,6 @@ class ViagemService {
             _enriquecerViagemParaRelatorio(
               v.copyWith(codigosAcesso: codigosOriginais),
             ),
-          );
-        }
-        if (_isFirebaseDisponivel()) {
-          unawaited(
-            FirebaseFirestore.instance
-                .collection('viagens')
-                .doc(v.id)
-                .set({
-                  'status': 'encerrada',
-                  'dataHoraFim': (v.dataHoraFim ?? agora).toIso8601String(),
-                  'codigosAcesso': <String, dynamic>{},
-                }, SetOptions(merge: true)),
           );
         }
       }
@@ -906,7 +1087,15 @@ class ViagemService {
             }
           }
         } else {
-          final vComVeiculoSessao = _sessaoAtiva != null
+          final pertenceSessaoAtual = _sessaoAtiva != null &&
+              _viagemElegivelParaSessao(
+                vRemota,
+                motoristaId: _sessaoAtiva!.motoristaId,
+                veiculoId: _sessaoAtiva!.veiculoId,
+                veiculoPlaca: _sessaoAtiva!.veiculoPlaca,
+                sessaoId: _sessaoAtiva!.id,
+              );
+          final vComVeiculoSessao = pertenceSessaoAtual
               ? vRemota.copyWith(
                   veiculoId: _sessaoAtiva!.veiculoId,
                   veiculoPlaca: _sessaoAtiva!.veiculoPlaca,
@@ -927,13 +1116,19 @@ class ViagemService {
       }
     }
 
-    // Se houver uma sessão de veículo ativa, vincula eventuais novas viagens abertas (não concluídas)
+    // Se houver uma sessão de veículo ativa, vincula apenas novas viagens abertas elegíveis a esta sessão/veículo
     if (_sessaoAtiva != null) {
+      final destinoSessao = _viagemAtiva?.cidadeDestino ?? '';
       final novasAbertas = processadas.where(
         (v) =>
-            !v.isCancelada &&
-            !v.isConcluida &&
-            !todosPacientesVoltaram(v) &&
+            _viagemElegivelParaSessao(
+              v,
+              motoristaId: _sessaoAtiva!.motoristaId,
+              veiculoId: _sessaoAtiva!.veiculoId,
+              veiculoPlaca: _sessaoAtiva!.veiculoPlaca,
+              cidadeDestino: destinoSessao,
+              sessaoId: _sessaoAtiva!.id,
+            ) &&
             !_viagensAtivasMemoria.any((va) => va.id == v.id),
       );
       for (final na in novasAbertas) {
@@ -1002,9 +1197,15 @@ class ViagemService {
     _viagensAtivasMemoria.removeWhere((va) => va.id.startsWith('sessao_ativa_'));
     for (int i = 0; i < _todasViagensMemoria.length; i++) {
       final base = _todasViagensMemoria[i];
-      if (base.isCancelada || base.isConcluida) continue;
-      if (base.id.startsWith('sessao_ativa_')) continue;
-      if (todosPacientesVoltaram(base)) continue;
+      if (!_viagemElegivelParaSessao(
+        base,
+        motoristaId: motoristaId,
+        veiculoId: veiculoEmUso.id,
+        veiculoPlaca: veiculoEmUso.placa,
+        sessaoId: _sessaoAtiva!.id,
+      )) {
+        continue;
+      }
 
       final vAtivada = base.copyWith(
         veiculoId: veiculoEmUso.id,
@@ -1086,7 +1287,10 @@ class ViagemService {
       // Retorna true se houver ao menos um app Firebase inicializado
       return Firebase.apps.isNotEmpty;
     // Em caso de exceção de inicialização ou plataforma, retorna false
-    } catch (_) {
+    } on FirebaseException catch (e) {
+      debugPrint('Firebase indisponível (${e.code})');
+      return false;
+    } catch (e) {
       return false;
     // Fecha o bloco catch
     }
@@ -1144,11 +1348,14 @@ class ViagemService {
             // Fecha o map do snapshot
             });
       // Captura erros de rede ou permissão e prossegue para a memória
-      } catch (_) {
+      } on FirebaseException catch (e) {
+        _tratarFalhaFirestore('carregar_veiculos_disponiveis', e);
+      } catch (e) {
         // --------------------------------------------------------------------
         // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
         // Prossegue para o fluxo em memória caso ocorra exceção
         // --------------------------------------------------------------------
+        _tratarFalhaFirestore('carregar_veiculos_disponiveis', e);
       // Fecha o bloco catch
       }
     // Fecha a checagem de Firebase disponível
@@ -1193,6 +1400,7 @@ class ViagemService {
     required int kmInicial,
     required String motoristaId,
     required String motoristaNome,
+    String? cidadeDestino,
   }) async {
     // Validação de regras de negócio de odômetro
     final validacaoKm = ValidacaoViagem.validarQuilometragem(
@@ -1203,28 +1411,9 @@ class ViagemService {
       return ResultadoDeclaracaoVeiculo.erro(validacaoKm.mensagemErro!);
     }
 
-    // Checagem de concorrência remota no Firestore
-    if (_isFirebaseDisponivel()) {
-      try {
-        final docRef = FirebaseFirestore.instance.collection('veiculos').doc(veiculo.id);
-        final docSnap = await docRef.get();
-        if (docSnap.exists) {
-          final dados = docSnap.data() ?? {};
-          final emUsoRemoto = dados['emUso'] == true;
-          final motoristaOcupando = dados['motoristaAtualId'];
-          if (emUsoRemoto &&
-              motoristaOcupando != null &&
-              motoristaOcupando != motoristaId) {
-            return ResultadoDeclaracaoVeiculo.erro(
-              'O veículo ${veiculo.placa} foi colocado em uso por outro motorista. Escolha outro veículo.',
-            );
-          }
-        }
-      } catch (_) {}
-    }
-
-    // Checagem e atualização em memória
+    // Checagem e atualização otimista em memória (Zero-Wait UI < 16 ms)
     final index = _veiculosMemoria.indexWhere((v) => v.id == veiculo.id);
+    VeiculoModel? veiculoSnapshotAnterior;
     if (index != -1) {
       final veicMem = _veiculosMemoria[index];
       if (veicMem.emUso &&
@@ -1234,6 +1423,7 @@ class ViagemService {
           'O veículo ${veiculo.placa} já está em uso por outro motorista.',
         );
       }
+      veiculoSnapshotAnterior = veicMem;
       _veiculosMemoria[index] = _veiculosMemoria[index].copyWith(
         emUso: true,
         motoristaAtualId: motoristaId,
@@ -1241,9 +1431,14 @@ class ViagemService {
       );
     }
 
+    final sessaoAnterior = _sessaoAtiva;
+    final viagemAtivaAnterior = _viagemAtiva;
+    final viagensAtivasAnteriores = List<ViagemModel>.from(_viagensAtivasMemoria);
+    final todasViagensAnteriores = List<ViagemModel>.from(_todasViagensMemoria);
+
     // Instancia a nova SessaoVeiculoModel
     final novaSessao = SessaoVeiculoModel(
-      id: 'sessao_${DateTime.now().millisecondsSinceEpoch}',
+      id: 'sessao_${DateTime.now().millisecondsSinceEpoch}_${motoristaId.isNotEmpty ? motoristaId : veiculo.id}',
       motoristaId: motoristaId,
       motoristaNome: motoristaNome,
       veiculoId: veiculo.id,
@@ -1256,101 +1451,184 @@ class ViagemService {
 
     _sessaoFinalizadaPeloMotorista = false;
     _sessaoAtiva = novaSessao;
+    if (motoristaId.isNotEmpty) {
+      _sessoesAtivasPorMotorista[motoristaId] = novaSessao;
+    }
     _sessaoAtivaController.add(_sessaoAtiva);
     _veiculosController.add(
       ValidacaoViagem.filtrarVeiculosDisponiveis(_veiculosMemoria),
     );
 
-    // Vincula todas as viagens abertas (não concluídas e não canceladas), sem vincular motorista fixo
+    // Vincula apenas as viagens abertas elegíveis para este motorista/veículo/rota (isolamento de frotas paralelas)
     _viagensConcluidasNaSessao.clear();
     _viagensAtivasMemoria.removeWhere((va) => va.id.startsWith('sessao_ativa_'));
     final viagensAbertas = _todasViagensMemoria.where((v) {
-      if (v.isCancelada || v.isConcluida) return false;
-      if (v.id.startsWith('sessao_ativa_')) return false;
-      return !todosPacientesVoltaram(v);
+      return _viagemElegivelParaSessao(
+        v,
+        motoristaId: motoristaId,
+        veiculoId: veiculo.id,
+        veiculoPlaca: veiculo.placa,
+        cidadeDestino: cidadeDestino,
+        sessaoId: novaSessao.id,
+      );
     }).toList();
 
     final List<String> viagensIdsSessao = [];
     final List<ViagemModel> viagensAtivadasParaPersistir = [];
     for (final v in viagensAbertas) {
-      if (!_viagensAtivasMemoria.any((va) => va.id == v.id)) {
-        final (codigosSinc, hashesSinc, _) = _sincronizarCodigosDaViagem(
-          viagemId: v.id,
-          passageiros: v.passageiros,
-          passageirosIds: v.passageirosIds,
-          codigosExistentes: v.codigosAcesso,
-          hashesExistentes: v.codigosHash,
-        );
-        final vAtivada = v.copyWith(
-          sessaoId: novaSessao.id,
-          motoristaId: '',
-          motoristaNome: '',
-          veiculoId: veiculo.id,
-          veiculoPlaca: veiculo.placa,
-          veiculoModelo: veiculo.modelo,
-          kmInicial: kmInicial,
-          status: 'ativa',
-          codigosAcesso: codigosSinc,
-          codigosHash: hashesSinc,
-        );
+      final (codigosSinc, hashesSinc, _) = _sincronizarCodigosDaViagem(
+        viagemId: v.id,
+        passageiros: v.passageiros,
+        passageirosIds: v.passageirosIds,
+        codigosExistentes: v.codigosAcesso,
+        hashesExistentes: v.codigosHash,
+      );
+      final vAtivada = v.copyWith(
+        sessaoId: novaSessao.id,
+        motoristaId: v.motoristaId,
+        motoristaNome: v.motoristaNome,
+        veiculoId: veiculo.id,
+        veiculoPlaca: veiculo.placa,
+        veiculoModelo: veiculo.modelo,
+        kmInicial: kmInicial,
+        status: 'ativa',
+        codigosAcesso: codigosSinc,
+        codigosHash: hashesSinc,
+      );
+      final idxAtiva = _viagensAtivasMemoria.indexWhere((va) => va.id == v.id);
+      if (idxAtiva == -1) {
         _viagensAtivasMemoria.add(vAtivada);
-        viagensAtivadasParaPersistir.add(vAtivada);
-        viagensIdsSessao.add(vAtivada.id);
-        final idx = _todasViagensMemoria.indexWhere((tv) => tv.id == v.id);
-        if (idx != -1) {
-          _todasViagensMemoria[idx] = vAtivada;
-        }
       } else {
-        viagensIdsSessao.add(v.id);
+        _viagensAtivasMemoria[idxAtiva] = vAtivada;
+      }
+      viagensAtivadasParaPersistir.add(vAtivada);
+      viagensIdsSessao.add(vAtivada.id);
+      final idx = _todasViagensMemoria.indexWhere((tv) => tv.id == v.id);
+      if (idx != -1) {
+        _todasViagensMemoria[idx] = vAtivada;
       }
     }
 
     if (viagensIdsSessao.isNotEmpty) {
       _sessaoAtiva = _sessaoAtiva!.copyWith(viagensIds: viagensIdsSessao);
+      if (motoristaId.isNotEmpty) {
+        _sessoesAtivasPorMotorista[motoristaId] = _sessaoAtiva!;
+      }
       _sessaoAtivaController.add(_sessaoAtiva);
     }
 
-    if (_viagensAtivasMemoria.isNotEmpty) {
-      _viagemAtiva = _viagensAtivasMemoria.first;
+    final viagensDestaSessao = _viagensAtivasMemoria
+        .where((va) => va.sessaoId == novaSessao.id || va.veiculoId == veiculo.id)
+        .toList();
+    if (viagensDestaSessao.isNotEmpty) {
+      _viagemAtiva = viagensDestaSessao.first;
       _viagemAtivaController.add(_viagemAtiva);
       _viagensAtivasController.add(List.unmodifiable(_viagensAtivasMemoria));
       _todasViagensController.add(List.unmodifiable(_todasViagensMemoria));
     }
 
-    // Persistência no Firestore
-    if (_isFirebaseDisponivel()) {
-      try {
-        await FirebaseFirestore.instance
-            .collection('veiculos')
-            .doc(veiculo.id)
-            .set({
+    void reverterDeclaracaoOtimista() {
+      if (index != -1 && veiculoSnapshotAnterior != null) {
+        _veiculosMemoria[index] = veiculoSnapshotAnterior;
+      }
+      if (motoristaId.isNotEmpty) {
+        _sessoesAtivasPorMotorista.remove(motoristaId);
+      }
+      _sessaoAtiva = sessaoAnterior;
+      _viagemAtiva = viagemAtivaAnterior;
+      _viagensAtivasMemoria
+        ..clear()
+        ..addAll(viagensAtivasAnteriores);
+      _todasViagensMemoria
+        ..clear()
+        ..addAll(todasViagensAnteriores);
+      _sessaoAtivaController.add(_sessaoAtiva);
+      _viagemAtivaController.add(_viagemAtiva);
+      _viagensAtivasController.add(List.unmodifiable(_viagensAtivasMemoria));
+      _todasViagensController.add(List.unmodifiable(_todasViagensMemoria));
+      _veiculosController.add(
+        ValidacaoViagem.filtrarVeiculosDisponiveis(_veiculosMemoria),
+      );
+    }
+
+    // Persistência em background no Firestore com tratamento explícito e rollback
+    if (executorPersistenciaRemotaOverride != null || _isFirebaseDisponivel()) {
+      final sessaoParaPersistir = _sessaoAtiva!;
+      unawaited(
+        Future.microtask(() async {
+          try {
+            if (executorPersistenciaRemotaOverride != null) {
+              await executorPersistenciaRemotaOverride!(
+                'declarar_veiculo',
+                sessaoParaPersistir.toMap(),
+              );
+              _totalGravacoesFirestoreJornada += 2 + viagensAtivadasParaPersistir.length;
+              return;
+            }
+            final docRef = FirebaseFirestore.instance.collection('veiculos').doc(veiculo.id);
+            final docSnap = await docRef.get();
+            if (docSnap.exists) {
+              final dados = docSnap.data() ?? {};
+              final emUsoRemoto = dados['emUso'] == true;
+              final motoristaOcupando = dados['motoristaAtualId'];
+              if (emUsoRemoto &&
+                  motoristaOcupando != null &&
+                  motoristaOcupando != motoristaId) {
+                throw FirebaseException(
+                  plugin: 'cloud_firestore',
+                  code: 'aborted',
+                  message:
+                      'O veículo ${veiculo.placa} foi colocado em uso por outro motorista.',
+                );
+              }
+            }
+
+            await docRef.set({
               'emUso': true,
               'motoristaAtualId': motoristaId,
               'quilometragemAtual': kmInicial,
             }, SetOptions(merge: true));
+            _totalGravacoesFirestoreJornada++;
 
-        await FirebaseFirestore.instance
-            .collection('sessoes_veiculo')
-            .doc(novaSessao.id)
-            .set(_sessaoAtiva!.toMap());
+            await FirebaseFirestore.instance
+                .collection('sessoes_veiculo')
+                .doc(novaSessao.id)
+                .set(sessaoParaPersistir.toMap());
+            _totalGravacoesFirestoreJornada++;
 
-        for (final va in viagensAtivadasParaPersistir) {
-          await FirebaseFirestore.instance
-              .collection('viagens')
-              .doc(va.id)
-              .set(va.toMap(), SetOptions(merge: true));
-        }
+            for (final va in viagensAtivadasParaPersistir) {
+              await FirebaseFirestore.instance
+                  .collection('viagens')
+                  .doc(va.id)
+                  .set(va.toMap(), SetOptions(merge: true));
+              _totalGravacoesFirestoreJornada++;
+            }
 
-        if (motoristaId.isNotEmpty) {
-          await FirebaseFirestore.instance
-              .collection('usuarios')
-              .doc(motoristaId)
-              .set({'emViagem': true}, SetOptions(merge: true));
-        }
-      } catch (_) {}
+            if (motoristaId.isNotEmpty) {
+              await FirebaseFirestore.instance
+                  .collection('usuarios')
+                  .doc(motoristaId)
+                  .set({'emViagem': true}, SetOptions(merge: true));
+              _totalGravacoesFirestoreJornada++;
+            }
+          } on FirebaseException catch (e) {
+            _tratarFalhaFirestore(
+              'declarar_veiculo',
+              e,
+              onRollback: reverterDeclaracaoOtimista,
+            );
+          } catch (e) {
+            _tratarFalhaFirestore(
+              'declarar_veiculo',
+              e,
+              onRollback: reverterDeclaracaoOtimista,
+            );
+          }
+        }),
+      );
     }
 
-    return ResultadoDeclaracaoVeiculo.sucesso(novaSessao);
+    return ResultadoDeclaracaoVeiculo.sucesso(_sessaoAtiva!);
   }
 
   /// Adiciona uma nova viagem ativa à sessão de veículo do motorista (Issue #65).
@@ -1400,18 +1678,50 @@ class ViagemService {
     );
     _sessaoAtivaController.add(_sessaoAtiva);
 
-    if (_isFirebaseDisponivel()) {
-      try {
-        await FirebaseFirestore.instance
-            .collection('viagens')
-            .doc(novaViagem.id)
-            .set(novaViagem.toMap());
+    if (executorPersistenciaRemotaOverride != null || _isFirebaseDisponivel()) {
+      final idsAtualizados = List<String>.from(_sessaoAtiva!.viagensIds);
+      unawaited(
+        Future.microtask(() async {
+          try {
+            if (executorPersistenciaRemotaOverride != null) {
+              await executorPersistenciaRemotaOverride!(
+                'criar_viagem_sessao',
+                novaViagem.toMap(),
+              );
+              _totalGravacoesFirestoreJornada += 2;
+              return;
+            }
+            await FirebaseFirestore.instance
+                .collection('viagens')
+                .doc(novaViagem.id)
+                .set(novaViagem.toMap());
+            _totalGravacoesFirestoreJornada++;
 
-        await FirebaseFirestore.instance
-            .collection('sessoes_veiculo')
-            .doc(sessao.id)
-            .set({'viagensIds': _sessaoAtiva!.viagensIds}, SetOptions(merge: true));
-      } catch (_) {}
+            await FirebaseFirestore.instance
+                .collection('sessoes_veiculo')
+                .doc(sessao.id)
+                .set({'viagensIds': idsAtualizados}, SetOptions(merge: true));
+            _totalGravacoesFirestoreJornada++;
+          } on FirebaseException catch (e) {
+            _tratarFalhaFirestore(
+              'criar_viagem_sessao',
+              e,
+              onRollback: () {
+                _viagensAtivasMemoria.removeWhere((v) => v.id == novaViagem.id);
+                _todasViagensMemoria.removeWhere((v) => v.id == novaViagem.id);
+                if (_viagemAtiva?.id == novaViagem.id) {
+                  _viagemAtiva = _viagensAtivasMemoria.firstOrNull;
+                  _viagemAtivaController.add(_viagemAtiva);
+                }
+                _viagensAtivasController.add(List.unmodifiable(_viagensAtivasMemoria));
+                _todasViagensController.add(List.unmodifiable(_todasViagensMemoria));
+              },
+            );
+          } catch (e) {
+            _tratarFalhaFirestore('criar_viagem_sessao', e);
+          }
+        }),
+      );
     }
 
     return ResultadoInicioViagem.sucesso(novaViagem);
@@ -1470,7 +1780,9 @@ class ViagemService {
                   'codigosAcesso': {pacienteId: codigoExistente},
                   'codigosHash': {pacienteId: hashEsperado},
                 }, SetOptions(merge: true))
-                .catchError((_) {}),
+                .catchError((Object e) {
+                  _tratarFalhaFirestore('sincronizar_hash_codigo_acesso', e);
+                }),
           );
         }
       }
@@ -1512,6 +1824,7 @@ class ViagemService {
 
     // 6. Persiste os mapas de códigos e hashes no Firestore de forma assíncrona não-bloqueante
     if (_isFirebaseDisponivel()) {
+      _totalGravacoesFirestoreJornada++;
       unawaited(
         FirebaseFirestore.instance
             .collection('viagens')
@@ -1520,7 +1833,9 @@ class ViagemService {
               'codigosAcesso': {pacienteId: novoCodigo},
               'codigosHash': {pacienteId: novoHash},
             }, SetOptions(merge: true))
-            .catchError((_) {}),
+            .catchError((Object e) {
+              _tratarFalhaFirestore('gerar_codigo_acesso', e);
+            }),
       );
     }
 
@@ -1579,58 +1894,6 @@ class ViagemService {
     // Fecha checagem de cidade inválida
     }
 
-    // Linha em branco separadora entre validação de cidade e checagem remota no Firestore
-    // ------------------------------------------------------------------------
-    // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
-    // Consulta o documento do veículo no Firestore para verificar uso concorrente
-    // ------------------------------------------------------------------------
-    // Checa concorrência de reserva no Firestore para impedir conflito entre motoristas
-    if (_isFirebaseDisponivel()) {
-      // Bloco try para leitura do estado atualizado do veículo no banco
-      try {
-        // Obtém a referência do documento do veículo
-        final docRef = FirebaseFirestore.instance
-            .collection('veiculos')
-            .doc(veiculo.id);
-        // Busca o snapshot do documento no Firestore
-        final docSnap = await docRef.get();
-
-        // Linha em branco separadora entre busca e validação dos dados
-        // Verifica se o documento do veículo existe no Firestore
-        if (docSnap.exists) {
-          // Extrai o mapa de campos do documento
-          final dados = docSnap.data() ?? {};
-          // Extrai o status de uso atual no servidor
-          final emUsoRemoto = dados['emUso'] == true;
-          // Extrai o motorista vinculado no servidor
-          final motoristaOcupando = dados['motoristaAtualId'];
-          // ------------------------------------------------------------------
-          // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
-          // Verifica se o veículo está marcado em uso por motorista distinto
-          // ------------------------------------------------------------------
-          // Detecta conflito de concorrência com outro motorista
-          if (emUsoRemoto &&
-              motoristaOcupando != null &&
-              motoristaOcupando != motoristaId) {
-            // Retorna erro informando a indisponibilidade concorrente
-            return ResultadoInicioViagem.erro(
-              'O veículo ${veiculo.placa} foi colocado em uso por outro motorista. Escolha outro veículo.',
-            );
-          // Fecha detecção de conflito
-          }
-        // Fecha verificação de documento existente
-        }
-      // Captura erros de rede sem travar a aplicação
-      } catch (_) {
-        // --------------------------------------------------------------------
-        // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
-        // Prossegue com a verificação em memória caso ocorra falha de consulta remota
-        // --------------------------------------------------------------------
-      // Fecha bloco catch
-      }
-    // Fecha checagem de Firebase disponível
-    }
-
     // Linha em branco separadora entre consulta remota e verificação na memória
     // ------------------------------------------------------------------------
     // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
@@ -1638,6 +1901,7 @@ class ViagemService {
     // ------------------------------------------------------------------------
     // Localiza o índice do veículo na lista interna da memória
     final index = _veiculosMemoria.indexWhere((v) => v.id == veiculo.id);
+    VeiculoModel? veiculoSnapshotAnterior;
     // Se o veículo constar na lista da memória, valida conflito local
     if (index != -1) {
       // Obtém a instância do veículo na memória
@@ -1656,6 +1920,7 @@ class ViagemService {
         );
       // Fecha checagem de concorrência local
       }
+      veiculoSnapshotAnterior = veicMem;
       // ----------------------------------------------------------------------
       // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
       // Atualiza o veículo na memória com status emUso, novo condutor e quilometragem
@@ -1669,11 +1934,16 @@ class ViagemService {
     // Fecha verificação do índice na memória
     }
 
+    final sessaoAnterior = _sessaoAtiva;
+    final viagemAtivaAnterior = _viagemAtiva;
+    final viagensAtivasAnteriores = List<ViagemModel>.from(_viagensAtivasMemoria);
+    final todasViagensAnteriores = List<ViagemModel>.from(_todasViagensMemoria);
+
     _sessaoFinalizadaPeloMotorista = false;
-    // Se não houver sessão ativa prévia, inicializa a Sessão de Veículo do condutor
+    // Se não houver sessão ativa prévia para este veículo, inicializa a Sessão de Veículo do condutor
     if (_sessaoAtiva == null || _sessaoAtiva!.veiculoId != veiculo.id) {
       _sessaoAtiva = SessaoVeiculoModel(
-        id: 'sessao_${DateTime.now().millisecondsSinceEpoch}',
+        id: 'sessao_${DateTime.now().millisecondsSinceEpoch}_${motoristaId.isNotEmpty ? motoristaId : veiculo.id}',
         motoristaId: motoristaId,
         motoristaNome: motoristaNome,
         veiculoId: veiculo.id,
@@ -1685,30 +1955,14 @@ class ViagemService {
       );
       _sessaoAtivaController.add(_sessaoAtiva);
     }
-
-    // Linha em branco separadora entre atualização de memória e criação da viagem
-    // Se o Firebase estiver ativo e a memória ainda não tiver carregado as viagens planejadas, consulta rapidamente
-    if (_isFirebaseDisponivel()) {
-      try {
-        final snapViagens = await FirebaseFirestore.instance
-            .collection('viagens')
-            .get();
-        for (final doc in snapViagens.docs) {
-          final vr = ViagemModel.fromMap(doc.data(), docId: doc.id);
-          if (vr.id.startsWith('sessao_ativa_')) continue;
-          final idxExistente = _todasViagensMemoria.indexWhere((tv) => tv.id == vr.id);
-          if (idxExistente == -1) {
-            _todasViagensMemoria.add(vr);
-          } else {
-            _todasViagensMemoria[idxExistente] = vr;
-          }
-        }
-      } catch (_) {}
+    final sessaoCorrente = _sessaoAtiva!;
+    if (motoristaId.isNotEmpty) {
+      _sessoesAtivasPorMotorista[motoristaId] = sessaoCorrente;
     }
 
     // O formulário de início de viagem NÃO gera uma nova viagem no banco/sistema:
-    // vincula apenas as viagens existentes abertas (não canceladas, não concluídas e com pacientes pendentes),
-    // sem associar um motorista fixo às viagens.
+    // vincula apenas as viagens existentes abertas elegíveis para a rota/veículo/motorista atual,
+    // garantindo isolamento total entre frotas e motoristas que operam em paralelo.
     _viagensConcluidasNaSessao.clear();
     _viagensAtivasMemoria.removeWhere(
       (va) =>
@@ -1721,9 +1975,16 @@ class ViagemService {
     final List<ViagemModel> viagensExistentesParaPersistir = [];
     for (int i = 0; i < _todasViagensMemoria.length; i++) {
       final base = _todasViagensMemoria[i];
-      if (base.isCancelada || base.isConcluida) continue;
-      if (base.id.startsWith('sessao_ativa_')) continue;
-      if (todosPacientesVoltaram(base)) continue;
+      if (!_viagemElegivelParaSessao(
+        base,
+        motoristaId: motoristaId,
+        veiculoId: veiculo.id,
+        veiculoPlaca: veiculo.placa,
+        cidadeDestino: cidadeDestino,
+        sessaoId: sessaoCorrente.id,
+      )) {
+        continue;
+      }
 
       final (codigosSinc, hashesSinc, _) = _sincronizarCodigosDaViagem(
         viagemId: base.id,
@@ -1733,14 +1994,14 @@ class ViagemService {
         hashesExistentes: base.codigosHash,
       );
       final vAtivada = base.copyWith(
-        motoristaId: '',
-        motoristaNome: '',
+        motoristaId: base.motoristaId,
+        motoristaNome: base.motoristaNome,
         veiculoId: veiculo.id,
         veiculoPlaca: veiculo.placa,
         veiculoModelo: veiculo.modelo,
         kmInicial: kmInicial,
         status: 'ativa',
-        sessaoId: _sessaoAtiva?.id,
+        sessaoId: sessaoCorrente.id,
         codigosAcesso: codigosSinc,
         codigosHash: hashesSinc,
       );
@@ -1755,14 +2016,22 @@ class ViagemService {
       }
     }
 
+    final viagensDestaSessao = _viagensAtivasMemoria
+        .where(
+          (va) =>
+              va.sessaoId == sessaoCorrente.id ||
+              va.veiculoId == veiculo.id,
+        )
+        .toList();
+
     final ViagemModel novaViagem;
-    if (_viagensAtivasMemoria.isNotEmpty) {
-      novaViagem = _viagensAtivasMemoria.first;
+    if (viagensDestaSessao.isNotEmpty) {
+      novaViagem = viagensDestaSessao.first;
     } else {
-      // Nenhuma viagem aberta cadastrada pelo administrador: cria apenas placeholder de sessão
+      // Nenhuma viagem aberta cadastrada pelo administrador para esta rota/veículo: cria apenas placeholder de sessão
       // em memória para a tela do motorista, SEM adicionar em _todasViagensMemoria e SEM salvar na coleção 'viagens'.
       novaViagem = _criarPlaceholderSessaoAtiva(
-        _sessaoAtiva!,
+        sessaoCorrente,
         cidadeDestino: cidadeDestino,
       );
       _viagensAtivasMemoria.add(novaViagem);
@@ -1780,58 +2049,134 @@ class ViagemService {
       ValidacaoViagem.filtrarVeiculosDisponiveis(_veiculosMemoria),
     );
 
+    void reverterInicioViagemOtimista() {
+      if (index != -1 && veiculoSnapshotAnterior != null) {
+        _veiculosMemoria[index] = veiculoSnapshotAnterior;
+      }
+      if (motoristaId.isNotEmpty) {
+        _sessoesAtivasPorMotorista.remove(motoristaId);
+      }
+      _sessaoAtiva = sessaoAnterior;
+      _viagemAtiva = viagemAtivaAnterior;
+      _viagensAtivasMemoria
+        ..clear()
+        ..addAll(viagensAtivasAnteriores);
+      _todasViagensMemoria
+        ..clear()
+        ..addAll(todasViagensAnteriores);
+      _sessaoAtivaController.add(_sessaoAtiva);
+      _viagemAtivaController.add(_viagemAtiva);
+      _viagensAtivasController.add(List.unmodifiable(_viagensAtivasMemoria));
+      _todasViagensController.add(List.unmodifiable(_todasViagensMemoria));
+      _veiculosController.add(
+        ValidacaoViagem.filtrarVeiculosDisponiveis(_veiculosMemoria),
+      );
+    }
+
     // Linha em branco separadora entre notificação local e persistência remota
     // ------------------------------------------------------------------------
     // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
     // Persiste as alterações no Firestore
     // ------------------------------------------------------------------------
-    // Persiste as mudanças no Cloud Firestore se disponível
-    if (_isFirebaseDisponivel()) {
-      // Bloco try para capturar exceções de gravação remota
-      try {
-        // --------------------------------------------------------------------
-        // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
-        // Atualiza os dados de uso e quilometragem do veículo
-        // --------------------------------------------------------------------
-        // Grava no documento do veículo o status emUso, condutor e novo KM
-        await FirebaseFirestore.instance
-            .collection('veiculos')
-            .doc(veiculo.id)
-            .set({
+    // Persiste as mudanças no Cloud Firestore em background (Zero-Wait UI) com tratamento explícito e rollback
+    if (executorPersistenciaRemotaOverride != null || _isFirebaseDisponivel()) {
+      unawaited(
+        Future.microtask(() async {
+          // Bloco try para capturar exceções de gravação remota
+          try {
+            if (executorPersistenciaRemotaOverride != null) {
+              await executorPersistenciaRemotaOverride!(
+                'iniciar_viagem',
+                novaViagem.toMap(),
+              );
+              _totalGravacoesFirestoreJornada += 1 + viagensExistentesParaPersistir.length;
+              return;
+            }
+            // ----------------------------------------------------------------
+            // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
+            // Consulta o documento do veículo no Firestore para verificar uso concorrente
+            // ----------------------------------------------------------------
+            final docRef = FirebaseFirestore.instance
+                .collection('veiculos')
+                .doc(veiculo.id);
+            final docSnap = await docRef.get();
+            if (docSnap.exists) {
+              final dados = docSnap.data() ?? {};
+              final emUsoRemoto = dados['emUso'] == true;
+              final motoristaOcupando = dados['motoristaAtualId'];
+              // --------------------------------------------------------------
+              // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
+              // Verifica se o veículo está marcado em uso por motorista distinto
+              // --------------------------------------------------------------
+              if (emUsoRemoto &&
+                  motoristaOcupando != null &&
+                  motoristaOcupando != motoristaId) {
+                throw FirebaseException(
+                  plugin: 'cloud_firestore',
+                  code: 'aborted',
+                  message:
+                      'O veículo ${veiculo.placa} foi colocado em uso por outro motorista. Escolha outro veículo.',
+                );
+              }
+            }
+
+            // ----------------------------------------------------------------
+            // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
+            // Atualiza os dados de uso e quilometragem do veículo
+            // ----------------------------------------------------------------
+            // Grava no documento do veículo o status emUso, condutor e novo KM
+            await docRef.set({
               'emUso': true,
               'motoristaAtualId': motoristaId,
               'quilometragemAtual': kmInicial,
             }, SetOptions(merge: true));
+            _totalGravacoesFirestoreJornada++;
 
-        // Atualiza apenas as viagens existentes (não cria documento novo na coleção 'viagens')
-        for (final vp in viagensExistentesParaPersistir) {
-          await FirebaseFirestore.instance
-              .collection('viagens')
-              .doc(vp.id)
-              .set(vp.toMap(), SetOptions(merge: true));
-        }
+            // Atualiza apenas as viagens existentes elegíveis (não cria documento novo na coleção 'viagens')
+            for (final vp in viagensExistentesParaPersistir) {
+              await FirebaseFirestore.instance
+                  .collection('viagens')
+                  .doc(vp.id)
+                  .set(vp.toMap(), SetOptions(merge: true));
+              _totalGravacoesFirestoreJornada++;
+            }
 
-        // Linha em branco separadora entre criação da viagem e atualização de usuário
-        // --------------------------------------------------------------------
-        // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
-        // Atualiza a propriedade emViagem do usuário motorista
-        // --------------------------------------------------------------------
-        // Atualiza a flag emViagem do documento do motorista na coleção 'usuarios'
-        if (motoristaId.isNotEmpty) {
-          await FirebaseFirestore.instance
-              .collection('usuarios')
-              .doc(motoristaId)
-              .set({'emViagem': true}, SetOptions(merge: true));
-        // Fecha checagem de motoristaId não vazio
-        }
-      // Captura erros de escrita remota sem quebrar a operação local
-      } catch (_) {
-        // --------------------------------------------------------------------
-        // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
-        // Ignora erros de escrita remota
-        // --------------------------------------------------------------------
-      // Fecha o bloco catch
-      }
+            // Linha em branco separadora entre criação da viagem e atualização de usuário
+            // ----------------------------------------------------------------
+            // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
+            // Atualiza a propriedade emViagem do usuário motorista
+            // ----------------------------------------------------------------
+            // Atualiza a flag emViagem do documento do motorista na coleção 'usuarios'
+            if (motoristaId.isNotEmpty) {
+              await FirebaseFirestore.instance
+                  .collection('usuarios')
+                  .doc(motoristaId)
+                  .set({'emViagem': true}, SetOptions(merge: true));
+              _totalGravacoesFirestoreJornada++;
+            // Fecha checagem de motoristaId não vazio
+            }
+          // Captura erros de escrita remota expondo falha e rollback
+          } on FirebaseException catch (e) {
+            _tratarFalhaFirestore(
+              'iniciar_viagem',
+              e,
+              onRollback: reverterInicioViagemOtimista,
+            );
+          } catch (e) {
+            // ----------------------------------------------------------------
+            // COMENTÁRIO PREEXISTENTE PRESERVADO NA ÍNTEGRA (BYTE A BYTE):
+            // Prossegue com a verificação em memória caso ocorra falha de consulta remota
+            // Ignora erros de escrita remota
+            // ----------------------------------------------------------------
+            _tratarFalhaFirestore(
+              'iniciar_viagem',
+              e,
+              onRollback: reverterInicioViagemOtimista,
+            );
+          // Fecha o bloco catch
+          }
+        }),
+      );
     // Fecha a checagem de Firebase disponível
     }
 
@@ -1850,8 +2195,13 @@ class ViagemService {
     required String viagemId,
     required String pacienteId,
     required int novoStatus,
+    bool persistirRemoto = true,
   }) async {
     if (pacienteId.isEmpty) return;
+
+    final todasViagensSnapshot = List<ViagemModel>.from(_todasViagensMemoria);
+    final viagensAtivasSnapshot = List<ViagemModel>.from(_viagensAtivasMemoria);
+    final viagemAtivaSnapshot = _viagemAtiva;
 
     ViagemModel? atualizarModelo(ViagemModel v, {bool preservarCodigosSeConcluir = false}) {
       if (v.passageiros.isEmpty) return null;
@@ -2003,9 +2353,24 @@ class ViagemService {
       _viagensAtivasController.add(List.unmodifiable(_viagensAtivasMemoria));
     }
 
-    if (viagensParaPersistir.isNotEmpty && _isFirebaseDisponivel()) {
+    void reverterStatusPassageiro() {
+      _todasViagensMemoria
+        ..clear()
+        ..addAll(todasViagensSnapshot);
+      _viagensAtivasMemoria
+        ..clear()
+        ..addAll(viagensAtivasSnapshot);
+      _viagemAtiva = viagemAtivaSnapshot;
+      _todasViagensController.add(List.unmodifiable(_todasViagensMemoria));
+      _viagensAtivasController.add(List.unmodifiable(_viagensAtivasMemoria));
+      _viagemAtivaController.add(_viagemAtiva);
+    }
+
+    if (persistirRemoto &&
+        viagensParaPersistir.isNotEmpty &&
+        (executorPersistenciaRemotaOverride != null || _isFirebaseDisponivel())) {
       unawaited(
-        Future(() async {
+        Future.microtask(() async {
           for (final vp in viagensParaPersistir) {
             if (vp.id.startsWith('sessao_ativa_')) continue;
             try {
@@ -2018,11 +2383,32 @@ class ViagemService {
                     (vp.dataHoraFim ?? DateTime.now()).toIso8601String();
                 dados['codigosAcesso'] = <String, dynamic>{};
               }
+              if (executorPersistenciaRemotaOverride != null) {
+                await executorPersistenciaRemotaOverride!(
+                  'atualizar_status_passageiro_viagem',
+                  dados,
+                );
+                _totalGravacoesFirestoreJornada++;
+                continue;
+              }
               await FirebaseFirestore.instance
                   .collection('viagens')
                   .doc(vp.id)
                   .set(dados, SetOptions(merge: true));
-            } catch (_) {}
+              _totalGravacoesFirestoreJornada++;
+            } on FirebaseException catch (e) {
+              _tratarFalhaFirestore(
+                'atualizar_status_passageiro_viagem',
+                e,
+                onRollback: reverterStatusPassageiro,
+              );
+            } catch (e) {
+              _tratarFalhaFirestore(
+                'atualizar_status_passageiro_viagem',
+                e,
+                onRollback: reverterStatusPassageiro,
+              );
+            }
           }
         }),
       );
@@ -2179,7 +2565,7 @@ class ViagemService {
     // 5. Persiste as alterações no Cloud Firestore de forma assíncrona não-bloqueante
     if (_isFirebaseDisponivel()) {
       unawaited(
-        Future(() async {
+        Future.microtask(() async {
           try {
             if (!ehPlaceholderSessao) {
               final dadosViagem = <String, dynamic>{
@@ -2200,6 +2586,7 @@ class ViagemService {
                   .collection('viagens')
                   .doc(viagem.id)
                   .set(dadosViagem, SetOptions(merge: true));
+              _totalGravacoesFirestoreJornada++;
             }
 
             if (sessaoFinalizada) {
@@ -2218,6 +2605,7 @@ class ViagemService {
                     .collection('sessoes_veiculo')
                     .doc(sessaoIdEncerrada)
                     .set(dadosSessao, SetOptions(merge: true));
+                _totalGravacoesFirestoreJornada++;
               }
 
               final dadosVeiculo = <String, dynamic>{
@@ -2233,9 +2621,14 @@ class ViagemService {
                     .collection('veiculos')
                     .doc(veiculoId)
                     .set(dadosVeiculo, SetOptions(merge: true));
+                _totalGravacoesFirestoreJornada++;
               }
             }
-          } catch (_) {}
+          } on FirebaseException catch (e) {
+            _tratarFalhaFirestore('encerrar_viagem', e);
+          } catch (e) {
+            _tratarFalhaFirestore('encerrar_viagem', e);
+          }
         }),
       );
     }
@@ -2251,19 +2644,20 @@ class ViagemService {
     _sessaoFinalizadaPeloMotorista = true;
     final mapaParaEncerrar = <String, ViagemModel>{};
 
-    for (final vc in _viagensConcluidasNaSessao) {
-      if (vc.id.isNotEmpty) mapaParaEncerrar[vc.id] = vc;
-    }
-    if (viagensExplicitas != null) {
+    if (viagensExplicitas != null && viagensExplicitas.isNotEmpty) {
       for (final v in viagensExplicitas) {
         if (v.id.isNotEmpty) mapaParaEncerrar[v.id] = v;
       }
-    }
-    for (final v in _viagensAtivasMemoria) {
-      if (v.id.isNotEmpty) mapaParaEncerrar[v.id] = v;
-    }
-    if (_viagemAtiva != null && _viagemAtiva!.id.isNotEmpty) {
-      mapaParaEncerrar[_viagemAtiva!.id] = _viagemAtiva!;
+    } else {
+      for (final vc in _viagensConcluidasNaSessao) {
+        if (vc.id.isNotEmpty) mapaParaEncerrar[vc.id] = vc;
+      }
+      for (final v in _viagensAtivasMemoria) {
+        if (v.id.isNotEmpty) mapaParaEncerrar[v.id] = v;
+      }
+      if (_viagemAtiva != null && _viagemAtiva!.id.isNotEmpty) {
+        mapaParaEncerrar[_viagemAtiva!.id] = _viagemAtiva!;
+      }
     }
 
     // Também inclui qualquer Horário ativo em _todasViagensMemoria do mesmo veículo
@@ -2294,14 +2688,16 @@ class ViagemService {
 
     _viagensConcluidasNaSessao.clear();
 
-    // Garante limpeza completa do estado ativo da sessão
-    if (_viagensAtivasMemoria.isNotEmpty || _viagemAtiva != null || _sessaoAtiva != null) {
-      _viagensAtivasMemoria.clear();
-      _viagemAtiva = null;
-      _sessaoAtiva = null;
-      _viagensAtivasController.add(const <ViagemModel>[]);
-      _viagemAtivaController.add(null);
-      _sessaoAtivaController.add(null);
+    // Garante limpeza completa do estado ativo da sessão quando não restarem viagens de outros veículos
+    if (viagensExplicitas == null || _viagensAtivasMemoria.isEmpty) {
+      if (_viagensAtivasMemoria.isNotEmpty || _viagemAtiva != null || _sessaoAtiva != null) {
+        _viagensAtivasMemoria.clear();
+        _viagemAtiva = null;
+        _sessaoAtiva = null;
+        _viagensAtivasController.add(const <ViagemModel>[]);
+        _viagemAtivaController.add(null);
+        _sessaoAtivaController.add(null);
+      }
     }
   }
 
@@ -2370,6 +2766,7 @@ class ViagemService {
         final snap = await FirebaseFirestore.instance
             .collection('viagens')
             .where('status', isEqualTo: 'ativa')
+            .where('dataHoraInicio', isGreaterThanOrEqualTo: _obterInicioDoDiaOperacionalIso())
             .get();
 
         for (final doc in snap.docs) {
@@ -2403,7 +2800,11 @@ class ViagemService {
             sessoesCriadas.add(novaSessaoId);
           }
         }
-      } catch (_) {}
+      } on FirebaseException catch (e) {
+        _tratarFalhaFirestore('migrar_viagens_legadas', e);
+      } catch (e) {
+        _tratarFalhaFirestore('migrar_viagens_legadas', e);
+      }
     }
 
     return {
@@ -2433,7 +2834,11 @@ class ViagemService {
               .doc(id)
               .update({'sessaoId': FieldValue.delete()});
         }
-      } catch (_) {}
+      } on FirebaseException catch (e) {
+        _tratarFalhaFirestore('reverter_migracao', e);
+      } catch (e) {
+        _tratarFalhaFirestore('reverter_migracao', e);
+      }
     }
   }
 
@@ -2642,7 +3047,19 @@ class ViagemService {
             .collection('viagens')
             .doc(novaViagem.id)
             .set(novaViagem.toMap());
-      } catch (_) {}
+        _totalGravacoesFirestoreJornada++;
+      } on FirebaseException catch (e) {
+        _tratarFalhaFirestore(
+          'criar_horario_viagem',
+          e,
+          onRollback: () {
+            _todasViagensMemoria.removeWhere((v) => v.id == novaViagem.id);
+            _todasViagensController.add(List.unmodifiable(_todasViagensMemoria));
+          },
+        );
+      } catch (e) {
+        _tratarFalhaFirestore('criar_horario_viagem', e);
+      }
     }
 
     return ResultadoOperacaoViagem.sucesso(novaViagem);
@@ -2805,7 +3222,19 @@ class ViagemService {
             .collection('viagens')
             .doc(viagem.id)
             .set(viagemAtualizada.toMap(), SetOptions(merge: true));
-      } catch (_) {}
+        _totalGravacoesFirestoreJornada++;
+      } on FirebaseException catch (e) {
+        _tratarFalhaFirestore(
+          'atualizar_horario_viagem',
+          e,
+          onRollback: () {
+            _todasViagensMemoria[index] = existente;
+            _todasViagensController.add(List.unmodifiable(_todasViagensMemoria));
+          },
+        );
+      } catch (e) {
+        _tratarFalhaFirestore('atualizar_horario_viagem', e);
+      }
     }
 
     return ResultadoOperacaoViagem.sucesso(viagemAtualizada);
@@ -2856,7 +3285,19 @@ class ViagemService {
               .collection('viagens')
               .doc(viagemId)
               .set(cancelada.toMap(), SetOptions(merge: true));
-        } catch (_) {}
+          _totalGravacoesFirestoreJornada++;
+        } on FirebaseException catch (e) {
+          _tratarFalhaFirestore(
+            'cancelar_horario_viagem',
+            e,
+            onRollback: () {
+              _todasViagensMemoria[index] = viagem;
+              _todasViagensController.add(List.unmodifiable(_todasViagensMemoria));
+            },
+          );
+        } catch (e) {
+          _tratarFalhaFirestore('cancelar_horario_viagem', e);
+        }
       }
 
       return ResultadoOperacaoViagem.sucesso(cancelada);
@@ -2881,7 +3322,19 @@ class ViagemService {
               .collection('viagens')
               .doc(viagemId)
               .delete();
-        } catch (_) {}
+          _totalGravacoesFirestoreJornada++;
+        } on FirebaseException catch (e) {
+          _tratarFalhaFirestore(
+            'excluir_horario_viagem',
+            e,
+            onRollback: () {
+              _todasViagensMemoria.insert(index, removida);
+              _todasViagensController.add(List.unmodifiable(_todasViagensMemoria));
+            },
+          );
+        } catch (e) {
+          _tratarFalhaFirestore('excluir_horario_viagem', e);
+        }
       }
 
       return ResultadoOperacaoViagem.sucesso(removida);
@@ -2968,7 +3421,20 @@ class ViagemService {
               .collection('viagens')
               .doc(novaViagem.id)
               .set(novaViagem.toMap());
-        } catch (_) {}
+          _totalGravacoesFirestoreJornada++;
+        } on FirebaseException catch (e) {
+          _tratarFalhaFirestore(
+            'duplicar_viagens_dia',
+            e,
+            onRollback: () {
+              _todasViagensMemoria.removeWhere((v) => v.id == novaViagem.id);
+              duplicadas.removeWhere((v) => v.id == novaViagem.id);
+              _todasViagensController.add(List.unmodifiable(_todasViagensMemoria));
+            },
+          );
+        } catch (e) {
+          _tratarFalhaFirestore('duplicar_viagens_dia', e);
+        }
       }
     }
 
@@ -2992,6 +3458,7 @@ class ViagemService {
     if (index == -1) {
       return ResultadoOperacaoViagem.erro('Horário não encontrado.');
     }
+    final viagemAnterior = _todasViagensMemoria[index];
 
     final reordenados = <PassageiroViagemModel>[];
     for (int i = 0; i < novosPassageiros.length; i++) {
@@ -3030,7 +3497,19 @@ class ViagemService {
             .collection('viagens')
             .doc(viagemId)
             .set(viagemAtualizada.toMap(), SetOptions(merge: true));
-      } catch (_) {}
+        _totalGravacoesFirestoreJornada++;
+      } on FirebaseException catch (e) {
+        _tratarFalhaFirestore(
+          'reordenar_passageiros',
+          e,
+          onRollback: () {
+            _todasViagensMemoria[index] = viagemAnterior;
+            _todasViagensController.add(List.unmodifiable(_todasViagensMemoria));
+          },
+        );
+      } catch (e) {
+        _tratarFalhaFirestore('reordenar_passageiros', e);
+      }
     }
 
     return ResultadoOperacaoViagem.sucesso(viagemAtualizada);
@@ -3059,7 +3538,13 @@ class ViagemService {
   }) {
     // Restaura a sessão ativa
     _sessaoFinalizadaPeloMotorista = false;
+    _sessoesAtivasPorMotorista.clear();
+    _totalGravacoesFirestoreJornada = 0;
+    executorPersistenciaRemotaOverride = null;
     _sessaoAtiva = sessaoAtivaInicial;
+    if (sessaoAtivaInicial != null && sessaoAtivaInicial.motoristaId.isNotEmpty) {
+      _sessoesAtivasPorMotorista[sessaoAtivaInicial.motoristaId] = sessaoAtivaInicial;
+    }
     _sessaoAtivaController.add(_sessaoAtiva);
     _viagensConcluidasNaSessao.clear();
 
