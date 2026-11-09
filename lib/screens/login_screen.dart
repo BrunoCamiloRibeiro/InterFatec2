@@ -54,6 +54,7 @@ import 'package:flutter/services.dart';
 
 import '../models/user_role.dart';
 import '../services/auth_service.dart';
+import '../services/viagem_service.dart';
 
 // Linha em branco separadora entre imports e a classe de máscara
 // ----------------------------------------------------------------------------
@@ -219,6 +220,13 @@ class _LoginScreenState extends State<LoginScreen> {
 
       // Se o usuário autenticado for motorista, redireciona para a tela do motorista
       if (role == UserRole.motorista) {
+        final uid = widget.authService.currentUserId ?? '';
+        if (uid.isNotEmpty) {
+          ViagemService().restaurarSessaoMotoristaSeAtiva(
+            motoristaId: uid,
+            motoristaNome: '',
+          );
+        }
         Navigator.pushReplacementNamed(context, '/motorista');
       // Se o usuário for administrador, redireciona para a tela do administrador
       } else if (role == UserRole.admin) {

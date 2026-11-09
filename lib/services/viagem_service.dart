@@ -66,8 +66,10 @@
 // - validacao_viagem.dart: Regras puras de validação de KM, cidade e filtros de frota.
 // ----------------------------------------------------------------------------
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:crypto/crypto.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 
@@ -77,6 +79,7 @@ import '../models/user_role.dart';
 import '../models/veiculo_model.dart';
 import '../models/viagem_model.dart';
 import 'codigo_acesso_service.dart';
+import 'localizacao_motorista_service.dart';
 import 'paciente_sync_service.dart';
 import 'validacao_viagem.dart';
 
@@ -1171,11 +1174,44 @@ class ViagemService {
     if (motoristaId.trim().isEmpty) return;
 
     final listaVeiculos = (frota != null && frota.isNotEmpty) ? frota : _veiculosMemoria;
-    final veiculoEmUso = listaVeiculos.where((v) {
+    VeiculoModel? veiculoEmUso = listaVeiculos.where((v) {
       if (!v.emUso) return false;
       final motVeiculo = v.motoristaAtualId?.trim() ?? '';
       return motVeiculo.isNotEmpty && motVeiculo == motoristaId.trim();
     }).firstOrNull;
+
+    // Se o veículo não estiver formalmente marcado como emUso mas houver viagem ativa vinculada ao motorista:
+    if (veiculoEmUso == null) {
+      final viagemDoMotorista = _todasViagensMemoria.where((v) {
+        if (v.isCancelada || v.isConcluida) return false;
+        return v.motoristaId.trim().isNotEmpty &&
+            v.motoristaId.trim() == motoristaId.trim();
+      }).firstOrNull;
+
+      if (viagemDoMotorista != null) {
+        veiculoEmUso = listaVeiculos.where((v) {
+          return (viagemDoMotorista.veiculoId.isNotEmpty &&
+                  v.id == viagemDoMotorista.veiculoId) ||
+              (viagemDoMotorista.veiculoPlaca.isNotEmpty &&
+                  _normalizarPlacaInterna(v.placa) ==
+                      _normalizarPlacaInterna(viagemDoMotorista.veiculoPlaca));
+        }).firstOrNull ??
+        VeiculoModel(
+          id: viagemDoMotorista.veiculoId.isNotEmpty
+              ? viagemDoMotorista.veiculoId
+              : 'veiculo_${viagemDoMotorista.id}',
+          placa: viagemDoMotorista.veiculoPlaca.isNotEmpty
+              ? viagemDoMotorista.veiculoPlaca
+              : 'TFD',
+          modelo: viagemDoMotorista.veiculoModelo.isNotEmpty
+              ? viagemDoMotorista.veiculoModelo
+              : 'Veículo Municipal',
+          quilometragemAtual: viagemDoMotorista.kmInicial,
+          emUso: true,
+          motoristaAtualId: motoristaId,
+        );
+      }
+    }
 
     if (veiculoEmUso == null) return;
 
@@ -2564,6 +2600,10 @@ class ViagemService {
 
     // 5. Persiste as alterações no Cloud Firestore de forma assíncrona não-bloqueante
     if (_isFirebaseDisponivel()) {
+      final idMotoristaParaLiberar = viagem.motoristaId.isNotEmpty
+          ? viagem.motoristaId
+          : (_sessaoAtiva?.motoristaId ?? '');
+
       unawaited(
         Future.microtask(() async {
           try {
@@ -2586,6 +2626,43 @@ class ViagemService {
                   .collection('viagens')
                   .doc(viagem.id)
                   .set(dadosViagem, SetOptions(merge: true));
+              _totalGravacoesFirestoreJornada++;
+
+              // Registro Homologado: Snapshot imutável congelado na coleção viagens_homologadas
+              final strParaHash =
+                  '${viagem.id}:$kmFinalCalculado:$kmRodadoCalculado:${agoraFim.toIso8601String()}';
+              final hashSha256 =
+                  sha256.convert(utf8.encode(strParaHash)).toString();
+
+              final dadosHomologados = <String, dynamic>{
+                'viagemId': viagem.id,
+                'cidadeDestino': viagemAtualizada.cidadeDestino,
+                'motoristaId': idMotoristaParaLiberar,
+                'motoristaNome': viagem.motoristaNome.isNotEmpty
+                    ? viagem.motoristaNome
+                    : 'Motorista',
+                'veiculoId': veiculoId,
+                'veiculoPlaca': viagemAtualizada.veiculoPlaca,
+                'veiculoModelo': viagemAtualizada.veiculoModelo,
+                'kmInicial': viagem.kmInicial,
+                'kmFinal': kmFinalCalculado,
+                'kmRodado': kmRodadoCalculado,
+                'dataHoraInicio': viagem.dataHoraInicio.toIso8601String(),
+                'dataHoraFim': agoraFim.toIso8601String(),
+                'passageiros':
+                    passageirosSincronizados.map((p) => p.toMap()).toList(),
+                'status': 'homologada',
+                'autor': viagem.motoristaNome.isNotEmpty
+                    ? viagem.motoristaNome
+                    : 'Motorista',
+                'hashIntegridade': hashSha256,
+                'homologadoEm': FieldValue.serverTimestamp(),
+              };
+
+              await FirebaseFirestore.instance
+                  .collection('viagens_homologadas')
+                  .doc(viagem.id)
+                  .set(dadosHomologados, SetOptions(merge: true));
               _totalGravacoesFirestoreJornada++;
             }
 
@@ -2622,6 +2699,16 @@ class ViagemService {
                     .doc(veiculoId)
                     .set(dadosVeiculo, SetOptions(merge: true));
                 _totalGravacoesFirestoreJornada++;
+              }
+
+              // Gravação de emViagem: false no documento de usuarios/{motoristaId} para liberar o condutor
+              if (idMotoristaParaLiberar.isNotEmpty) {
+                await FirebaseFirestore.instance
+                    .collection('usuarios')
+                    .doc(idMotoristaParaLiberar)
+                    .set({'emViagem': false}, SetOptions(merge: true));
+                _totalGravacoesFirestoreJornada++;
+                LocalizacaoMotoristaService().removerOuInativarMotorista(idMotoristaParaLiberar);
               }
             }
           } on FirebaseException catch (e) {
@@ -2687,6 +2774,20 @@ class ViagemService {
     }
 
     _viagensConcluidasNaSessao.clear();
+
+    final idMotoristaFinal = refViagem?.motoristaId.isNotEmpty == true
+        ? refViagem!.motoristaId
+        : (_sessaoAtiva?.motoristaId ?? '');
+    if (_isFirebaseDisponivel() && idMotoristaFinal.isNotEmpty) {
+      unawaited(
+        FirebaseFirestore.instance
+            .collection('usuarios')
+            .doc(idMotoristaFinal)
+            .set({'emViagem': false}, SetOptions(merge: true))
+            .catchError((_) {}),
+      );
+      LocalizacaoMotoristaService().removerOuInativarMotorista(idMotoristaFinal);
+    }
 
     // Garante limpeza completa do estado ativo da sessão quando não restarem viagens de outros veículos
     if (viagensExplicitas == null || _viagensAtivasMemoria.isEmpty) {

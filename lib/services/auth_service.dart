@@ -471,13 +471,23 @@ class FirebaseAuthService implements AuthService {
     }
     // Busca o documento correspondente na coleção 'usuarios' do Firestore
     final doc = await firestore.collection('usuarios').doc(uid).get();
-    // Se o documento não existir no banco, retorna nulo
-    if (!doc.exists) {
-      return null;
-    // Fecha checagem de documento existente
+    // Se o documento existir no banco, retorna os dados
+    if (doc.exists) {
+      return doc.data();
     }
-    // Retorna os dados do documento em formato Map
-    return doc.data();
+    // Fallback após lazy migration: busca por authUid associado
+    try {
+      final queryAuth = await firestore
+          .collection('usuarios')
+          .where('authUid', isEqualTo: uid)
+          .limit(1)
+          .get();
+      if (queryAuth.docs.isNotEmpty) {
+        return queryAuth.docs.first.data();
+      }
+    } catch (_) {}
+    // Retorna nulo se o documento não for encontrado
+    return null;
   // Fecha o método _fetchUserData
   }
 
@@ -627,7 +637,7 @@ class FirebaseAuthService implements AuthService {
   //   utilizado no banco 'trans-saude3'), sincronizando qualquer alteração
   //   manual ou via sistema imediatamente.
   // --------------------------------------------------------------------------
-  Future<({UserRole? role, bool encontrouUsuarioSemSenha})>
+  Future<({UserRole? role, String? uid, bool encontrouUsuarioSemSenha})>
       _autenticarViaFirestoreUsuarios(
     String cleanCpf,
     String rawCpf,
@@ -720,7 +730,7 @@ class FirebaseAuthService implements AuthService {
     }
 
     if (docsAtivosCount == 0) {
-      return (role: null, encontrouUsuarioSemSenha: false);
+      return (role: null, uid: null, encontrouUsuarioSemSenha: false);
     }
 
     if (roleEncontrada == 'paciente') {
@@ -750,12 +760,12 @@ class FirebaseAuthService implements AuthService {
         resetarTentativasOperacional(cleanCpf);
         _usuarioOperacionalLogadoId = uidFinal;
         _roleCache[uidFinal] = UserRole.motorista;
-        return (role: UserRole.motorista, encontrouUsuarioSemSenha: false);
+        return (role: UserRole.motorista, uid: uidFinal, encontrouUsuarioSemSenha: false);
       } else if (roleStr == 'admin' || roleStr == 'administrador') {
         resetarTentativasOperacional(cleanCpf);
         _usuarioOperacionalLogadoId = uidFinal;
         _roleCache[uidFinal] = UserRole.admin;
-        return (role: UserRole.admin, encontrouUsuarioSemSenha: false);
+        return (role: UserRole.admin, uid: uidFinal, encontrouUsuarioSemSenha: false);
       } else {
         registrarFalhaOperacional(cleanCpf);
         throw const AuthException(
@@ -765,16 +775,15 @@ class FirebaseAuthService implements AuthService {
       }
     }
 
-    return (role: null, encontrouUsuarioSemSenha: true);
+    return (role: null, uid: null, encontrouUsuarioSemSenha: true);
   }
 
   // --------------------------------------------------------------------------
   // SOBRESCRITA DO MÉTODO: login
-  // - O que faz: Autentica o usuário por CPF e senha e verifica se ele possui papel permitido.
-  // - Regra de negócio (RBAC): Apenas 'motorista' e 'admin' têm permissão de acesso a este módulo.
+  // - O que faz: Autentica o usuário por CPF e senha com lazy migration para FirebaseAuth.
+  // - Regra de negócio: Apenas 'motorista' e 'admin' têm permissão de acesso a este módulo.
   // --------------------------------------------------------------------------
   @override
-  // Método assíncrono para autenticação de usuários via CPF e senha
   Future<UserRole> login(String cpf, String senha) async {
     // 1. Reseta os IDs de sessão para evitar contaminação entre perfis
     _pacienteLogadoId = null;
@@ -791,7 +800,56 @@ class FirebaseAuthService implements AuthService {
       );
     }
 
-    // 3. Autenticação prioritária via coleção 'usuarios' do Cloud Firestore (campo 'senha')
+    // Resolve o e-mail correspondente ao CPF ($cleanCpf@transsaude.sp.gov.br)
+    final email = await _resolveEmail(cleanCpf, cpf.trim());
+
+    // 3. Tenta autenticar nativamente no Firebase Authentication
+    UserCredential? credential;
+    FirebaseAuthException? authException;
+    try {
+      credential = await auth.signInWithEmailAndPassword(
+        email: email,
+        password: senha,
+      );
+    } on FirebaseAuthException catch (e) {
+      authException = e;
+    } catch (_) {}
+
+    // Se a autenticação nativa do Firebase Authentication teve sucesso
+    if (credential?.user != null) {
+      final user = credential!.user!;
+      try {
+        final role = await resolveUserRole(user.uid);
+        if (role == UserRole.motorista) {
+          resetarTentativasOperacional(cleanCpf);
+          _usuarioOperacionalLogadoId = user.uid;
+          return UserRole.motorista;
+        } else if (role == UserRole.admin) {
+          resetarTentativasOperacional(cleanCpf);
+          _usuarioOperacionalLogadoId = user.uid;
+          return UserRole.admin;
+        } else {
+          await auth.signOut();
+          registrarFalhaOperacional(cleanCpf);
+          throw const AuthException(
+            'Acesso restrito a motoristas e administradores.',
+            code: 'access-denied',
+          );
+        }
+      } on AuthException catch (e) {
+        await auth.signOut();
+        registrarFalhaOperacional(cleanCpf);
+        if (e.code == 'unknown-role') {
+          throw const AuthException(
+            'Acesso restrito a motoristas e administradores.',
+            code: 'access-denied',
+          );
+        }
+        rethrow;
+      }
+    }
+
+    // 4. Se o usuário ainda não existir no Auth (ou falhou nativamente), valida contra o Firestore (Lazy Migration)
     bool encontrouUsuarioSemSenhaNoFirestore = false;
     if (customFirestore != null || customAuth == null) {
       try {
@@ -801,7 +859,44 @@ class FirebaseAuthService implements AuthService {
           senha,
         );
         if (resultadoFirestore.role != null) {
-          return resultadoFirestore.role!;
+          final role = resultadoFirestore.role!;
+          final uidFinal = resultadoFirestore.uid ?? cleanCpf;
+
+          // Lazy Migration no Login:
+          // Cria o usuário nativo no Firebase Authentication com credenciais oficiais criptografadas
+          String? novoAuthUid;
+          try {
+            final novoUser = await auth.createUserWithEmailAndPassword(
+              email: email,
+              password: senha,
+            );
+            novoAuthUid = novoUser.user?.uid;
+          } catch (_) {
+            // Em testes ou ambientes sem Auth ativo, não interrompe o fluxo
+          }
+
+          // Apaga as chaves 'senha' e 'password' do documento em usuarios e associa authUid
+          try {
+            final updateData = <String, dynamic>{
+              'senha': FieldValue.delete(),
+              'password': FieldValue.delete(),
+            };
+            if (novoAuthUid != null) {
+              updateData['authUid'] = novoAuthUid;
+            }
+            await firestore
+                .collection('usuarios')
+                .doc(uidFinal)
+                .update(updateData);
+          } catch (_) {}
+
+          resetarTentativasOperacional(cleanCpf);
+          _usuarioOperacionalLogadoId = uidFinal;
+          _roleCache[uidFinal] = role;
+          if (novoAuthUid != null) {
+            _roleCache[novoAuthUid] = role;
+          }
+          return role;
         }
         encontrouUsuarioSemSenhaNoFirestore =
             resultadoFirestore.encontrouUsuarioSemSenha;
@@ -810,126 +905,30 @@ class FirebaseAuthService implements AuthService {
       } catch (_) {}
     }
 
-    // Resolve o e-mail correspondente ao CPF
-    final email = await _resolveEmail(cleanCpf, cpf.trim());
-
-    // Linha em branco separadora entre resolução de e-mail e autenticação no Firebase
-    // Declara variável para guardar as credenciais retornadas
-    UserCredential credential;
-    // Bloco de tentativa de autenticação no FirebaseAuth
-    try {
-      // Submete as credenciais de e-mail e senha ao FirebaseAuth
-      credential = await auth.signInWithEmailAndPassword(
-        email: email,
-        password: senha,
-      );
-    // Captura erros específicos de autenticação do FirebaseAuth
-    } on FirebaseAuthException catch (e) {
-      registrarFalhaOperacional(cleanCpf);
-      if (customAuth == null) {
-        if (encontrouUsuarioSemSenhaNoFirestore) {
-          throw const AuthException(
-            'Usuário sem senha cadastrada no banco. Defina o campo "senha" no cadastro do usuário.',
-            code: 'missing-password',
-          );
-        }
-        final mapped = mapFirebaseAuthException(e);
-        if (mapped == 'Ocorreu um erro ao realizar o login. Tente novamente.') {
-          throw const AuthException(
-            'CPF ou senha incorretos.',
-            code: 'invalid-credential',
-          );
-        }
-      }
-      // Lança AuthException com mensagem traduzida via mapFirebaseAuthException
-      throw AuthException(mapFirebaseAuthException(e), code: e.code);
-    // Captura qualquer outro erro inesperado
-    } catch (e) {
-      registrarFalhaOperacional(cleanCpf);
-      // Se já for AuthException, propaga
-      if (e is AuthException) rethrow;
-      if (customAuth == null && encontrouUsuarioSemSenhaNoFirestore) {
-        throw const AuthException(
-          'Usuário sem senha cadastrada no banco. Defina o campo "senha" no cadastro do usuário.',
-          code: 'missing-password',
-        );
-      }
-      // Lança AuthException genérica
+    // 5. Se não autenticou nem no Auth nem no Firestore
+    registrarFalhaOperacional(cleanCpf);
+    if (customAuth == null && encontrouUsuarioSemSenhaNoFirestore) {
       throw const AuthException(
-        'Ocorreu um erro ao realizar o login. Tente novamente.',
+        'Usuário sem senha cadastrada no banco. Defina o campo "senha" no cadastro do usuário.',
+        code: 'missing-password',
       );
-    // Fecha o bloco catch de login
     }
 
-    // Linha em branco separadora entre autenticação e verificação do usuário autenticado
-    // Recupera a instância de User resultante da autenticação
-    final user = credential.user;
-    // Verifica se o usuário é nulo
-    if (user == null) {
-      registrarFalhaOperacional(cleanCpf);
-      // Lança erro de falha na identificação
-      throw const AuthException(
-        'Falha na identificação do usuário autenticado.',
-      );
-    // Fecha checagem de usuário nulo
+    if (authException != null) {
+      final mapped = mapFirebaseAuthException(authException);
+      if (mapped == 'Ocorreu um erro ao realizar o login. Tente novamente.') {
+        throw const AuthException(
+          'CPF ou senha incorretos.',
+          code: 'invalid-credential',
+        );
+      }
+      throw AuthException(mapped, code: authException.code);
     }
 
-    // Linha em branco separadora entre validação de usuário e autorização de perfil
-    // Bloco de resolução do papel e autorização de acesso ao sistema
-    try {
-      // Resolve o papel de permissão do usuário autenticado
-      final role = await resolveUserRole(user.uid);
-
-      // Linha em branco separadora entre resolução e checagem de privilégio
-      // Se o usuário for motorista, retorna o papel permitindo prosseguimento
-      if (role == UserRole.motorista) {
-        resetarTentativasOperacional(cleanCpf);
-        _usuarioOperacionalLogadoId = user.uid;
-        return UserRole.motorista;
-      // Se o usuário for administrador, retorna o papel permitindo prosseguimento
-      } else if (role == UserRole.admin) {
-        resetarTentativasOperacional(cleanCpf);
-        _usuarioOperacionalLogadoId = user.uid;
-        return UserRole.admin;
-      // Se for paciente ou outro perfil não operacional, nega acesso à tela de motoristas/admins
-      } else {
-        // Encerra a sessão imediatamente no Firebase para deslogar a conta
-        await auth.signOut();
-        registrarFalhaOperacional(cleanCpf);
-        // Lança exceção de acesso negado
-        throw const AuthException(
-          'Acesso restrito a motoristas e administradores.',
-          code: 'access-denied',
-        );
-      // Fecha else de papel não autorizado
-      }
-    // Trata captura de AuthException durante a resolução de perfil
-    } on AuthException catch (e) {
-      // Encerra a sessão no Firebase para não manter conta conectada em caso de erro
-      await auth.signOut();
-      registrarFalhaOperacional(cleanCpf);
-      // Se for erro de papel desconhecido, padroniza como acesso negado
-      if (e.code == 'unknown-role') {
-        throw const AuthException(
-          'Acesso restrito a motoristas e administradores.',
-          code: 'access-denied',
-        );
-      // Fecha checagem de unknown-role
-      }
-      // Propaga a AuthException
-      rethrow;
-    // Captura outros erros inesperados durante a resolução
-    } catch (_) {
-      // Desloga o usuário da sessão do Firebase
-      await auth.signOut();
-      registrarFalhaOperacional(cleanCpf);
-      // Lança erro amigável orientando tentar novamente
-      throw const AuthException(
-        'Erro ao consultar perfil de acesso. Tente novamente.',
-      );
-    // Fecha o bloco catch de autorização
-    }
-  // Fecha o método login
+    throw const AuthException(
+      'CPF ou senha incorretos.',
+      code: 'invalid-credential',
+    );
   }
 
   // --------------------------------------------------------------------------

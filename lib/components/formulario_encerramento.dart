@@ -148,12 +148,39 @@ class _FormularioEncerramentoState extends State<FormularioEncerramento> {
   // Trava contra múltiplos cliques concorrentes no encerramento
   bool _processando = false;
 
+  @override
+  void initState() {
+    super.initState();
+    _kmRetornoController.addListener(_aoMudarKmRetorno);
+  }
+
+  int get _kmInicialBase {
+    return widget.viagem?.kmInicial ??
+        widget.viagens?.firstOrNull?.kmInicial ??
+        ViagemService().viagemAtiva?.kmInicial ??
+        0;
+  }
+
+  void _aoMudarKmRetorno() {
+    final kmRet = int.tryParse(_kmRetornoController.text.trim());
+    if (kmRet != null) {
+      final kmIni = _kmInicialBase;
+      if (kmRet >= kmIni) {
+        final diff = kmRet - kmIni;
+        if (_kmRodadoController.text != diff.toString()) {
+          _kmRodadoController.text = diff.toString();
+        }
+      }
+    }
+  }
+
   // Linha em branco separadora entre controladores e dispose
 
   // Anotação indicando sobrescrita do método de descarte do ciclo de vida
   @override
   // Método dispose: libera os recursos de memória alocados pelos controladores de texto ao fechar o diálogo
   void dispose() {
+    _kmRetornoController.removeListener(_aoMudarKmRetorno);
     // Descarta o controlador de retorno
     _retornoController.dispose();
     // Descarta o controlador de KM de retorno
@@ -482,7 +509,37 @@ class _FormularioEncerramentoState extends State<FormularioEncerramento> {
                   // Extrai o texto aparado do campo de km retorno
                   final kmRetorno = _kmRetornoController.text.trim();
                   // Extrai o texto aparado do campo de km rodado
-                  final kmRodado = _kmRodadoController.text.trim();
+                  var kmRodado = _kmRodadoController.text.trim();
+
+                  final kmRetornoNum = int.tryParse(kmRetorno);
+                  final kmIni = _kmInicialBase;
+
+                  // Validação direta de odômetro: kmRetorno >= kmInicial (eliminando caso 1111 vs 1222)
+                  if (kmRetornoNum != null && kmRetornoNum < kmIni) {
+                    setState(() {
+                      _processando = false;
+                    });
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        backgroundColor: const Color(0xFFDC2626),
+                        behavior: SnackBarBehavior.floating,
+                        content: Text(
+                          'Km de retorno ($kmRetornoNum km) não pode ser menor que o Km inicial ($kmIni km).',
+                        ),
+                      ),
+                    );
+                    return;
+                  }
+
+                  // Cálculo de KM rodado automático
+                  int? kmRodadoNum = int.tryParse(kmRodado);
+                  if (kmRetornoNum != null && kmRetornoNum >= kmIni) {
+                    final diff = kmRetornoNum - kmIni;
+                    kmRodadoNum ??= diff;
+                    if (kmRodado.isEmpty) {
+                      kmRodado = diff.toString();
+                    }
+                  }
 
                   // Notifica o callback onConfirmar repassando os valores informados
                   widget.onConfirmar?.call(retorno, kmRetorno, kmRodado);
@@ -506,11 +563,6 @@ class _FormularioEncerramentoState extends State<FormularioEncerramento> {
                       widget.pacientes != null
                           ? List<PacienteModel>.from(widget.pacientes!)
                           : null;
-
-                  // Converte a string de KM retorno para inteiro numérico
-                  final kmRetornoNum = int.tryParse(kmRetorno);
-                  // Converte a string de KM rodado para inteiro numérico
-                  final kmRodadoNum = int.tryParse(kmRodado);
 
                   // 1. Finaliza a viagem própria do motorista e atualiza o serviço imediatamente em memória (< 1 ms)
                   unawaited(
