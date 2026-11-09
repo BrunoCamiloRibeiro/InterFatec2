@@ -624,7 +624,7 @@ class FirebaseAuthService implements AuthService {
   // MÉTODO PRIVADO: _autenticarViaFirestoreUsuarios
   // - O que faz: Valida CPF e senha diretamente contra a coleção 'usuarios'
   //   do Cloud Firestore quando o registro possui o campo 'senha' (padrão
-  //   utilizado no banco 'trans-saude'), sincronizando qualquer alteração
+  //   utilizado no banco 'trans-saude3'), sincronizando qualquer alteração
   //   manual ou via sistema imediatamente.
   // --------------------------------------------------------------------------
   Future<({UserRole? role, bool encontrouUsuarioSemSenha})>
