@@ -427,32 +427,40 @@ class ViagemService {
 
     final motViagem = v.motoristaId.trim();
     final motAlvo = motoristaId.trim();
-    if (motViagem.isNotEmpty && motAlvo.isNotEmpty && motViagem != motAlvo) {
+    if (motViagem.isNotEmpty && motAlvo.isNotEmpty && motViagem != motAlvo && motViagem != 'motorista_atual') {
       return false;
     }
+
+    final veicViagem = v.veiculoId.trim();
+    final veicAlvo = veiculoId.trim();
+    final placaViagem = _normalizarPlacaInterna(v.veiculoPlaca);
+    final placaAlvo = _normalizarPlacaInterna(veiculoPlaca);
+    final vinculadaExplicitamenteAoMotorista =
+        motViagem.isNotEmpty && (motViagem == motAlvo || motViagem == 'motorista_atual');
+    final vinculadaExplicitamenteAoVeiculo =
+        (veicViagem.isNotEmpty && veicViagem == veicAlvo) ||
+        (placaViagem.isNotEmpty && placaViagem == placaAlvo);
 
     final sessaoViagem = v.sessaoId?.trim() ?? '';
     final sessaoAlvo = sessaoId?.trim() ?? '';
     if (sessaoViagem.isNotEmpty &&
         sessaoAlvo.isNotEmpty &&
         sessaoViagem != sessaoAlvo &&
-        v.isAtiva) {
+        v.isAtiva &&
+        !vinculadaExplicitamenteAoMotorista &&
+        !vinculadaExplicitamenteAoVeiculo) {
       return false;
     }
 
-    final veicViagem = v.veiculoId.trim();
-    final veicAlvo = veiculoId.trim();
     if (veicViagem.isNotEmpty && veicAlvo.isNotEmpty && veicViagem != veicAlvo) {
       final outroEmUso = _veiculosMemoria.any(
         (vm) => vm.id == veicViagem && vm.emUso && vm.motoristaAtualId != motAlvo,
       );
-      if (v.isPlanejada || outroEmUso || sessaoViagem.isNotEmpty) {
+      if (v.isPlanejada || outroEmUso || (sessaoViagem.isNotEmpty && !vinculadaExplicitamenteAoMotorista)) {
         return false;
       }
     }
 
-    final placaViagem = _normalizarPlacaInterna(v.veiculoPlaca);
-    final placaAlvo = _normalizarPlacaInterna(veiculoPlaca);
     if (placaViagem.isNotEmpty &&
         placaAlvo.isNotEmpty &&
         placaViagem != placaAlvo) {
@@ -462,7 +470,7 @@ class ViagemService {
             vm.emUso &&
             vm.motoristaAtualId != motAlvo,
       );
-      if (v.isPlanejada || outroEmUso || sessaoViagem.isNotEmpty) {
+      if (v.isPlanejada || outroEmUso || (sessaoViagem.isNotEmpty && !vinculadaExplicitamenteAoMotorista)) {
         return false;
       }
     }
@@ -472,12 +480,10 @@ class ViagemService {
         v.cidadeDestino.trim().isNotEmpty) {
       final rotaViagem = _normalizarTextoRota(v.cidadeDestino);
       final rotaAlvo = _normalizarTextoRota(cidadeDestino);
-      final vinculadaExplicitamenteAoMotorista =
-          motViagem.isNotEmpty && motViagem == motAlvo;
-      final vinculadaExplicitamenteAoVeiculo =
-          (veicViagem.isNotEmpty && veicViagem == veicAlvo) ||
-          (placaViagem.isNotEmpty && placaViagem == placaAlvo);
-      if (rotaViagem != rotaAlvo &&
+      final destinoCombina = rotaViagem == rotaAlvo ||
+          (rotaViagem.length >= 3 && rotaAlvo.contains(rotaViagem)) ||
+          (rotaAlvo.length >= 3 && rotaViagem.contains(rotaAlvo));
+      if (!destinoCombina &&
           !vinculadaExplicitamenteAoMotorista &&
           !vinculadaExplicitamenteAoVeiculo) {
         return false;
@@ -943,11 +949,9 @@ class ViagemService {
 
       // Filtro temporal estrito (FinOps): busca apenas viagens do dia operacional em diante,
       // e NUNCA executa set()/update() dentro do listener de snapshots para evitar loops re-entrantes.
-      final inicioDoDiaIso = _obterInicioDoDiaOperacionalIso();
       _subViagensRemoto?.cancel();
       _subViagensRemoto = FirebaseFirestore.instance
           .collection('viagens')
-          .where('dataHoraInicio', isGreaterThanOrEqualTo: inicioDoDiaIso)
           .snapshots()
           .listen((snap) {
         final viagensCarregadas = <ViagemModel>[];
@@ -1171,7 +1175,7 @@ class ViagemService {
     List<VeiculoModel>? frota,
   }) {
     if (_sessaoFinalizadaPeloMotorista) return;
-    if (_sessaoAtiva != null && _viagemAtiva != null) return;
+    if (_sessaoAtiva != null && _viagemAtiva != null && _viagemAtiva!.isAtiva && !_viagemAtiva!.id.startsWith('sessao_ativa_')) return;
     if (motoristaId.trim().isEmpty) return;
 
     final listaVeiculos = (frota != null && frota.isNotEmpty) ? frota : _veiculosMemoria;
@@ -1182,16 +1186,22 @@ class ViagemService {
     }).firstOrNull;
 
     // Se o veículo não estiver formalmente marcado como emUso mas houver viagem ativa vinculada ao motorista:
+    ViagemModel? viagemDoMotorista;
     if (veiculoEmUso == null) {
-      final viagemDoMotorista = _todasViagensMemoria.where((v) {
-        if (v.isCancelada || v.isConcluida) return false;
-        return v.motoristaId.trim().isNotEmpty &&
-            v.motoristaId.trim() == motoristaId.trim();
+      viagemDoMotorista = _todasViagensMemoria.where((v) {
+        if (v.isCancelada || v.isConcluida || todosPacientesVoltaram(v)) return false;
+        final mot = v.motoristaId.trim();
+        final motNome = v.motoristaNome.trim().toLowerCase();
+        final motNomeAlvo = motoristaNome.trim().toLowerCase();
+        final vinculadoAoMotorista = (mot.isNotEmpty && (mot == motoristaId.trim() || mot == 'motorista_atual')) ||
+            (motNomeAlvo.isNotEmpty && motNome.isNotEmpty && motNome == motNomeAlvo);
+        final semMotoristaEAtiva = mot.isEmpty && v.isAtiva;
+        return vinculadoAoMotorista || semMotoristaEAtiva;
       }).firstOrNull;
 
       if (viagemDoMotorista != null) {
         veiculoEmUso = listaVeiculos.where((v) {
-          return (viagemDoMotorista.veiculoId.isNotEmpty &&
+          return (viagemDoMotorista!.veiculoId.isNotEmpty &&
                   v.id == viagemDoMotorista.veiculoId) ||
               (viagemDoMotorista.veiculoPlaca.isNotEmpty &&
                   _normalizarPlacaInterna(v.placa) ==
@@ -1212,12 +1222,28 @@ class ViagemService {
           motoristaAtualId: motoristaId,
         );
       }
+    } else {
+      viagemDoMotorista = _todasViagensMemoria.where((v) {
+        if (v.isCancelada || v.isConcluida || todosPacientesVoltaram(v)) return false;
+        final vinculadoAoMotorista = (v.motoristaId.isNotEmpty && (v.motoristaId == motoristaId || v.motoristaId == 'motorista_atual')) ||
+            (motoristaNome.trim().isNotEmpty && v.motoristaNome.trim().toLowerCase() == motoristaNome.trim().toLowerCase());
+        final vinculadoAoVeiculo = (v.veiculoId.isNotEmpty && v.veiculoId == veiculoEmUso!.id) ||
+            (v.veiculoPlaca.isNotEmpty && _normalizarPlacaInterna(v.veiculoPlaca) == _normalizarPlacaInterna(veiculoEmUso!.placa));
+        final semMotoristaEAtiva = v.motoristaId.isEmpty && v.isAtiva;
+        return vinculadoAoMotorista || vinculadoAoVeiculo || semMotoristaEAtiva;
+      }).firstOrNull;
     }
 
     if (veiculoEmUso == null) return;
 
+    final sessaoIdRestaurada = (viagemDoMotorista != null &&
+            viagemDoMotorista.sessaoId != null &&
+            viagemDoMotorista.sessaoId!.isNotEmpty)
+        ? viagemDoMotorista.sessaoId!
+        : 'sessao_${veiculoEmUso.id}';
+
     _sessaoAtiva ??= SessaoVeiculoModel(
-      id: 'sessao_${veiculoEmUso.id}',
+      id: sessaoIdRestaurada,
       motoristaId: motoristaId,
       motoristaNome: motoristaNome,
       veiculoId: veiculoEmUso.id,
@@ -1245,6 +1271,8 @@ class ViagemService {
       }
 
       final vAtivada = base.copyWith(
+        motoristaId: base.motoristaId.isNotEmpty ? base.motoristaId : motoristaId,
+        motoristaNome: base.motoristaNome.isNotEmpty ? base.motoristaNome : motoristaNome,
         veiculoId: veiculoEmUso.id,
         veiculoPlaca: veiculoEmUso.placa,
         veiculoModelo: veiculoEmUso.modelo,
@@ -1258,7 +1286,16 @@ class ViagemService {
     }
 
     if (_viagensAtivasMemoria.isEmpty) {
-      _viagensAtivasMemoria.add(_criarPlaceholderSessaoAtiva(_sessaoAtiva!));
+      if (viagemDoMotorista != null) {
+        _viagensAtivasMemoria.add(viagemDoMotorista.copyWith(
+          motoristaId: viagemDoMotorista.motoristaId.isNotEmpty ? viagemDoMotorista.motoristaId : motoristaId,
+          motoristaNome: viagemDoMotorista.motoristaNome.isNotEmpty ? viagemDoMotorista.motoristaNome : motoristaNome,
+          status: 'ativa',
+          sessaoId: _sessaoAtiva!.id,
+        ));
+      } else {
+        _viagensAtivasMemoria.add(_criarPlaceholderSessaoAtiva(_sessaoAtiva!));
+      }
     }
 
     _viagemAtiva = _viagensAtivasMemoria.first;

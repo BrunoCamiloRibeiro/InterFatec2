@@ -383,16 +383,25 @@ class ViagemModel {
   }
 
   /// Retorna se a viagem é ativa
-  bool get isAtiva => status == 'ativa';
+  bool get isAtiva {
+    final st = status.trim().toLowerCase();
+    return st == 'ativa' || st == 'em andamento' || st == 'em_andamento';
+  }
 
   /// Retorna se a viagem é planejada
-  bool get isPlanejada => status == 'planejada';
+  bool get isPlanejada {
+    final st = status.trim().toLowerCase();
+    return st == 'planejada' || st == 'agendada';
+  }
 
   /// Retorna se a viagem foi encerrada ou concluída
-  bool get isConcluida => status == 'encerrada' || status == 'concluida';
+  bool get isConcluida {
+    final st = status.trim().toLowerCase();
+    return st == 'encerrada' || st == 'concluida' || st == 'finalizada';
+  }
 
   /// Retorna se a viagem foi cancelada
-  bool get isCancelada => status == 'cancelada';
+  bool get isCancelada => status.trim().toLowerCase() == 'cancelada';
 
   // Linha em branco separadora entre o construtor e o método toMap
   // ----------------------------------------------------------------------------
@@ -448,6 +457,36 @@ class ViagemModel {
   // - O que faz: Reconstrói uma instância tipada de ViagemModel a partir de um Map NoSQL do Firestore.
   // - Parâmetros: 'map' (dados do Firestore) e 'docId' opcional (identificador do documento).
   // ----------------------------------------------------------------------------
+  static DateTime? _parseDataDefensiva(dynamic valor) {
+    if (valor == null) return null;
+    if (valor is DateTime) return valor;
+    try {
+      return (valor as dynamic).toDate() as DateTime;
+    } catch (_) {}
+    if (valor is Map) {
+      final sec = valor['seconds'] ?? valor['_seconds'];
+      if (sec is num) {
+        final nanosec = valor['nanoseconds'] ?? valor['_nanoseconds'] ?? 0;
+        final microsec = (nanosec is num) ? (nanosec ~/ 1000) : 0;
+        return DateTime.fromMillisecondsSinceEpoch(
+          sec.toInt() * 1000 + (microsec ~/ 1000),
+          isUtc: true,
+        ).toLocal();
+      }
+    }
+    if (valor is num) {
+      if (valor > 10000000000) {
+        return DateTime.fromMillisecondsSinceEpoch(valor.toInt());
+      } else {
+        return DateTime.fromMillisecondsSinceEpoch((valor * 1000).toInt());
+      }
+    }
+    try {
+      return DateTime.tryParse(valor.toString());
+    } catch (_) {}
+    return null;
+  }
+
   factory ViagemModel.fromMap(Map<String, dynamic> map, {String? docId}) {
     // ------------------------------------------------------------------------
     // Instancia e retorna o ViagemModel aplicando sanitização e fallbacks defensivos:
@@ -474,13 +513,7 @@ class ViagemModel {
       // Atribui 'cidadeDestino' ou string vazia como fallback
       cidadeDestino: map['cidadeDestino'] ?? '',
       // Interpreta 'dataHoraInicio' via tryParse ou assume 'DateTime.now()' como fallback seguro
-      dataHoraInicio: map['dataHoraInicio'] != null
-          // Tenta realizar parse da representação textual da data
-          ? DateTime.tryParse(map['dataHoraInicio'].toString()) ??
-                // Se o parse falhar, assume a data e hora do momento atual
-                DateTime.now()
-          // Se for nulo, assume a data e hora do momento atual
-          : DateTime.now(),
+      dataHoraInicio: _parseDataDefensiva(map['dataHoraInicio']) ?? DateTime.now(),
       // Atribui 'status' ou 'ativa' por padrão
       status: map['status'] ?? 'ativa',
       // Converte 'kmFinal' para inteiro se for número, ou nulo se ausente
@@ -492,11 +525,7 @@ class ViagemModel {
           // Mantém nulo caso não seja numérico
           : null,
       // Interpreta 'dataHoraFim' via DateTime.tryParse se presente
-      dataHoraFim: map['dataHoraFim'] != null
-          // Converte texto da data de encerramento em DateTime
-          ? DateTime.tryParse(map['dataHoraFim'].toString())
-          // Mantém nulo se não houver data de encerramento
-          : null,
+      dataHoraFim: _parseDataDefensiva(map['dataHoraFim']),
       // Atribui observações registradas
       observacoes: map['observacoes'],
       // Converte 'passageirosIds' com validação de tipo para lista de strings
@@ -526,16 +555,14 @@ class ViagemModel {
       // Mapeia nomeHorario (ou alias horario)
       nomeHorario: map['nomeHorario']?.toString() ?? map['horario']?.toString(),
       // Mapeia dataViagem
-      dataViagem: map['dataViagem'] != null
-          ? DateTime.tryParse(map['dataViagem'].toString())
-          : null,
-      // Mapeia passageiros detalhados
-      passageiros: (map['passageiros'] is List)
+      dataViagem: _parseDataDefensiva(map['dataViagem']),
+      // Mapeia passageiros detalhados com fallback para passageirosIds
+      passageiros: (map['passageiros'] is List && (map['passageiros'] as List).isNotEmpty)
           ? (map['passageiros'] as List)
               .map((p) => PassageiroViagemModel.fromMap(
                   Map<String, dynamic>.from(p as Map)))
               .toList()
-          : (map['passageirosIds'] is List)
+          : (map['passageirosIds'] is List && (map['passageirosIds'] as List).isNotEmpty)
               ? (map['passageirosIds'] as List)
                   .map((id) => PassageiroViagemModel(
                         pacienteId: id.toString(),
@@ -550,9 +577,8 @@ class ViagemModel {
       ultimaLongitude: (map['ultimaLongitude'] is num)
           ? (map['ultimaLongitude'] as num).toDouble()
           : double.tryParse(map['ultimaLongitude']?.toString() ?? ''),
-      ultimaAtualizacaoLocalizacao: map['ultimaAtualizacaoLocalizacao'] != null
-          ? DateTime.tryParse(map['ultimaAtualizacaoLocalizacao'].toString())
-          : null,
+      ultimaAtualizacaoLocalizacao:
+          _parseDataDefensiva(map['ultimaAtualizacaoLocalizacao']),
     // Fecha a lista de argumentos passados ao construtor ViagemModel
     );
   // Fecha o bloco de instruções do construtor factory fromMap

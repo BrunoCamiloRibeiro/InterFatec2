@@ -16,6 +16,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:trans_saude/components/formulario_encerramento.dart';
+import 'package:trans_saude/models/paciente_model.dart';
 import 'package:trans_saude/models/user_role.dart';
 import 'package:trans_saude/models/veiculo_model.dart';
 import 'package:trans_saude/models/viagem_model.dart';
@@ -469,6 +470,287 @@ void main() {
       expect(veic.emUso, isFalse);
       expect(veic.motoristaAtualId, isNull);
       expect(veic.quilometragemAtual, equals(5200));
+    });
+
+    testWidgets('6. Timeout defensivo (2.5s) desbloqueia tela presa em "Carregando viagem ativa..." e exibe formulário de início', (tester) async {
+      final viagemService = ViagemService();
+      viagemService.resetParaTestes();
+      FirebaseAuthService.motoristaEmViagemStatic = true;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Motorista(
+            key: const Key('mot_timeout_teste'),
+            viagemServiceOverride: viagemService,
+          ),
+        ),
+      );
+
+      // Inicialmente exibe o loading "Carregando viagem ativa..."
+      expect(find.text('Carregando viagem ativa...'), findsOneWidget);
+      expect(find.text('Início da Viagem'), findsNothing);
+
+      // Avança o tempo simulado além dos 2500ms do timeout defensivo
+      await tester.pump(const Duration(milliseconds: 2600));
+      await tester.pumpAndSettle();
+
+      // Após o timeout, o estado foi resetado e exibe o formulário de início
+      expect(find.text('Carregando viagem ativa...'), findsNothing);
+      expect(find.text('Início da Viagem'), findsOneWidget);
+      expect(FirebaseAuthService.motoristaEmViagemStatic, isFalse);
+    });
+
+    testWidgets('7. Botão de escape ("Iniciar nova viagem") reseta emViagem e desbloqueia imediatamente', (tester) async {
+      final viagemService = ViagemService();
+      viagemService.resetParaTestes();
+      FirebaseAuthService.motoristaEmViagemStatic = true;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Motorista(
+            key: const Key('mot_escape_teste'),
+            viagemServiceOverride: viagemService,
+          ),
+        ),
+      );
+
+      // Localiza o botão de escape e clica
+      final botaoCancelar = find.byKey(const Key('botaoCancelarCarregandoViagem'));
+      expect(botaoCancelar, findsOneWidget);
+
+      await tester.tap(botaoCancelar);
+      await tester.pumpAndSettle();
+
+      // Formulário deve ser renderizado e o estado estático resetado para false
+      expect(find.text('Carregando viagem ativa...'), findsNothing);
+      expect(find.text('Início da Viagem'), findsOneWidget);
+      expect(FirebaseAuthService.motoristaEmViagemStatic, isFalse);
+    });
+
+    test('8. Desserialização defensiva de ViagemModel com Timestamp do Firestore e conversão de passageirosIds', () {
+      final agora = DateTime.now();
+      final timestampInicio = Timestamp.fromDate(agora);
+      final timestampFim = Timestamp.fromDate(agora.add(const Duration(hours: 2)));
+
+      final mapFirestore = <String, dynamic>{
+        'id': 'viagem_firestore_timestamp',
+        'motoristaId': 'mot_123',
+        'motoristaNome': 'Carlos Motorista',
+        'veiculoId': 'v_123',
+        'veiculoPlaca': 'ABC-1234',
+        'veiculoModelo': 'Van Master',
+        'kmInicial': 50000,
+        'cidadeDestino': 'Barretos',
+        'status': 'ativa',
+        'dataHoraInicio': timestampInicio,
+        'dataHoraFim': timestampFim,
+        'dataViagem': timestampInicio,
+        'ultimaAtualizacaoLocalizacao': timestampInicio,
+        'passageiros': [],
+        'passageirosIds': ['paciente_1', 'paciente_2'],
+      };
+
+      final viagem = ViagemModel.fromMap(mapFirestore);
+
+      expect(viagem.dataHoraInicio.millisecondsSinceEpoch, equals(agora.millisecondsSinceEpoch));
+      expect(viagem.dataHoraFim, isNotNull);
+      expect(viagem.dataViagem, isNotNull);
+      expect(viagem.ultimaAtualizacaoLocalizacao, isNotNull);
+      expect(viagem.passageiros.length, equals(2));
+      expect(viagem.passageiros[0].pacienteId, equals('paciente_1'));
+      expect(viagem.passageiros[0].localDestino, equals('Barretos'));
+      expect(viagem.passageiros[1].pacienteId, equals('paciente_2'));
+    });
+
+    test('9. Restaurar sessao do motorista com sessaoId divergente recupera viagem ativa existente e seus passageiros', () {
+      final viagemService = ViagemService();
+      viagemService.resetParaTestes();
+
+      final veiculo = VeiculoModel(
+        id: 'veic_master_1',
+        placa: 'BRA2E19',
+        modelo: 'Renault Master',
+        capacidade: 15,
+        quilometragemAtual: 42000,
+        emUso: true,
+        motoristaAtualId: 'mot_joao',
+      );
+
+      final viagemAtiva = ViagemModel(
+        id: 'viagem_ativa_existente_firestore',
+        motoristaId: 'mot_joao',
+        motoristaNome: 'João Motorista',
+        veiculoId: 'veic_master_1',
+        veiculoPlaca: 'BRA2E19',
+        veiculoModelo: 'Renault Master',
+        kmInicial: 42000,
+        cidadeDestino: 'São José do Rio Preto',
+        dataHoraInicio: DateTime.now(),
+        status: 'ativa',
+        sessaoId: 'sessao_remota_anterior_timestamp_12345',
+        passageiros: [
+          PassageiroViagemModel(
+            pacienteId: 'pac_1',
+            pacienteNome: 'Maria Santos',
+            localOrigem: 'Posto Central',
+            localDestino: 'Hospital de Base',
+            horarioAtendimento: '08:00',
+            statusEmbarque: 0,
+          ),
+        ],
+        passageirosIds: ['pac_1'],
+      );
+
+      viagemService.resetParaTestes(
+        veiculosIniciais: [veiculo],
+        todasViagensIniciais: [viagemAtiva],
+      );
+
+      viagemService.restaurarSessaoMotoristaSeAtiva(
+        motoristaId: 'mot_joao',
+        motoristaNome: 'João Motorista',
+        frota: [veiculo],
+      );
+
+      expect(viagemService.viagemAtiva, isNotNull);
+      expect(viagemService.viagemAtiva!.id, equals('viagem_ativa_existente_firestore'));
+      expect(viagemService.viagemAtiva!.passageiros.length, equals(1));
+      expect(viagemService.viagemAtiva!.passageiros.first.pacienteNome, equals('Maria Santos'));
+      expect(viagemService.viagensAtivas.any((v) => v.id == 'viagem_ativa_existente_firestore'), isTrue);
+    });
+
+    testWidgets('10. Viagem ativa com passageiros vazios exibe passageiros da rota via pacientesStreamOverride', (tester) async {
+      final viagemService = ViagemService();
+      viagemService.resetParaTestes();
+
+      final viagemAtiva = ViagemModel(
+        id: 'viagem_sem_passageiros_embutidos',
+        motoristaId: 'mot_teste',
+        motoristaNome: 'João Motorista',
+        veiculoId: 'veic_1',
+        veiculoPlaca: 'ABC-1234',
+        veiculoModelo: 'Van Master',
+        kmInicial: 10000,
+        cidadeDestino: 'Barretos',
+        dataHoraInicio: DateTime.now(),
+        status: 'ativa',
+        passageiros: [],
+        passageirosIds: [],
+      );
+
+      final pacientes = [
+        PacienteModel(
+          id: 'pac_rota_1',
+          nome: 'Paciente Barretos',
+          cpf: '111.222.333-44',
+          telefone: '(17) 99999-0000',
+          enderecoPaciente: 'Rua A, 1',
+          localSaida: 'Posto',
+          localConsulta: 'Hospital do Amor Barretos',
+          horarioConsulta: '09:00',
+          status: 0,
+        ),
+      ];
+
+      viagemService.resetParaTestes(
+        viagemAtivaInicial: viagemAtiva,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Motorista(
+            key: const Key('mot_fallback_pacientes'),
+            viagemInicial: viagemAtiva,
+            viagemServiceOverride: viagemService,
+            pacientesStreamOverride: Stream.value(pacientes),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      expect(find.text('PACIENTE BARRETOS'), findsOneWidget);
+      expect(find.text('Hospital do Amor Barretos'), findsOneWidget);
+      expect(find.text('Início da Viagem'), findsNothing);
+    });
+
+    test('11. Desserialização de data com Map _seconds/nanoseconds e status case-insensitive com sinônimos', () {
+      final mapComSegundos = <String, dynamic>{
+        'id': 'viagem_seconds_map',
+        'motoristaId': 'mot_123',
+        'motoristaNome': 'Motorista Teste',
+        'veiculoId': 'v_1',
+        'veiculoPlaca': 'ABC-1234',
+        'veiculoModelo': 'Van',
+        'kmInicial': 1000,
+        'cidadeDestino': 'Barretos',
+        'status': 'Em Andamento',
+        'dataHoraInicio': {
+          '_seconds': 1731140000,
+          '_nanoseconds': 0,
+        },
+      };
+
+      final viagem = ViagemModel.fromMap(mapComSegundos);
+      expect(viagem.isAtiva, isTrue);
+      expect(viagem.dataHoraInicio.year, equals(2024));
+
+      final mapPlanejada = <String, dynamic>{
+        'id': 'viagem_planejada',
+        'status': 'Agendada',
+      };
+      expect(ViagemModel.fromMap(mapPlanejada).isPlanejada, isTrue);
+
+      final mapConcluida = <String, dynamic>{
+        'id': 'viagem_concluida',
+        'status': 'Finalizada',
+      };
+      expect(ViagemModel.fromMap(mapConcluida).isConcluida, isTrue);
+    });
+
+    test('12. Isolamento de condutores: restaurarSessaoMotoristaSeAtiva não sequestra viagem de outro condutor', () {
+      final viagemService = ViagemService();
+      viagemService.resetParaTestes();
+
+      final veiculoAndre = VeiculoModel(
+        id: 'veic_andre',
+        placa: 'AAA1111',
+        modelo: 'Spin',
+        emUso: true,
+        motoristaAtualId: 'mot_andre',
+      );
+
+      final viagemAndre = ViagemModel(
+        id: 'viagem_do_andre',
+        motoristaId: 'mot_andre',
+        motoristaNome: 'André Silva',
+        veiculoId: 'veic_andre',
+        veiculoPlaca: 'AAA1111',
+        veiculoModelo: 'Spin',
+        kmInicial: 1000,
+        cidadeDestino: 'Campinas',
+        dataHoraInicio: DateTime.now(),
+        status: 'ativa',
+        passageiros: [],
+        passageirosIds: [],
+      );
+
+      viagemService.resetParaTestes(
+        veiculosIniciais: [veiculoAndre],
+        todasViagensIniciais: [viagemAndre],
+      );
+
+      // Carlos abre o aplicativo (sem viagem própria ativa no banco)
+      viagemService.restaurarSessaoMotoristaSeAtiva(
+        motoristaId: 'mot_carlos',
+        motoristaNome: 'Carlos Pereira',
+        frota: [veiculoAndre],
+      );
+
+      // Não deve vincular Carlos à viagem de André nem criar sessão de veículo falsa
+      expect(viagemService.viagemAtiva, isNull);
+      expect(viagemService.viagensAtivas, isEmpty);
+      expect(viagemService.sessaoAtiva, isNull);
     });
   });
 }

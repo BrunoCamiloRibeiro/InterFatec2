@@ -901,10 +901,17 @@ class FirebaseAuthService implements AuthService {
           // Preserva a senha no documento do Firestore e associa authUid caso provisionado
           if (novoAuthUid != null) {
             try {
+              final updateData = <String, dynamic>{
+                'authUid': novoAuthUid,
+              };
+              if (customAuth != null) {
+                updateData['senha'] = FieldValue.delete();
+                updateData['password'] = FieldValue.delete();
+              }
               await firestore
                   .collection('usuarios')
                   .doc(uidFinal)
-                  .update({'authUid': novoAuthUid});
+                  .update(updateData);
             } catch (_) {}
           }
 

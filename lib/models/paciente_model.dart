@@ -433,21 +433,33 @@ class PacienteModel {
   // - O que é: Função utilitária resiliente com suporte a Timestamp do Firestore e ISO-8601.
   // ----------------------------------------------------------------------------
   static DateTime? _parsearData(dynamic valor) {
-    // Retorna nulo imediatamente caso a entrada seja nula
     if (valor == null) return null;
-    // Se o valor já for DateTime, retorna diretamente a instância
     if (valor is DateTime) return valor;
-    // Tenta invocar toDate() dinamicamente caso seja um Timestamp do Firestore
     try {
       return (valor as dynamic).toDate() as DateTime;
     } catch (_) {}
-    // Tenta interpretar o texto via DateTime.tryParse
+    if (valor is Map) {
+      final sec = valor['seconds'] ?? valor['_seconds'];
+      if (sec is num) {
+        final nanosec = valor['nanoseconds'] ?? valor['_nanoseconds'] ?? 0;
+        final microsec = (nanosec is num) ? (nanosec ~/ 1000) : 0;
+        return DateTime.fromMillisecondsSinceEpoch(
+          sec.toInt() * 1000 + (microsec ~/ 1000),
+          isUtc: true,
+        ).toLocal();
+      }
+    }
+    if (valor is num) {
+      if (valor > 10000000000) {
+        return DateTime.fromMillisecondsSinceEpoch(valor.toInt());
+      } else {
+        return DateTime.fromMillisecondsSinceEpoch((valor * 1000).toInt());
+      }
+    }
     try {
       return DateTime.tryParse(valor.toString());
     } catch (_) {}
-    // Retorna nulo como fallback de segurança
     return null;
-  // Fecha o corpo de execução da função utilitária estática _parsearData
   }
 
   // Linha em branco separadora entre a função de data e o construtor factory
@@ -492,7 +504,7 @@ class PacienteModel {
     // ------------------------------------------------------------------------
     return PacienteModel(
       // Atribui o identificador do documento ou string vazia se nulo
-      id: docId ?? '',
+      id: (docId != null && docId.isNotEmpty) ? docId : (map['id']?.toString() ?? ''),
       // Atribui o nome recuperado ou string vazia se nulo
       nome: (map['nome'] ?? '').toString(),
       // Atribui o CPF recuperado ou string vazia se nulo
