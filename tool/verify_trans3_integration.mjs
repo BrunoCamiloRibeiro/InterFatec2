@@ -36,21 +36,38 @@ async function verify() {
   console.log(`   Total de usuários retornados: ${usuarios.length}`);
   if (usuarios.length < 10) throw new Error('Poucos usuários em trans-saude3');
 
-  // Verifica Administrador
+  // Verifica Administradores
   const adminDoc = await getDoc('usuarios', 'admin_principal');
   console.log(`   ✓ Admin Principal: nome="${adminDoc.fields.nome.stringValue}", role="${adminDoc.fields.role.stringValue}", senha="${adminDoc.fields.senha?.stringValue || adminDoc.fields.password?.stringValue}"`);
 
-  // Verifica Motorista Carlos Roberto
+  const adminHomoDoc = await getDoc('usuarios', 'admin_homologacao');
+  console.log(`   ✓ Admin Homologação: nome="${adminHomoDoc.fields.nome.stringValue}", role="${adminHomoDoc.fields.role.stringValue}", senha="${adminHomoDoc.fields.senha?.stringValue || adminHomoDoc.fields.password?.stringValue}"`);
+
+  const adminSimplesDoc = await getDoc('usuarios', 'admin_simples');
+  console.log(`   ✓ Admin Simples: nome="${adminSimplesDoc.fields.nome.stringValue}", role="${adminSimplesDoc.fields.role.stringValue}", senha="${adminSimplesDoc.fields.senha?.stringValue || adminSimplesDoc.fields.password?.stringValue}"`);
+
+  // Verifica Motoristas
   const carlosDoc = await getDoc('usuarios', 'motorista_carlos');
   console.log(`   ✓ Motorista Carlos: nome="${carlosDoc.fields.nome.stringValue}", role="${carlosDoc.fields.role.stringValue}", cnh="${carlosDoc.fields.cnh.stringValue}", senha="${carlosDoc.fields.senha.stringValue}"`);
 
-  // Verifica Motorista Roberto Almeida Prado
   const robertoDoc = await getDoc('usuarios', 'mot_inicial_01');
   console.log(`   ✓ Motorista Roberto: nome="${robertoDoc.fields.nome.stringValue}", role="${robertoDoc.fields.role.stringValue}", cnh="${robertoDoc.fields.cnh.stringValue}", senha="${robertoDoc.fields.senha.stringValue}"`);
 
-  // Verifica Paciente
+  const joaoDoc = await getDoc('usuarios', 'motorista_joao');
+  console.log(`   ✓ Motorista João: nome="${joaoDoc.fields.nome.stringValue}", role="${joaoDoc.fields.role.stringValue}", cnh="${joaoDoc.fields.cnh.stringValue}", senha="${joaoDoc.fields.senha.stringValue}"`);
+
+  // Verifica Pacientes
   const pacDoc = await getDoc('usuarios', 'nhkT53OclKj552MmiMN5');
   console.log(`   ✓ Paciente Sebastião: nome="${pacDoc.fields.nome.stringValue}", cpf="${pacDoc.fields.cpf.stringValue}", role="${pacDoc.fields.role.stringValue}"`);
+
+  const pacMaria = await getDoc('usuarios', 'pac_maria_01');
+  console.log(`   ✓ Paciente Maria Aparecida: nome="${pacMaria.fields.nome.stringValue}", cpf="${pacMaria.fields.cpf.stringValue}", acompanhante="${pacMaria.fields.nomeAcompanhante?.stringValue}"`);
+
+  const pacCarlos = await getDoc('usuarios', 'pac_carlos_02');
+  console.log(`   ✓ Paciente Carlos Eduardo: nome="${pacCarlos.fields.nome.stringValue}", cpf="${pacCarlos.fields.cpf.stringValue}"`);
+
+  const pacAna = await getDoc('usuarios', 'pac_ana_03');
+  console.log(`   ✓ Paciente Ana Paula: nome="${pacAna.fields.nome.stringValue}", cpf="${pacAna.fields.cpf.stringValue}"`);
 
   // 2. Coleção veiculos
   console.log('\n2. Verificando veiculos no Firestore real:');
@@ -63,12 +80,20 @@ async function verify() {
   const ducatoDoc = await getDoc('veiculos', 'ducato_01');
   console.log(`   ✓ Ducato: modelo="${ducatoDoc.fields.modelo.stringValue}", placa="${ducatoDoc.fields.placa.stringValue}", capacidade=${ducatoDoc.fields.capacidade?.integerValue || ducatoDoc.fields.capacidade?.stringValue}`);
 
+  const volareDoc = await getDoc('veiculos', '2VXwI3Y50uhwusQUIAg4');
+  console.log(`   ✓ Volare Fly: modelo="${volareDoc.fields.modelo.stringValue}", placa="${volareDoc.fields.placa.stringValue}", capacidade=${volareDoc.fields.capacidade?.integerValue || volareDoc.fields.capacidade?.stringValue}`);
+
   // 3. Coleção viagens
   console.log('\n3. Verificando viagens no Firestore real:');
   const viagemDoc = await getDoc('viagens', 'viagem_ativa_rio_preto_01');
   const fields = viagemDoc.fields;
   console.log(`   ✓ Viagem Ativa: id="${fields.id.stringValue}", destino="${fields.cidadeDestino.stringValue}", status="${fields.status.stringValue}", motorista="${fields.motoristaNome.stringValue}"`);
+  console.log(`   ✓ Telemetria GPS da Viagem: lat=${fields.ultimaLatitude?.doubleValue}, lng=${fields.ultimaLongitude?.doubleValue}`);
   
+  if (!fields.ultimaLatitude?.doubleValue || !fields.ultimaLongitude?.doubleValue) {
+    throw new Error('Viagem ativa sem coordenadas GPS!');
+  }
+
   // Valida códigos e hashes de acesso dos passageiros
   const codigos = fields.codigosAcesso.mapValue.fields;
   const hashes = fields.codigosHash.mapValue.fields;
@@ -88,6 +113,12 @@ async function verify() {
   console.log(`   ✓ Sessões de veículo no Firestore: ${sessoes.length}`);
   const localizacoes = await getCollection('localizacoes_motoristas');
   console.log(`   ✓ Localizações de motoristas no Firestore: ${localizacoes.length}`);
+
+  const locCarlos = await getDoc('localizacoes_motoristas', 'motorista_carlos');
+  console.log(`   ✓ Telemetria motorista_carlos: lat=${locCarlos.fields.latitude.doubleValue}, lng=${locCarlos.fields.longitude.doubleValue}, emViagem=${locCarlos.fields.emViagem.booleanValue}`);
+
+  const locMot1 = await getDoc('localizacoes_motoristas', 'mot_1');
+  console.log(`   ✓ Telemetria mot_1: lat=${locMot1.fields.latitude.doubleValue}, lng=${locMot1.fields.longitude.doubleValue}, emViagem=${locMot1.fields.emViagem.booleanValue}`);
 
   console.log('\n✅ TODAS AS VERIFICAÇÕES DE INTEGRAÇÃO PASSARAM COM SUCESSO NO FIRESTORE TRANS-SAUDE3!');
 }
