@@ -898,20 +898,15 @@ class FirebaseAuthService implements AuthService {
             // Em testes ou ambientes sem Auth ativo, não interrompe o fluxo
           }
 
-          // Apaga as chaves 'senha' e 'password' do documento em usuarios e associa authUid
-          try {
-            final updateData = <String, dynamic>{
-              'senha': FieldValue.delete(),
-              'password': FieldValue.delete(),
-            };
-            if (novoAuthUid != null) {
-              updateData['authUid'] = novoAuthUid;
-            }
-            await firestore
-                .collection('usuarios')
-                .doc(uidFinal)
-                .update(updateData);
-          } catch (_) {}
+          // Preserva a senha no documento do Firestore e associa authUid caso provisionado
+          if (novoAuthUid != null) {
+            try {
+              await firestore
+                  .collection('usuarios')
+                  .doc(uidFinal)
+                  .update({'authUid': novoAuthUid});
+            } catch (_) {}
+          }
 
           resetarTentativasOperacional(cleanCpf);
           _usuarioOperacionalLogadoId = uidFinal;
