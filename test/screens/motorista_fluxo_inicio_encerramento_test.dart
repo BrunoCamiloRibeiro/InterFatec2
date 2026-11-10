@@ -369,8 +369,14 @@ void main() {
 
         // Verifica status PLANEJADA, veículo a definir pelo motorista e lugares com baixa = 0
         expect(find.text('PLANEJADA'), findsOneWidget);
-        expect(find.text('Veículo: A definir pelo motorista'), findsOneWidget);
-        expect(find.text('Lugares com baixa: 0 (veículo a definir)'), findsOneWidget);
+        expect(find.text('Veículo a definir'), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byKey(Key('contagemAssentos_$viagemId')),
+            matching: find.text('0'),
+          ),
+          findsOneWidget,
+        );
         expect(find.text('Aguardando Transporte'), findsNWidgets(2));
 
         // 2. Motorista escolhe o veículo e inicia a viagem -> NÃO gera nova viagem, ativa a viagem existente sem vincular motorista
@@ -391,8 +397,8 @@ void main() {
         expect(viagemService.todasViagens.length, equals(1));
         expect(viagemService.todasViagens.first.motoristaId, isEmpty);
         expect(find.text('EM TRÂNSITO (ATIVA)'), findsOneWidget);
-        expect(find.text('Veículo: ABC-1D23 (Chevrolet Spin 1.8 LTZ)'), findsOneWidget);
-        expect(find.text('Lugares: 0 / 7 (7 disponíveis)'), findsOneWidget);
+        expect(find.text('ABC-1D23 (Chevrolet Spin 1.8 LTZ)'), findsOneWidget);
+        expect(find.text('0/7'), findsOneWidget);
 
         // 3. Testa transição dos status e atualização dinâmica de lugares disponíveis/preenchidos conforme a baixa
         // Paciente 2 solicita cancelamento -> status 5 ('Cancelado')
@@ -422,7 +428,7 @@ void main() {
         );
         await tester.pumpAndSettle();
         expect(find.text('Embarcou para Ida'), findsOneWidget);
-        expect(find.text('Lugares: 1 / 7 (6 disponíveis)'), findsOneWidget);
+        expect(find.text('1/7'), findsOneWidget);
 
         // Paciente 1 desembarca para consulta -> status 2 ('Desembarcou para Consulta')
         await syncService.avancarEtapaMotorista(
