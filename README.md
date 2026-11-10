@@ -157,7 +157,7 @@ Também é possível executar etapas específicas da auditoria:
 ```bash
 flutter test
 ```
-* **279/279 testes passando** com 100% de sucesso (incluindo testes de widget, auth, responsividade e validações de CPF).
+* **284/284 testes passando** com 100% de sucesso (incluindo testes de widget, auth, isolamento por viagem, responsividade e validações de CPF).
 
 ---
 
