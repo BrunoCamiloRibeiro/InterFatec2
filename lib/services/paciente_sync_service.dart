@@ -102,16 +102,24 @@ class PacienteSyncService {
   }
 
   // --------------------------------------------------------------------------
-  // REPOSITÓRIO EM MEMÓRIA (MOCK PARA TESTES DETERMINÍSTICOS E OFFLINE)
+  // REPOSITÓRIO EM MEMÓRIA (ISOLADO POR VIAGEM + MOCK PARA TESTES OFFLINE)
   // --------------------------------------------------------------------------
   final Map<String, PacienteModel> _pacientesMemoria = {};
+  final Map<String, PacienteModel> _pacientesPorViagemMemoria = {};
   final Map<String, List<Map<String, dynamic>>> _historicoMemoria = {};
   final Map<String, StreamController<PacienteModel?>> _controllersMemoria = {};
   final StreamController<PacienteModel> _globalController =
       StreamController<PacienteModel>.broadcast();
+  final StreamController<({String? viagemId, PacienteModel paciente})>
+      _alteracoesPorViagemController =
+      StreamController<({String? viagemId, PacienteModel paciente})>.broadcast();
   final StreamController<({String pacienteId, String mensagem, PacienteModel estadoRevertido})>
       _falhasSincronizacaoController = StreamController<
           ({String pacienteId, String mensagem, PacienteModel estadoRevertido})>.broadcast();
+  final StreamController<
+          ({String? viagemId, String pacienteId, String mensagem, PacienteModel estadoRevertido})>
+      _falhasPorViagemController = StreamController<
+          ({String? viagemId, String pacienteId, String mensagem, PacienteModel estadoRevertido})>.broadcast();
 
   /// Hook opcional para simular escrita assíncrona remota e falhas de rede/permissão em testes.
   @visibleForTesting
@@ -126,13 +134,29 @@ class PacienteSyncService {
   /// Stream global broadcast emitida sempre que qualquer paciente sofre transição de status ou prontidão.
   Stream<PacienteModel> get alteracoesGlobaisStream => _globalController.stream;
 
+  /// Stream segmentada por [viagemId] emitida nas transições de passageiros.
+  Stream<({String? viagemId, PacienteModel paciente})> get alteracoesPorViagemStream =>
+      _alteracoesPorViagemController.stream;
+
   /// Stream emitida quando uma mutação otimista em background falha no Firestore e sofre rollback.
   Stream<({String pacienteId, String mensagem, PacienteModel estadoRevertido})>
       get falhasSincronizacaoStream => _falhasSincronizacaoController.stream;
 
+  /// Stream de falhas/rollback carregando o [viagemId] de origem da transição.
+  Stream<({String? viagemId, String pacienteId, String mensagem, PacienteModel estadoRevertido})>
+      get falhasPorViagemStream => _falhasPorViagemController.stream;
+
+  String? _chavePorViagem(String? viagemId, String pacienteId) {
+    final v = viagemId?.trim() ?? '';
+    final p = pacienteId.trim();
+    if (v.isEmpty || p.isEmpty) return null;
+    return '$v::$p';
+  }
+
   /// Reinicia o estado em memória para execução de suítes de teste limpas.
   void resetParaTestes([List<PacienteModel>? pacientesIniciais]) {
     _pacientesMemoria.clear();
+    _pacientesPorViagemMemoria.clear();
     _historicoMemoria.clear();
     for (final ctrl in _controllersMemoria.values) {
       if (!ctrl.isClosed) ctrl.close();
@@ -149,27 +173,63 @@ class PacienteSyncService {
     }
   }
 
-  /// Registra um paciente no cache em memória caso ainda não exista (útil para passageiros vindos de Horários).
-  void registrarPacienteEmMemoriaSeAusente(PacienteModel paciente) {
+  /// Registra um paciente no cache em memória caso ainda não exista (isolado por [viagemId] quando informado).
+  void registrarPacienteEmMemoriaSeAusente(PacienteModel paciente, {String? viagemId}) {
     if (paciente.id.isEmpty) return;
+    final chaveScoped = _chavePorViagem(viagemId, paciente.id);
+    if (chaveScoped != null) {
+      _pacientesPorViagemMemoria.putIfAbsent(chaveScoped, () => paciente);
+      return;
+    }
     _pacientesMemoria.putIfAbsent(paciente.id, () => paciente);
   }
 
-  /// Atualiza o estado de um paciente no cache em memória.
-  void atualizarPacienteEmMemoria(PacienteModel paciente) {
+  /// Atualiza o estado de um paciente no cache em memória (isolado por [viagemId] quando informado).
+  void atualizarPacienteEmMemoria(PacienteModel paciente, {String? viagemId}) {
     if (paciente.id.isEmpty) return;
+    final chaveScoped = _chavePorViagem(viagemId, paciente.id);
+    if (chaveScoped != null) {
+      _pacientesPorViagemMemoria[chaveScoped] = paciente;
+      return;
+    }
     _pacientesMemoria[paciente.id] = paciente;
   }
 
-  /// Retorna o estado atual do paciente em memória, se disponível.
-  PacienteModel? obterPacienteMemoria(String pacienteId) =>
-      _pacientesMemoria[pacienteId];
+  /// Sincroniza o estado em memória de um passageiro a partir do snapshot da viagem.
+  void sincronizarPassageiroDeViagemEmMemoria(String viagemId, PacienteModel paciente) {
+    final chaveScoped = _chavePorViagem(viagemId, paciente.id);
+    if (chaveScoped != null) {
+      _pacientesPorViagemMemoria[chaveScoped] = paciente;
+    }
+  }
+
+  /// Retorna o estado atual do paciente em memória (estritamente isolado por [viagemId] quando informado).
+  PacienteModel? obterPacienteMemoria(String pacienteId, {String? viagemId}) {
+    final chaveScoped = _chavePorViagem(viagemId, pacienteId);
+    if (chaveScoped != null) {
+      return _pacientesPorViagemMemoria[chaveScoped];
+    }
+    return _pacientesMemoria[pacienteId];
+  }
 
   /// Reseta o status dos pacientes informados para 0 (Aguardando) ao serem incluídos em um novo Horário de Viagem.
-  void resetarStatusPacientesParaNovaViagem(Iterable<String> pacienteIds) {
-    final agora = _agoraUtc();
+  void resetarStatusPacientesParaNovaViagem(
+    Iterable<String> pacienteIds, {
+    String? viagemId,
+  }) {
     for (final pid in pacienteIds) {
       if (pid.trim().isEmpty) continue;
+      final chaveScoped = _chavePorViagem(viagemId, pid);
+      if (chaveScoped != null) {
+        final memScoped = _pacientesPorViagemMemoria[chaveScoped];
+        if (memScoped != null && memScoped.status != 0) {
+          _pacientesPorViagemMemoria[chaveScoped] = memScoped.copyWith(
+            status: 0,
+            prontoRetorno: false,
+            limparJanelaReversao: true,
+          );
+        }
+      }
       final mem = _pacientesMemoria[pid];
       if (mem != null && mem.status != 0) {
         final resetado = mem.copyWith(
@@ -185,29 +245,31 @@ class PacienteSyncService {
         if (!_globalController.isClosed) {
           _globalController.add(resetado);
         }
-      }
-      if (_isFirebaseDisponivel) {
-        unawaited(
-          FirebaseFirestore.instance
-              .collection('usuarios')
-              .doc(pid)
-              .set({
-                'status': 0,
-                'prontoRetorno': false,
-                'janelaReversao': FieldValue.delete(),
-                'atualizadoEm': agora.toIso8601String(),
-              }, SetOptions(merge: true))
-              .catchError((_) {}),
-        );
+        if (!_alteracoesPorViagemController.isClosed) {
+          _alteracoesPorViagemController.add((viagemId: viagemId, paciente: resetado));
+        }
       }
     }
   }
 
-  /// Marca como concluídos (status 4) todos os passageiros da viagem encerrada que não estejam cancelados (status 5).
-  Future<void> concluirPacientesDaViagem(Iterable<String> pacienteIds) async {
-    final agora = _agoraUtc();
+  /// Marca como concluídos (status 4) os passageiros em memória da viagem encerrada.
+  Future<void> concluirPacientesDaViagem(
+    Iterable<String> pacienteIds, {
+    String? viagemId,
+  }) async {
     for (final pid in pacienteIds) {
       if (pid.trim().isEmpty) continue;
+      final chaveScoped = _chavePorViagem(viagemId, pid);
+      if (chaveScoped != null) {
+        final memScoped = _pacientesPorViagemMemoria[chaveScoped];
+        if (memScoped != null && memScoped.status != 5 && memScoped.status != 4) {
+          _pacientesPorViagemMemoria[chaveScoped] = memScoped.copyWith(
+            status: 4,
+            prontoRetorno: false,
+            limparJanelaReversao: true,
+          );
+        }
+      }
       final mem = _pacientesMemoria[pid];
       if (mem != null && mem.status != 5 && mem.status != 4) {
         final atualizado = mem.copyWith(
@@ -223,23 +285,9 @@ class PacienteSyncService {
         if (!_globalController.isClosed) {
           _globalController.add(atualizado);
         }
-      }
-      if (_isFirebaseDisponivel) {
-        try {
-          final docRef = FirebaseFirestore.instance.collection('usuarios').doc(pid);
-          final snap = await docRef.get();
-          if (snap.exists && snap.data() != null) {
-            final pRemoto = PacienteModel.fromMap(snap.data()!, docId: snap.id);
-            if (pRemoto.status != 5 && pRemoto.status != 4) {
-              await docRef.set({
-                'status': 4,
-                'prontoRetorno': false,
-                'janelaReversao': FieldValue.delete(),
-                'atualizadoEm': agora.toIso8601String(),
-              }, SetOptions(merge: true));
-            }
-          }
-        } catch (_) {}
+        if (!_alteracoesPorViagemController.isClosed) {
+          _alteracoesPorViagemController.add((viagemId: viagemId, paciente: atualizado));
+        }
       }
     }
   }
@@ -277,6 +325,53 @@ class PacienteSyncService {
     });
   }
 
+  /// Atualiza caches e notifica streams mantendo compatibilidade com escopo por viagem.
+  void _notificarMutacaoEmMemoria({
+    required PacienteModel paciente,
+    String? viagemId,
+    bool espelharCacheLegado = true,
+  }) {
+    final chaveScoped = _chavePorViagem(viagemId, paciente.id);
+    if (chaveScoped != null) {
+      _pacientesPorViagemMemoria[chaveScoped] = paciente;
+    }
+    if (espelharCacheLegado) {
+      _pacientesMemoria[paciente.id] = paciente;
+    }
+    final ctrl = _controllersMemoria[paciente.id];
+    if (ctrl != null && !ctrl.isClosed) {
+      ctrl.add(paciente);
+    }
+    if (!_globalController.isClosed) {
+      _globalController.add(paciente);
+    }
+    if (!_alteracoesPorViagemController.isClosed) {
+      _alteracoesPorViagemController.add((
+        viagemId: viagemId,
+        paciente: paciente,
+      ));
+    }
+  }
+
+  /// Monta a janela de reversão temporal quando a regra de transição exige carência.
+  JanelaReversaoModel? _criarJanelaReversao({
+    required ResultadoTransicao regra,
+    required int statusAnterior,
+    required DateTime agoraUtc,
+    String? idempotencyKey,
+  }) {
+    if (regra.duracaoJanelaSegundos == null || regra.acaoReversao == null) {
+      return null;
+    }
+    return JanelaReversaoModel(
+      acao: regra.acaoReversao!,
+      iniciadoEm: agoraUtc,
+      expiraEm: agoraUtc.add(Duration(seconds: regra.duracaoJanelaSegundos!)),
+      estadoAnterior: statusAnterior,
+      idempotencyKey: idempotencyKey,
+    );
+  }
+
   // --------------------------------------------------------------------------
   // MÉTODO NÚCLEO: EXECUTAR TRANSIÇÃO ATÔMICA COM CONTROLE DE CONCORRÊNCIA
   // --------------------------------------------------------------------------
@@ -285,9 +380,10 @@ class PacienteSyncService {
     required AcaoTransicao acao,
     required String atorId,
     required String atorRole,
+    String? viagemId,
     String? idempotencyKey,
   }) async {
-    // 1. Autorização por recurso: Paciente só pode agir nos próprios agendamentos!
+    // Autorização por recurso: paciente só age no próprio agendamento.
     if (atorRole == 'paciente' && atorId != pacienteId) {
       return const ResultadoOperacaoPaciente.erro(
         'Acesso negado: o paciente não tem autorização para alterar o agendamento de terceiros.',
@@ -295,13 +391,18 @@ class PacienteSyncService {
     }
 
     final agora = _agoraUtc();
+    final chaveScoped = _chavePorViagem(viagemId, pacienteId);
+    final possuiEmMemoria = chaveScoped != null
+        ? _pacientesPorViagemMemoria.containsKey(chaveScoped)
+        : _pacientesMemoria.containsKey(pacienteId);
 
-    // 2. Se o paciente já está em memória (ex.: tela do motorista carregada),
-    //    aplica a transição otimista em 0ms e sincroniza no Firestore em background
-    //    para garantir resposta instantânea na interface, com rollback automático se falhar.
+    // 1. UI Otimista (0 ms) com rollback automático em caso de falha remota.
     if ((_isFirebaseDisponivel || executorRemotoOverride != null) &&
-        _pacientesMemoria.containsKey(pacienteId)) {
-      final pacienteMem = _pacientesMemoria[pacienteId]!;
+        possuiEmMemoria) {
+      final pacienteMem = chaveScoped != null
+          ? _pacientesPorViagemMemoria[chaveScoped]!
+          : _pacientesMemoria[pacienteId]!;
+
       if (idempotencyKey != null &&
           pacienteMem.ultimaIdempotencyKey == idempotencyKey) {
         return ResultadoOperacaoPaciente.sucesso(
@@ -327,16 +428,12 @@ class PacienteSyncService {
         );
       }
 
-      JanelaReversaoModel? novaJanela;
-      if (regra.duracaoJanelaSegundos != null && regra.acaoReversao != null) {
-        novaJanela = JanelaReversaoModel(
-          acao: regra.acaoReversao!,
-          iniciadoEm: agora,
-          expiraEm: agora.add(Duration(seconds: regra.duracaoJanelaSegundos!)),
-          estadoAnterior: pacienteMem.status,
-          idempotencyKey: idempotencyKey,
-        );
-      }
+      final novaJanela = _criarJanelaReversao(
+        regra: regra,
+        statusAnterior: pacienteMem.status,
+        agoraUtc: agora,
+        idempotencyKey: idempotencyKey,
+      );
 
       final pacienteAtualizado = pacienteMem.copyWith(
         status: regra.novoStatus,
@@ -346,32 +443,25 @@ class PacienteSyncService {
         ultimaIdempotencyKey: idempotencyKey,
       );
 
-      _pacientesMemoria[pacienteId] = pacienteAtualizado;
-      final ctrl = _controllersMemoria[pacienteId];
-      if (ctrl != null && !ctrl.isClosed) {
-        ctrl.add(pacienteAtualizado);
-      }
-      if (!_globalController.isClosed) {
-        _globalController.add(pacienteAtualizado);
-      }
+      _notificarMutacaoEmMemoria(
+        paciente: pacienteAtualizado,
+        viagemId: viagemId,
+      );
 
       final Map<String, dynamic> updateData = {
         'status': regra.novoStatus,
         'prontoRetorno': regra.novoProntoRetorno,
         'ultimaIdempotencyKey': idempotencyKey,
-        'janelaReversao': novaJanela != null ? novaJanela.toMap() : FieldValue.delete(),
+        'janelaReversao':
+            novaJanela != null ? novaJanela.toMap() : FieldValue.delete(),
         'atualizadoEm': agora.toIso8601String(),
       };
 
       void reverterMutacaoOtimista(Object erro) {
-        _pacientesMemoria[pacienteId] = pacienteMem;
-        final ctrlRevert = _controllersMemoria[pacienteId];
-        if (ctrlRevert != null && !ctrlRevert.isClosed) {
-          ctrlRevert.add(pacienteMem);
-        }
-        if (!_globalController.isClosed) {
-          _globalController.add(pacienteMem);
-        }
+        _notificarMutacaoEmMemoria(
+          paciente: pacienteMem,
+          viagemId: viagemId,
+        );
         final codigo = erro is FirebaseException ? erro.code : 'network-error';
         final msg =
             'Falha ao sincronizar com o servidor ($codigo). A alteração de ${pacienteMem.nome} foi revertida.';
@@ -382,9 +472,24 @@ class PacienteSyncService {
             estadoRevertido: pacienteMem,
           ));
         }
+        if (!_falhasPorViagemController.isClosed) {
+          _falhasPorViagemController.add((
+            viagemId: viagemId,
+            pacienteId: pacienteId,
+            mensagem: msg,
+            estadoRevertido: pacienteMem,
+          ));
+        }
       }
 
-      if (executorRemotoOverride != null || _isFirebaseDisponivel) {
+      final possuiViagemEscopada =
+          viagemId != null && viagemId.trim().isNotEmpty;
+      // Quando há viagemId real no Firestore, a persistência ocorre via runTransaction
+      // em /viagens/{viagemId}; aqui despachamos apenas mocks de teste ou fluxo legado sem viagem.
+      final deveEscreverEmUsuarios =
+          executorRemotoOverride != null || !possuiViagemEscopada;
+
+      if (deveEscreverEmUsuarios) {
         unawaited(
           Future.microtask(() async {
             try {
@@ -417,12 +522,12 @@ class PacienteSyncService {
       );
     }
 
-    // 3. Se Firebase estiver disponível e o paciente ainda não estiver em memória, executa no Cloud Firestore
-    if (_isFirebaseDisponivel) {
+    // 2. Transação direta no Cloud Firestore quando não há cache prévio em memória (fluxo legado sem viagemId)
+    if (_isFirebaseDisponivel &&
+        (viagemId == null || viagemId.trim().isEmpty)) {
       final firestore = FirebaseFirestore.instance;
       final docRef = firestore.collection('usuarios').doc(pacienteId);
       try {
-
         return await firestore.runTransaction<ResultadoOperacaoPaciente>(
           (transaction) async {
             final snapshot = await transaction.get(docRef);
@@ -433,9 +538,9 @@ class PacienteSyncService {
             }
 
             final data = snapshot.data()!;
-            final pacienteAtual = PacienteModel.fromMap(data, docId: snapshot.id);
+            final pacienteAtual =
+                PacienteModel.fromMap(data, docId: snapshot.id);
 
-            // Verificação de Idempotência
             if (idempotencyKey != null &&
                 pacienteAtual.ultimaIdempotencyKey == idempotencyKey) {
               return ResultadoOperacaoPaciente.sucesso(
@@ -445,7 +550,6 @@ class PacienteSyncService {
               );
             }
 
-            // Avaliação da máquina pura de estados
             final regra = TransicaoPacienteService.podeTransitar(
               statusAtual: pacienteAtual.status,
               prontoRetornoAtual: pacienteAtual.prontoRetorno,
@@ -457,29 +561,25 @@ class PacienteSyncService {
 
             if (!regra.permitido) {
               return ResultadoOperacaoPaciente.erro(
-                regra.motivoRecusa ?? 'Transição recusada pelas regras do sistema.',
+                regra.motivoRecusa ??
+                    'Transição recusada pelas regras do sistema.',
                 paciente: pacienteAtual,
               );
             }
 
-            // Monta nova janela de reversão caso a ação conceda prazo (300 s ou 60 s)
-            JanelaReversaoModel? novaJanela;
-            if (regra.duracaoJanelaSegundos != null && regra.acaoReversao != null) {
-              novaJanela = JanelaReversaoModel(
-                acao: regra.acaoReversao!,
-                iniciadoEm: agora,
-                expiraEm: agora.add(Duration(seconds: regra.duracaoJanelaSegundos!)),
-                estadoAnterior: pacienteAtual.status,
-                idempotencyKey: idempotencyKey,
-              );
-            }
+            final novaJanela = _criarJanelaReversao(
+              regra: regra,
+              statusAnterior: pacienteAtual.status,
+              agoraUtc: agora,
+              idempotencyKey: idempotencyKey,
+            );
 
-            // Prepara mutação atômica no Firestore (sem poluição de array de histórico)
             final Map<String, dynamic> updateData = {
               'status': regra.novoStatus,
               'prontoRetorno': regra.novoProntoRetorno,
               'ultimaIdempotencyKey': idempotencyKey,
-              'janelaReversao': novaJanela != null ? novaJanela.toMap() : FieldValue.delete(),
+              'janelaReversao':
+                  novaJanela != null ? novaJanela.toMap() : FieldValue.delete(),
               'atualizadoEm': agora.toIso8601String(),
             };
 
@@ -493,14 +593,10 @@ class PacienteSyncService {
               ultimaIdempotencyKey: idempotencyKey,
             );
 
-            _pacientesMemoria[pacienteId] = pacienteAtualizado;
-            final ctrl = _controllersMemoria[pacienteId];
-            if (ctrl != null && !ctrl.isClosed) {
-              ctrl.add(pacienteAtualizado);
-            }
-            if (!_globalController.isClosed) {
-              _globalController.add(pacienteAtualizado);
-            }
+            _notificarMutacaoEmMemoria(
+              paciente: pacienteAtualizado,
+              viagemId: viagemId,
+            );
 
             return ResultadoOperacaoPaciente.sucesso(
               paciente: pacienteAtualizado,
@@ -510,7 +606,6 @@ class PacienteSyncService {
           timeout: const Duration(seconds: 4),
         );
       } catch (e) {
-        // Fallback atômico direto para ambientes Web ou contenção de transação
         try {
           final snapshot = await docRef.get();
           if (!snapshot.exists || snapshot.data() == null) {
@@ -542,27 +637,25 @@ class PacienteSyncService {
 
           if (!regra.permitido) {
             return ResultadoOperacaoPaciente.erro(
-              regra.motivoRecusa ?? 'Transição recusada pelas regras do sistema.',
+              regra.motivoRecusa ??
+                  'Transição recusada pelas regras do sistema.',
               paciente: pacienteAtual,
             );
           }
 
-          JanelaReversaoModel? novaJanela;
-          if (regra.duracaoJanelaSegundos != null && regra.acaoReversao != null) {
-            novaJanela = JanelaReversaoModel(
-              acao: regra.acaoReversao!,
-              iniciadoEm: agora,
-              expiraEm: agora.add(Duration(seconds: regra.duracaoJanelaSegundos!)),
-              estadoAnterior: pacienteAtual.status,
-              idempotencyKey: idempotencyKey,
-            );
-          }
+          final novaJanela = _criarJanelaReversao(
+            regra: regra,
+            statusAnterior: pacienteAtual.status,
+            agoraUtc: agora,
+            idempotencyKey: idempotencyKey,
+          );
 
           final Map<String, dynamic> updateData = {
             'status': regra.novoStatus,
             'prontoRetorno': regra.novoProntoRetorno,
             'ultimaIdempotencyKey': idempotencyKey,
-            'janelaReversao': novaJanela != null ? novaJanela.toMap() : FieldValue.delete(),
+            'janelaReversao':
+                novaJanela != null ? novaJanela.toMap() : FieldValue.delete(),
             'atualizadoEm': agora.toIso8601String(),
           };
 
@@ -576,14 +669,10 @@ class PacienteSyncService {
             ultimaIdempotencyKey: idempotencyKey,
           );
 
-          _pacientesMemoria[pacienteId] = pacienteAtualizado;
-          final ctrl = _controllersMemoria[pacienteId];
-          if (ctrl != null && !ctrl.isClosed) {
-            ctrl.add(pacienteAtualizado);
-          }
-          if (!_globalController.isClosed) {
-            _globalController.add(pacienteAtualizado);
-          }
+          _notificarMutacaoEmMemoria(
+            paciente: pacienteAtualizado,
+            viagemId: viagemId,
+          );
 
           return ResultadoOperacaoPaciente.sucesso(
             paciente: pacienteAtualizado,
@@ -597,17 +686,16 @@ class PacienteSyncService {
       }
     }
 
-    // ------------------------------------------------------------------------
-    // EXECUÇÃO LOCAL EM MEMÓRIA COM SEMÂNTICA ATÔMICA
-    // ------------------------------------------------------------------------
-    final pacienteAtual = _pacientesMemoria[pacienteId];
+    // 3. Execução local em memória (testes e fallback offline) isolada por viagem
+    final pacienteAtual = chaveScoped != null
+        ? _pacientesPorViagemMemoria[chaveScoped]
+        : _pacientesMemoria[pacienteId];
     if (pacienteAtual == null) {
       return const ResultadoOperacaoPaciente.erro(
         'Paciente não localizado no repositório.',
       );
     }
 
-    // Idempotência em memória
     if (idempotencyKey != null &&
         pacienteAtual.ultimaIdempotencyKey == idempotencyKey) {
       return ResultadoOperacaoPaciente.sucesso(
@@ -617,7 +705,6 @@ class PacienteSyncService {
       );
     }
 
-    // Avaliação pela máquina pura de estados
     final regra = TransicaoPacienteService.podeTransitar(
       statusAtual: pacienteAtual.status,
       prontoRetornoAtual: pacienteAtual.prontoRetorno,
@@ -634,16 +721,12 @@ class PacienteSyncService {
       );
     }
 
-    JanelaReversaoModel? novaJanela;
-    if (regra.duracaoJanelaSegundos != null && regra.acaoReversao != null) {
-      novaJanela = JanelaReversaoModel(
-        acao: regra.acaoReversao!,
-        iniciadoEm: agora,
-        expiraEm: agora.add(Duration(seconds: regra.duracaoJanelaSegundos!)),
-        estadoAnterior: pacienteAtual.status,
-        idempotencyKey: idempotencyKey,
-      );
-    }
+    final novaJanela = _criarJanelaReversao(
+      regra: regra,
+      statusAnterior: pacienteAtual.status,
+      agoraUtc: agora,
+      idempotencyKey: idempotencyKey,
+    );
 
     final pacienteAtualizado = pacienteAtual.copyWith(
       status: regra.novoStatus,
@@ -653,11 +736,12 @@ class PacienteSyncService {
       ultimaIdempotencyKey: idempotencyKey,
     );
 
-    _pacientesMemoria[pacienteId] = pacienteAtualizado;
-
-    // Registra no histórico em memória (auditoria)
-    final hist = _historicoMemoria.putIfAbsent(pacienteId, () => []);
+    final hist = _historicoMemoria.putIfAbsent(
+      chaveScoped ?? pacienteId,
+      () => [],
+    );
     hist.add({
+      'viagemId': viagemId,
       'de': pacienteAtual.status,
       'para': regra.novoStatus,
       'acao': acao.name,
@@ -667,14 +751,10 @@ class PacienteSyncService {
       'idempotencyKey': idempotencyKey,
     });
 
-    // Notifica ouvintes na Stream
-    final ctrl = _obterController(pacienteId);
-    if (!ctrl.isClosed) {
-      ctrl.add(pacienteAtualizado);
-    }
-    if (!_globalController.isClosed) {
-      _globalController.add(pacienteAtualizado);
-    }
+    _notificarMutacaoEmMemoria(
+      paciente: pacienteAtualizado,
+      viagemId: viagemId,
+    );
 
     return ResultadoOperacaoPaciente.sucesso(
       paciente: pacienteAtualizado,
@@ -712,6 +792,7 @@ class PacienteSyncService {
     required String pacienteId,
     required String atorId,
     required String atorRole,
+    String? viagemId,
     String? idempotencyKey,
   }) {
     return _executarTransicao(
@@ -719,6 +800,7 @@ class PacienteSyncService {
       acao: AcaoTransicao.solicitarCancelamento,
       atorId: atorId,
       atorRole: atorRole,
+      viagemId: viagemId,
       idempotencyKey: idempotencyKey,
     );
   }
@@ -728,6 +810,7 @@ class PacienteSyncService {
     required String pacienteId,
     required String atorId,
     required String atorRole,
+    String? viagemId,
     String? idempotencyKey,
   }) {
     return _executarTransicao(
@@ -735,6 +818,7 @@ class PacienteSyncService {
       acao: AcaoTransicao.desfazerCancelamento,
       atorId: atorId,
       atorRole: atorRole,
+      viagemId: viagemId,
       idempotencyKey: idempotencyKey,
     );
   }
@@ -744,6 +828,7 @@ class PacienteSyncService {
     required String pacienteId,
     required String atorId,
     required String atorRole,
+    String? viagemId,
     String? idempotencyKey,
   }) {
     return _executarTransicao(
@@ -751,6 +836,7 @@ class PacienteSyncService {
       acao: AcaoTransicao.sinalizarPronto,
       atorId: atorId,
       atorRole: atorRole,
+      viagemId: viagemId,
       idempotencyKey: idempotencyKey,
     );
   }
@@ -760,6 +846,7 @@ class PacienteSyncService {
     required String pacienteId,
     required String atorId,
     required String atorRole,
+    String? viagemId,
     String? idempotencyKey,
   }) {
     return _executarTransicao(
@@ -767,6 +854,7 @@ class PacienteSyncService {
       acao: AcaoTransicao.desfazerPronto,
       atorId: atorId,
       atorRole: atorRole,
+      viagemId: viagemId,
       idempotencyKey: idempotencyKey,
     );
   }
@@ -776,12 +864,14 @@ class PacienteSyncService {
     required String pacienteId,
     required String motoristaId,
     required AcaoTransicao acao,
+    String? viagemId,
   }) {
     return _executarTransicao(
       pacienteId: pacienteId,
       acao: acao,
       atorId: motoristaId,
       atorRole: 'motorista',
+      viagemId: viagemId,
     );
   }
 
@@ -790,6 +880,7 @@ class PacienteSyncService {
   Future<ResultadoOperacaoPaciente> confirmarEmbarqueMotorista({
     required String pacienteId,
     required String motoristaId,
+    String? viagemId,
     bool reembarqueVolta = false,
   }) {
     return _executarTransicao(
@@ -799,6 +890,7 @@ class PacienteSyncService {
           : AcaoTransicao.motoristaEmbarcarIda,
       atorId: motoristaId,
       atorRole: 'motorista',
+      viagemId: viagemId,
     );
   }
 }

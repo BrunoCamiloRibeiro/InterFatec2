@@ -73,6 +73,7 @@ import 'package:crypto/crypto.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 
+import '../models/janela_reversao_model.dart';
 import '../models/paciente_model.dart';
 import '../models/sessao_veiculo_model.dart';
 import '../models/user_role.dart';
@@ -342,10 +343,87 @@ class ViagemService {
   bool _inicializado = false;
   bool _escutandoFirestore = false;
   bool _sessaoFinalizadaPeloMotorista = false;
-  StreamSubscription<PacienteModel>? _subSyncPacientesInterno;
+  StreamSubscription<({String? viagemId, PacienteModel paciente})>?
+      _subSyncPacientesInterno;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _subVeiculosRemoto;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _subPacientesRemoto;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _subViagensRemoto;
+
+  /// Cache cadastral de pacientes (somente dados de perfil; status pertence a cada viagem).
+  final Map<String, PacienteModel> _perfisPacientesPorId = {};
+
+  /// Viagens com transação em voo no Firestore para evitar flickering por snapshots pré-commit.
+  final Set<String> _viagensComEscritaEmVoo = {};
+
+  /// Retorna os dados cadastrais do paciente em cache, se disponíveis.
+  PacienteModel? obterPerfilCadastralPaciente(String pacienteId) =>
+      _perfisPacientesPorId[pacienteId];
+
+  void _sincronizarPassageiroEmMemoriaPorViagem(
+    String viagemId,
+    PassageiroViagemModel pv,
+  ) {
+    if (viagemId.trim().isEmpty ||
+        viagemId.startsWith('sessao_ativa_') ||
+        pv.pacienteId.trim().isEmpty) {
+      return;
+    }
+    final perfil = _perfisPacientesPorId[pv.pacienteId];
+    final memAnterior = PacienteSyncService().obterPacienteMemoria(
+      pv.pacienteId,
+      viagemId: viagemId,
+    );
+    PacienteSyncService().sincronizarPassageiroDeViagemEmMemoria(
+      viagemId,
+      PacienteModel(
+        id: pv.pacienteId,
+        nome: pv.pacienteNome.isNotEmpty
+            ? pv.pacienteNome
+            : (perfil?.nome ?? memAnterior?.nome ?? ''),
+        cpf: (pv.pacienteCpf != null && pv.pacienteCpf!.isNotEmpty)
+            ? pv.pacienteCpf!
+            : (perfil?.cpf ?? memAnterior?.cpf ?? ''),
+        telefone:
+            (pv.pacienteTelefone != null && pv.pacienteTelefone!.isNotEmpty)
+            ? pv.pacienteTelefone!
+            : (perfil?.telefone ??
+                  memAnterior?.telefone ??
+                  pv.acompanhanteTelefone ??
+                  ''),
+        enderecoPaciente: pv.localOrigem.isNotEmpty
+            ? pv.localOrigem
+            : (perfil?.enderecoPaciente ??
+                  memAnterior?.enderecoPaciente ??
+                  ''),
+        localSaida: pv.localOrigem.isNotEmpty
+            ? pv.localOrigem
+            : (perfil?.localSaida ?? memAnterior?.localSaida ?? ''),
+        localConsulta: pv.localDestino.isNotEmpty
+            ? pv.localDestino
+            : (perfil?.localConsulta ?? memAnterior?.localConsulta ?? ''),
+        horarioConsulta: pv.horarioAtendimento.isNotEmpty
+            ? pv.horarioAtendimento
+            : (perfil?.horarioConsulta ?? memAnterior?.horarioConsulta ?? ''),
+        nomeAcompanhante:
+            (pv.acompanhanteNome != null && pv.acompanhanteNome!.isNotEmpty)
+            ? pv.acompanhanteNome
+            : (perfil?.nomeAcompanhante ?? memAnterior?.nomeAcompanhante),
+        cpfAcompanhante:
+            perfil?.cpfAcompanhante ?? memAnterior?.cpfAcompanhante,
+        telAcompanhante:
+            (pv.acompanhanteTelefone != null &&
+                pv.acompanhanteTelefone!.isNotEmpty)
+            ? pv.acompanhanteTelefone
+            : (perfil?.telAcompanhante ?? memAnterior?.telAcompanhante),
+        rg: perfil?.rg ?? memAnterior?.rg,
+        cnh: perfil?.cnh ?? memAnterior?.cnh,
+        status: pv.statusEmbarque,
+        prontoRetorno: pv.prontoRetorno,
+        janelaReversao: pv.janelaReversao,
+        ultimaIdempotencyKey: memAnterior?.ultimaIdempotencyKey,
+      ),
+    );
+  }
 
   /// Mapa de sessões ativas por motorista para isolamento de concorrência real.
   final Map<String, SessaoVeiculoModel> _sessoesAtivasPorMotorista = {};
@@ -633,10 +711,14 @@ class ViagemService {
     if (viagem.passageiros.isNotEmpty) {
       return viagem.passageiros.map((pv) {
         final pInf = mapaInformados[pv.pacienteId];
-        final pMem = PacienteSyncService().obterPacienteMemoria(pv.pacienteId);
-        final pBase = pInf ?? pMem;
+        final pMem = PacienteSyncService().obterPacienteMemoria(
+          pv.pacienteId,
+          viagemId: viagem.id,
+        );
+        final pBase = pInf ?? pMem ?? _perfisPacientesPorId[pv.pacienteId];
         final st = resolverStatusEfetivoPassageiro(
           pv,
+          viagemId: viagem.id,
           pacientesContexto: pacientesInformados,
         );
         return PacienteModel(
@@ -647,9 +729,12 @@ class ViagemService {
           cpf: (pv.pacienteCpf != null && pv.pacienteCpf!.isNotEmpty)
               ? pv.pacienteCpf!
               : (pBase?.cpf ?? ''),
-          telefone: (pBase != null && pBase.telefone.isNotEmpty)
-              ? pBase.telefone
-              : (pv.acompanhanteTelefone ?? ''),
+          telefone:
+              (pv.pacienteTelefone != null && pv.pacienteTelefone!.isNotEmpty)
+              ? pv.pacienteTelefone!
+              : ((pBase != null && pBase.telefone.isNotEmpty)
+                    ? pBase.telefone
+                    : (pv.acompanhanteTelefone ?? '')),
           enderecoPaciente: pv.localOrigem.isNotEmpty
               ? pv.localOrigem
               : (pBase?.enderecoPaciente ?? ''),
@@ -674,8 +759,8 @@ class ViagemService {
           rg: pBase?.rg,
           cnh: pBase?.cnh,
           status: st,
-          prontoRetorno: pBase?.prontoRetorno ?? false,
-          janelaReversao: pBase?.janelaReversao,
+          prontoRetorno: pv.prontoRetorno || (pMem?.prontoRetorno ?? false),
+          janelaReversao: pv.janelaReversao ?? pMem?.janelaReversao,
         );
       }).toList();
     }
@@ -686,13 +771,23 @@ class ViagemService {
     return placa.replaceAll(RegExp(r'[^A-Za-z0-9]'), '').toUpperCase();
   }
 
-  /// Resolve o status efetivo de um passageiro (considerando memória de sincronização e contexto).
+  /// Resolve o status efetivo de um passageiro (isolado por [viagemId] quando informado).
   int resolverStatusEfetivoPassageiro(
     PassageiroViagemModel p, {
+    String? viagemId,
     List<PacienteModel>? pacientesContexto,
   }) {
+    final possuiEscopo = viagemId != null && viagemId.trim().isNotEmpty;
+    final pacSync = PacienteSyncService().obterPacienteMemoria(
+      p.pacienteId,
+      viagemId: viagemId,
+    );
+    if (possuiEscopo && pacSync != null) {
+      return pacSync.status;
+    }
+
     int statusEfetivo = p.statusEmbarque;
-    if (pacientesContexto != null) {
+    if (!possuiEscopo && pacientesContexto != null) {
       final pacCtx =
           pacientesContexto.where((x) => x.id == p.pacienteId).firstOrNull;
       if (pacCtx != null) {
@@ -704,8 +799,7 @@ class ViagemService {
         }
       }
     }
-    final pacSync = PacienteSyncService().obterPacienteMemoria(p.pacienteId);
-    if (pacSync != null) {
+    if (!possuiEscopo && pacSync != null) {
       if (pacSync.status == 5 || statusEfetivo == 5) return 5;
       if (pacSync.status > statusEfetivo &&
           !(statusEfetivo == 0 && pacSync.status == 4)) {
@@ -726,6 +820,7 @@ class ViagemService {
       for (final p in viagem.passageiros) {
         final st = resolverStatusEfetivoPassageiro(
           p,
+          viagemId: viagem.id,
           pacientesContexto: pacientesContexto,
         );
         if (st >= 1 && st <= 3) {
@@ -762,6 +857,7 @@ class ViagemService {
       final naoCancelados = viagem.passageiros.where((p) {
         final st = resolverStatusEfetivoPassageiro(
           p,
+          viagemId: viagem.id,
           pacientesContexto: pacientesContexto,
         );
         return st != 5;
@@ -770,6 +866,7 @@ class ViagemService {
       return naoCancelados.every((p) {
         final st = resolverStatusEfetivoPassageiro(
           p,
+          viagemId: viagem.id,
           pacientesContexto: pacientesContexto,
         );
         return st == 4;
@@ -787,7 +884,10 @@ class ViagemService {
     if (viagem.passageirosIds.isNotEmpty) {
       bool algumRegistrado = false;
       for (final id in viagem.passageirosIds) {
-        final pacSync = PacienteSyncService().obterPacienteMemoria(id);
+        final pacSync = PacienteSyncService().obterPacienteMemoria(
+          id,
+          viagemId: viagem.id,
+        );
         if (pacSync != null) {
           algumRegistrado = true;
           if (pacSync.status != 4 && pacSync.status != 5) {
@@ -879,11 +979,21 @@ class ViagemService {
   // --------------------------------------------------------------------------
   void _inicializarDadosBase() {
     _subSyncPacientesInterno ??=
-        PacienteSyncService().alteracoesGlobaisStream.listen((p) {
+        PacienteSyncService().alteracoesPorViagemStream.listen((evento) {
+      // Eventos já escopados por viagemId são persistidos diretamente pelo chamador;
+      // aqui tratamos apenas eventos legados sem viagemId.
+      if (evento.viagemId != null && evento.viagemId!.trim().isNotEmpty) {
+        return;
+      }
+      final p = evento.paciente;
       atualizarStatusPassageiroNaViagem(
         viagemId: '',
         pacienteId: p.id,
         novoStatus: p.status,
+        prontoRetorno: p.prontoRetorno,
+        janelaReversao: p.janelaReversao,
+        limparJanelaReversao: p.janelaReversao == null,
+        persistirRemoto: false,
       );
     });
     // Interrompe se a lista já tiver sido inicializada anteriormente
@@ -922,26 +1032,11 @@ class ViagemService {
           .where('role', isEqualTo: 'paciente')
           .snapshots()
           .listen((snap) {
+        // Mantém apenas cache cadastral (nome, CPF, telefone, endereço);
+        // status operacionais residem exclusivamente em /viagens/{id}.passageiros.
         for (final d in snap.docs) {
           final pac = PacienteModel.fromMap(d.data(), docId: d.id);
-          PacienteSyncService().atualizarPacienteEmMemoria(pac);
-          final podePropagar = pac.status != 4 ||
-              _todasViagensMemoria.any(
-                (v) =>
-                    !v.isCancelada &&
-                    !v.isConcluida &&
-                    v.passageiros.any(
-                      (p) => p.pacienteId == pac.id && p.statusEmbarque > 0,
-                    ),
-              );
-          if (podePropagar) {
-            atualizarStatusPassageiroNaViagem(
-              viagemId: '',
-              pacienteId: pac.id,
-              novoStatus: pac.status,
-              persistirRemoto: false,
-            );
-          }
+          _perfisPacientesPorId[d.id] = pac;
         }
       }, onError: (Object e) {
         _tratarFalhaFirestore('escutar_pacientes', e);
@@ -1018,6 +1113,18 @@ class ViagemService {
     final processadas = <ViagemModel>[];
     for (var v in viagensCarregadas) {
       if (v.id.startsWith('sessao_ativa_')) continue;
+      if (_viagensComEscritaEmVoo.contains(v.id)) {
+        final localEmVoo = _todasViagensMemoria
+            .where((lv) => lv.id == v.id)
+            .firstOrNull;
+        if (localEmVoo != null) {
+          processadas.add(localEmVoo);
+          continue;
+        }
+      }
+      for (final pv in v.passageiros) {
+        _sincronizarPassageiroEmMemoriaPorViagem(v.id, pv);
+      }
       if (!v.isPlanejada &&
           !v.isCancelada &&
           !v.isConcluida &&
@@ -1575,6 +1682,15 @@ class ViagemService {
       } else {
         _viagensAtivasMemoria[idxAtiva] = vAtivada;
       }
+      for (final pv in vAtivada.passageiros) {
+        if (PacienteSyncService().obterPacienteMemoria(
+              pv.pacienteId,
+              viagemId: vAtivada.id,
+            ) ==
+            null) {
+          _sincronizarPassageiroEmMemoriaPorViagem(vAtivada.id, pv);
+        }
+      }
       viagensAtivadasParaPersistir.add(vAtivada);
       viagensIdsSessao.add(vAtivada.id);
       final idx = _todasViagensMemoria.indexWhere((tv) => tv.id == v.id);
@@ -2091,6 +2207,15 @@ class ViagemService {
       );
       _todasViagensMemoria[i] = vAtivada;
       viagensExistentesParaPersistir.add(vAtivada);
+      for (final pv in vAtivada.passageiros) {
+        if (PacienteSyncService().obterPacienteMemoria(
+              pv.pacienteId,
+              viagemId: vAtivada.id,
+            ) ==
+            null) {
+          _sincronizarPassageiroEmMemoriaPorViagem(vAtivada.id, pv);
+        }
+      }
 
       final idxAtiva = _viagensAtivasMemoria.indexWhere((va) => va.id == vAtivada.id);
       if (idxAtiva != -1) {
@@ -2267,6 +2392,9 @@ class ViagemService {
     required String viagemId,
     required String pacienteId,
     required int novoStatus,
+    bool? prontoRetorno,
+    JanelaReversaoModel? janelaReversao,
+    bool limparJanelaReversao = false,
     bool persistirRemoto = true,
   }) async {
     if (pacienteId.isEmpty) return;
@@ -2274,32 +2402,66 @@ class ViagemService {
     final todasViagensSnapshot = List<ViagemModel>.from(_todasViagensMemoria);
     final viagensAtivasSnapshot = List<ViagemModel>.from(_viagensAtivasMemoria);
     final viagemAtivaSnapshot = _viagemAtiva;
+    final hasExplicitViagem = viagemId.trim().isNotEmpty;
 
-    ViagemModel? atualizarModelo(ViagemModel v, {bool preservarCodigosSeConcluir = false}) {
+    ViagemModel? atualizarModelo(
+      ViagemModel v, {
+      bool preservarCodigosSeConcluir = false,
+    }) {
       if (v.passageiros.isEmpty) return null;
       bool mudou = false;
-      final novosPassageiros = v.passageiros.map((p) {
-        if (p.pacienteId == pacienteId && p.statusEmbarque != novoStatus) {
-          mudou = true;
-          return p.copyWith(statusEmbarque: novoStatus);
+      final novosPassageiros = <PassageiroViagemModel>[];
+      PassageiroViagemModel? passageiroModificado;
+
+      for (final p in v.passageiros) {
+        if (p.pacienteId == pacienteId) {
+          final bool novoPronto = prontoRetorno ??
+              ((novoStatus >= 3 || novoStatus == 0) ? false : p.prontoRetorno);
+          final bool deveLimparJanela =
+              limparJanelaReversao || (novoStatus != 2 && novoStatus != 5);
+          final JanelaReversaoModel? novaJanela =
+              deveLimparJanela ? null : (janelaReversao ?? p.janelaReversao);
+
+          final mudouPassageiro = p.statusEmbarque != novoStatus ||
+              p.prontoRetorno != novoPronto ||
+              p.janelaReversao != novaJanela;
+
+          if (mudouPassageiro) {
+            mudou = true;
+            final atualizadoP = p.copyWith(
+              statusEmbarque: novoStatus,
+              prontoRetorno: novoPronto,
+              janelaReversao: novaJanela,
+              limparJanelaReversao: novaJanela == null,
+            );
+            passageiroModificado = atualizadoP;
+            novosPassageiros.add(atualizadoP);
+          } else {
+            novosPassageiros.add(p);
+          }
+          continue;
         }
-        final stEfetivo = resolverStatusEfetivoPassageiro(p);
-        if (p.statusEmbarque != stEfetivo) {
-          mudou = true;
-          return p.copyWith(statusEmbarque: stEfetivo);
-        }
-        return p;
-      }).toList();
+        // Mantém o estado individual de cada passageiro isolado nesta viagem.
+        novosPassageiros.add(p);
+      }
+
       if (!mudou) return null;
+      if (passageiroModificado != null) {
+        _sincronizarPassageiroEmMemoriaPorViagem(v.id, passageiroModificado);
+      }
+
       var atualizada = v.copyWith(passageiros: novosPassageiros);
       if (!atualizada.isCancelada &&
           !atualizada.isConcluida &&
           todosPacientesVoltaram(atualizada)) {
-        final codigosOriginais = Map<String, String>.from(atualizada.codigosAcesso);
+        final codigosOriginais = Map<String, String>.from(
+          atualizada.codigosAcesso,
+        );
         atualizada = atualizada.copyWith(
           status: 'encerrada',
           dataHoraFim: DateTime.now(),
-          codigosAcesso: preservarCodigosSeConcluir ? codigosOriginais : const {},
+          codigosAcesso:
+              preservarCodigosSeConcluir ? codigosOriginais : const {},
         );
       }
       return atualizada;
@@ -2310,10 +2472,12 @@ class ViagemService {
     bool alterouTodas = false;
     for (int i = 0; i < _todasViagensMemoria.length; i++) {
       final v = _todasViagensMemoria[i];
-      if (v.id == viagemId ||
-          (!v.isCancelada &&
-              !v.isConcluida &&
-              v.passageiros.any((p) => p.pacienteId == pacienteId))) {
+      final corresponde = hasExplicitViagem
+          ? v.id == viagemId
+          : (!v.isCancelada &&
+                !v.isConcluida &&
+                v.passageiros.any((p) => p.pacienteId == pacienteId));
+      if (corresponde) {
         final codigosAntes = Map<String, String>.from(v.codigosAcesso);
         final att = atualizarModelo(v);
         if (att != null) {
@@ -2340,12 +2504,17 @@ class ViagemService {
     bool alterouAtivas = false;
     for (int i = _viagensAtivasMemoria.length - 1; i >= 0; i--) {
       final v = _viagensAtivasMemoria[i];
-      if (v.id == viagemId || v.passageiros.any((p) => p.pacienteId == pacienteId)) {
+      final corresponde = hasExplicitViagem
+          ? v.id == viagemId
+          : v.passageiros.any((p) => p.pacienteId == pacienteId);
+      if (corresponde) {
         final codigosAntes = Map<String, String>.from(v.codigosAcesso);
         final att = atualizarModelo(v);
         if (att != null) {
           if (att.isConcluida) {
-            final idxConcl = _viagensConcluidasNaSessao.indexWhere((vc) => vc.id == att.id);
+            final idxConcl = _viagensConcluidasNaSessao.indexWhere(
+              (vc) => vc.id == att.id,
+            );
             final enriquecida = _enriquecerViagemParaRelatorio(
               att.copyWith(codigosAcesso: codigosAntes),
               referenciaSessao: v,
@@ -2367,15 +2536,20 @@ class ViagemService {
       }
     }
 
-    if (_viagemAtiva != null &&
-        (_viagemAtiva!.id == viagemId ||
-            _viagemAtiva!.passageiros.any((p) => p.pacienteId == pacienteId))) {
+    final correspondeViagemAtiva = _viagemAtiva != null &&
+        (hasExplicitViagem
+            ? _viagemAtiva!.id == viagemId
+            : _viagemAtiva!.passageiros.any((p) => p.pacienteId == pacienteId));
+
+    if (correspondeViagemAtiva) {
       final vAntes = _viagemAtiva!;
       final codigosAntes = Map<String, String>.from(vAntes.codigosAcesso);
       final att = atualizarModelo(vAntes);
       if (att != null) {
         if (att.isConcluida) {
-          final idxConcl = _viagensConcluidasNaSessao.indexWhere((vc) => vc.id == att.id);
+          final idxConcl = _viagensConcluidasNaSessao.indexWhere(
+            (vc) => vc.id == att.id,
+          );
           final enriquecida = _enriquecerViagemParaRelatorio(
             att.copyWith(codigosAcesso: codigosAntes),
             referenciaSessao: vAntes,
@@ -2433,6 +2607,18 @@ class ViagemService {
         ..clear()
         ..addAll(viagensAtivasSnapshot);
       _viagemAtiva = viagemAtivaSnapshot;
+      for (final vp in viagensParaPersistir) {
+        final vOrig = todasViagensSnapshot
+                .where((tv) => tv.id == vp.id)
+                .firstOrNull ??
+            viagensAtivasSnapshot.where((va) => va.id == vp.id).firstOrNull;
+        final pOrig = vOrig?.passageiros
+            .where((p) => p.pacienteId == pacienteId)
+            .firstOrNull;
+        if (vOrig != null && pOrig != null) {
+          _sincronizarPassageiroEmMemoriaPorViagem(vOrig.id, pOrig);
+        }
+      }
       _todasViagensController.add(List.unmodifiable(_todasViagensMemoria));
       _viagensAtivasController.add(List.unmodifiable(_viagensAtivasMemoria));
       _viagemAtivaController.add(_viagemAtiva);
@@ -2441,46 +2627,104 @@ class ViagemService {
     if (persistirRemoto &&
         viagensParaPersistir.isNotEmpty &&
         (executorPersistenciaRemotaOverride != null || _isFirebaseDisponivel())) {
+      final idsEmVoo = viagensParaPersistir
+          .map((vp) => vp.id)
+          .where((id) => !id.startsWith('sessao_ativa_'))
+          .toList();
+      _viagensComEscritaEmVoo.addAll(idsEmVoo);
       unawaited(
         Future.microtask(() async {
-          for (final vp in viagensParaPersistir) {
-            if (vp.id.startsWith('sessao_ativa_')) continue;
-            try {
-              final dados = <String, dynamic>{
-                'passageiros': vp.passageiros.map((p) => p.toMap()).toList(),
-                'status': vp.status,
-              };
-              if (vp.isConcluida) {
-                dados['dataHoraFim'] =
-                    (vp.dataHoraFim ?? DateTime.now()).toIso8601String();
-                dados['codigosAcesso'] = <String, dynamic>{};
-              }
-              if (executorPersistenciaRemotaOverride != null) {
-                await executorPersistenciaRemotaOverride!(
-                  'atualizar_status_passageiro_viagem',
-                  dados,
-                );
+          try {
+            for (final vp in viagensParaPersistir) {
+              if (vp.id.startsWith('sessao_ativa_')) continue;
+              try {
+                final dados = <String, dynamic>{
+                  'passageiros': vp.passageiros.map((p) => p.toMap()).toList(),
+                  'status': vp.status,
+                };
+                if (vp.isConcluida) {
+                  dados['dataHoraFim'] =
+                      (vp.dataHoraFim ?? DateTime.now()).toIso8601String();
+                  dados['codigosAcesso'] = <String, dynamic>{};
+                }
+                if (executorPersistenciaRemotaOverride != null) {
+                  await executorPersistenciaRemotaOverride!(
+                    'atualizar_status_passageiro_viagem',
+                    dados,
+                  );
+                  _totalGravacoesFirestoreJornada++;
+                  continue;
+                }
+                final pLocal = vp.passageiros
+                    .where((p) => p.pacienteId == pacienteId)
+                    .firstOrNull;
+                final docRef = FirebaseFirestore.instance
+                    .collection('viagens')
+                    .doc(vp.id);
+                await FirebaseFirestore.instance.runTransaction((tx) async {
+                  final snap = await tx.get(docRef);
+                  if (!snap.exists || snap.data() == null || pLocal == null) {
+                    tx.set(docRef, dados, SetOptions(merge: true));
+                    return;
+                  }
+                  final remoto = ViagemModel.fromMap(
+                    snap.data()!,
+                    docId: snap.id,
+                  );
+                  final basePassageiros = remoto.passageiros.isNotEmpty
+                      ? remoto.passageiros
+                      : vp.passageiros;
+                  bool encontrou = false;
+                  final passageirosMerged = basePassageiros.map((p) {
+                    if (p.pacienteId == pacienteId) {
+                      encontrou = true;
+                      return pLocal;
+                    }
+                    return p;
+                  }).toList();
+                  if (!encontrou) {
+                    passageirosMerged.add(pLocal);
+                  }
+
+                  final ativos = passageirosMerged
+                      .where((p) => p.statusEmbarque != 5)
+                      .toList();
+                  final todosConcluidos = ativos.isEmpty ||
+                      ativos.every((p) => p.statusEmbarque == 4);
+
+                  final updateDados = <String, dynamic>{
+                    'passageiros':
+                        passageirosMerged.map((p) => p.toMap()).toList(),
+                    'atualizadoEm': FieldValue.serverTimestamp(),
+                  };
+                  if (!remoto.isCancelada &&
+                      !remoto.isConcluida &&
+                      passageirosMerged.isNotEmpty &&
+                      todosConcluidos) {
+                    updateDados['status'] = 'encerrada';
+                    updateDados['dataHoraFim'] =
+                        (vp.dataHoraFim ?? DateTime.now()).toIso8601String();
+                    updateDados['codigosAcesso'] = <String, dynamic>{};
+                  }
+                  tx.update(docRef, updateDados);
+                });
                 _totalGravacoesFirestoreJornada++;
-                continue;
+              } on FirebaseException catch (e) {
+                _tratarFalhaFirestore(
+                  'atualizar_status_passageiro_viagem',
+                  e,
+                  onRollback: reverterStatusPassageiro,
+                );
+              } catch (e) {
+                _tratarFalhaFirestore(
+                  'atualizar_status_passageiro_viagem',
+                  e,
+                  onRollback: reverterStatusPassageiro,
+                );
               }
-              await FirebaseFirestore.instance
-                  .collection('viagens')
-                  .doc(vp.id)
-                  .set(dados, SetOptions(merge: true));
-              _totalGravacoesFirestoreJornada++;
-            } on FirebaseException catch (e) {
-              _tratarFalhaFirestore(
-                'atualizar_status_passageiro_viagem',
-                e,
-                onRollback: reverterStatusPassageiro,
-              );
-            } catch (e) {
-              _tratarFalhaFirestore(
-                'atualizar_status_passageiro_viagem',
-                e,
-                onRollback: reverterStatusPassageiro,
-              );
             }
+          } finally {
+            _viagensComEscritaEmVoo.removeAll(idsEmVoo);
           }
         }),
       );
@@ -2534,6 +2778,7 @@ class ViagemService {
     final passageirosSincronizados = viagem.passageiros.map((p) {
       final st = resolverStatusEfetivoPassageiro(
         p,
+        viagemId: viagem.id,
         pacientesContexto: pacientes,
       );
       return p.copyWith(statusEmbarque: st);
@@ -3187,7 +3432,11 @@ class ViagemService {
       passageiros
           .where((p) => p.statusEmbarque == 0)
           .map((p) => p.pacienteId),
+      viagemId: novaViagem.id,
     );
+    for (final pv in novaViagem.passageiros) {
+      _sincronizarPassageiroEmMemoriaPorViagem(novaViagem.id, pv);
+    }
     _todasViagensMemoria.add(novaViagem);
     _todasViagensController.add(List.unmodifiable(_todasViagensMemoria));
 
@@ -3352,7 +3601,11 @@ class ViagemService {
       viagemAtualizada.passageiros
           .where((p) => p.statusEmbarque == 0)
           .map((p) => p.pacienteId),
+      viagemId: viagemAtualizada.id,
     );
+    for (final pv in viagemAtualizada.passageiros) {
+      _sincronizarPassageiroEmMemoriaPorViagem(viagemAtualizada.id, pv);
+    }
     _todasViagensMemoria[index] = viagemAtualizada;
     _todasViagensController.add(List.unmodifiable(_todasViagensMemoria));
 
@@ -3540,6 +3793,7 @@ class ViagemService {
           .toList();
       PacienteSyncService().resetarStatusPacientesParaNovaViagem(
         passageirosResetados.map((p) => p.pacienteId),
+        viagemId: idDuplicada,
       );
 
       final novaViagem = ViagemModel(
@@ -3565,6 +3819,9 @@ class ViagemService {
 
       _todasViagensMemoria.add(novaViagem);
       duplicadas.add(novaViagem);
+      for (final pv in novaViagem.passageiros) {
+        _sincronizarPassageiroEmMemoriaPorViagem(novaViagem.id, pv);
+      }
 
       if (_isFirebaseDisponivel()) {
         try {
@@ -3628,7 +3885,11 @@ class ViagemService {
       viagemAtualizada.passageiros
           .where((p) => p.statusEmbarque == 0)
           .map((p) => p.pacienteId),
+      viagemId: viagemAtualizada.id,
     );
+    for (final pv in viagemAtualizada.passageiros) {
+      _sincronizarPassageiroEmMemoriaPorViagem(viagemAtualizada.id, pv);
+    }
     _todasViagensMemoria[index] = viagemAtualizada;
     _todasViagensController.add(List.unmodifiable(_todasViagensMemoria));
 
@@ -3690,6 +3951,8 @@ class ViagemService {
     // Restaura a sessão ativa
     _sessaoFinalizadaPeloMotorista = false;
     _sessoesAtivasPorMotorista.clear();
+    _perfisPacientesPorId.clear();
+    _viagensComEscritaEmVoo.clear();
     _totalGravacoesFirestoreJornada = 0;
     executorPersistenciaRemotaOverride = null;
     _sessaoAtiva = sessaoAtivaInicial;
@@ -3721,6 +3984,22 @@ class ViagemService {
 
     // Restaura a viagem ativa para o valor parametrizado
     _viagemAtiva = viagemAtivaInicial ?? (_viagensAtivasMemoria.isNotEmpty ? _viagensAtivasMemoria.first : null);
+    for (final v in _todasViagensMemoria) {
+      for (final pv in v.passageiros) {
+        _sincronizarPassageiroEmMemoriaPorViagem(v.id, pv);
+      }
+    }
+    for (final v in _viagensAtivasMemoria) {
+      for (final pv in v.passageiros) {
+        if (PacienteSyncService().obterPacienteMemoria(
+              pv.pacienteId,
+              viagemId: v.id,
+            ) ==
+            null) {
+          _sincronizarPassageiroEmMemoriaPorViagem(v.id, pv);
+        }
+      }
+    }
     // Emite o novo estado na stream de viagem ativa
     _viagemAtivaController.add(_viagemAtiva);
     // Limpa a lista interna de veículos da memória

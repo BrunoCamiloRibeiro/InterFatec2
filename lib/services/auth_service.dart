@@ -256,6 +256,10 @@ class FirebaseAuthService implements AuthService {
 
   // Identificador da sessão ativa de paciente/acompanhante autenticado via código temporário
   static String? _pacienteLogadoId;
+  static String? _pacienteViagemId;
+
+  /// Viagem à qual o paciente autenticado via código temporário pertence na sessão atual.
+  static String? get pacienteViagemId => _pacienteViagemId;
 
   // Identificador da sessão ativa de usuário operacional (motorista/admin) em homologação
   static String? _usuarioOperacionalLogadoId;
@@ -401,6 +405,7 @@ class FirebaseAuthService implements AuthService {
   // Esvazia o mapa estático de cache e reseta a sessão do paciente
   void clearRoleCache() {
     _pacienteLogadoId = null;
+    _pacienteViagemId = null;
     _usuarioOperacionalLogadoId = null;
     _usuarioOperacionalDocId = null;
     motoristaEmViagemStatic = null;
@@ -1136,6 +1141,7 @@ class FirebaseAuthService implements AuthService {
 
             // Vincula o papel de paciente no cache estático de RBAC
             _pacienteLogadoId = paciente.id;
+            _pacienteViagemId = viagem.id;
             _roleCache[paciente.id] = UserRole.paciente;
             return UserRole.paciente;
           }
@@ -1158,6 +1164,7 @@ class FirebaseAuthService implements AuthService {
               ip: ipOrigem,
             );
             _pacienteLogadoId = pv.pacienteId;
+            _pacienteViagemId = viagem.id;
             _roleCache[pv.pacienteId] = UserRole.paciente;
             return UserRole.paciente;
           }

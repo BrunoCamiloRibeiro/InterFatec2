@@ -109,8 +109,8 @@ class _PacienteState extends State<Paciente> {
   late final PacienteSyncService _syncService;
   late Stream<PacienteModel?> _pacienteStream;
   StreamSubscription<List<ViagemModel>>? _viagensSub;
-  StreamSubscription<PacienteModel>? _syncGlobalSub;
-  StreamSubscription<({String pacienteId, String mensagem, PacienteModel estadoRevertido})>? _falhasSyncSub;
+  StreamSubscription<({String? viagemId, PacienteModel paciente})>? _syncPorViagemSub;
+  StreamSubscription<({String? viagemId, String pacienteId, String mensagem, PacienteModel estadoRevertido})>? _falhasSyncSub;
   bool _processandoAcao = false;
 
   @override
@@ -123,12 +123,26 @@ class _PacienteState extends State<Paciente> {
         setState(() {});
       }
     });
-    _syncGlobalSub = _syncService.alteracoesGlobaisStream.listen((_) {
+    _syncPorViagemSub = _syncService.alteracoesPorViagemStream.listen((_) {
       if (mounted) {
         setState(() {});
       }
     });
-    _falhasSyncSub = _syncService.falhasSincronizacaoStream.listen((falha) {
+    _falhasSyncSub = _syncService.falhasPorViagemStream.listen((falha) {
+      final idViagem = falha.viagemId;
+      if (idViagem != null && idViagem.isNotEmpty) {
+        unawaited(
+          ViagemService().atualizarStatusPassageiroNaViagem(
+            viagemId: idViagem,
+            pacienteId: falha.pacienteId,
+            novoStatus: falha.estadoRevertido.status,
+            prontoRetorno: falha.estadoRevertido.prontoRetorno,
+            janelaReversao: falha.estadoRevertido.janelaReversao,
+            limparJanelaReversao: falha.estadoRevertido.janelaReversao == null,
+            persistirRemoto: false,
+          ),
+        );
+      }
       if (mounted) {
         setState(() {});
         ScaffoldMessenger.of(context)
@@ -146,7 +160,7 @@ class _PacienteState extends State<Paciente> {
   @override
   void dispose() {
     _viagensSub?.cancel();
-    _syncGlobalSub?.cancel();
+    _syncPorViagemSub?.cancel();
     _falhasSyncSub?.cancel();
     super.dispose();
   }
@@ -190,13 +204,38 @@ class _PacienteState extends State<Paciente> {
 
     setState(() => _processandoAcao = true);
     try {
+      final (viagemAtual, _) = _localizarViagemEPassageiro(
+        paciente.id,
+        cpf: paciente.cpf,
+      );
+      final idViagem = viagemAtual?.id;
+      if (idViagem != null) {
+        _syncService.registrarPacienteEmMemoriaSeAusente(
+          paciente,
+          viagemId: idViagem,
+        );
+      }
       final key = '${paciente.id}_cancel_${DateTime.now().millisecondsSinceEpoch}';
       final res = await _syncService.solicitarCancelamento(
         pacienteId: paciente.id,
         atorId: paciente.id,
         atorRole: 'paciente',
+        viagemId: idViagem,
         idempotencyKey: key,
       );
+      if (res.sucesso && idViagem != null) {
+        unawaited(
+          ViagemService().atualizarStatusPassageiroNaViagem(
+            viagemId: idViagem,
+            pacienteId: paciente.id,
+            novoStatus: res.paciente?.status ?? 5,
+            prontoRetorno: res.paciente?.prontoRetorno ?? false,
+            janelaReversao: res.paciente?.janelaReversao,
+            limparJanelaReversao: res.paciente?.janelaReversao == null,
+            persistirRemoto: false,
+          ),
+        );
+      }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -249,13 +288,38 @@ class _PacienteState extends State<Paciente> {
 
     setState(() => _processandoAcao = true);
     try {
+      final (viagemAtual, _) = _localizarViagemEPassageiro(
+        paciente.id,
+        cpf: paciente.cpf,
+      );
+      final idViagem = viagemAtual?.id;
+      if (idViagem != null) {
+        _syncService.registrarPacienteEmMemoriaSeAusente(
+          paciente,
+          viagemId: idViagem,
+        );
+      }
       final key = '${paciente.id}_pronto_${DateTime.now().millisecondsSinceEpoch}';
       final res = await _syncService.sinalizarPronto(
         pacienteId: paciente.id,
         atorId: paciente.id,
         atorRole: 'paciente',
+        viagemId: idViagem,
         idempotencyKey: key,
       );
+      if (res.sucesso && idViagem != null) {
+        unawaited(
+          ViagemService().atualizarStatusPassageiroNaViagem(
+            viagemId: idViagem,
+            pacienteId: paciente.id,
+            novoStatus: res.paciente?.status ?? paciente.status,
+            prontoRetorno: res.paciente?.prontoRetorno ?? true,
+            janelaReversao: res.paciente?.janelaReversao,
+            limparJanelaReversao: res.paciente?.janelaReversao == null,
+            persistirRemoto: false,
+          ),
+        );
+      }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -284,20 +348,46 @@ class _PacienteState extends State<Paciente> {
 
     setState(() => _processandoAcao = true);
     try {
+      final (viagemAtual, _) = _localizarViagemEPassageiro(
+        paciente.id,
+        cpf: paciente.cpf,
+      );
+      final idViagem = viagemAtual?.id;
+      if (idViagem != null) {
+        _syncService.registrarPacienteEmMemoriaSeAusente(
+          paciente,
+          viagemId: idViagem,
+        );
+      }
       final key = '${paciente.id}_undo_${DateTime.now().millisecondsSinceEpoch}';
       final res = (janela.acao == 'cancelamento_carona')
           ? await _syncService.desfazerCancelamento(
               pacienteId: paciente.id,
               atorId: paciente.id,
               atorRole: 'paciente',
+              viagemId: idViagem,
               idempotencyKey: key,
             )
           : await _syncService.desfazerPronto(
               pacienteId: paciente.id,
               atorId: paciente.id,
               atorRole: 'paciente',
+              viagemId: idViagem,
               idempotencyKey: key,
             );
+      if (res.sucesso && idViagem != null && res.paciente != null) {
+        unawaited(
+          ViagemService().atualizarStatusPassageiroNaViagem(
+            viagemId: idViagem,
+            pacienteId: paciente.id,
+            novoStatus: res.paciente!.status,
+            prontoRetorno: res.paciente!.prontoRetorno,
+            janelaReversao: res.paciente!.janelaReversao,
+            limparJanelaReversao: res.paciente!.janelaReversao == null,
+            persistirRemoto: false,
+          ),
+        );
+      }
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -336,35 +426,70 @@ class _PacienteState extends State<Paciente> {
   // Fechamento do método _isFirebaseDisponivel
   }
 
-  // Enriquecimento dos dados do paciente com informações de agendamento da viagem ativa ou planejada
-  PassageiroViagemModel? _localizarPassageiroNaViagem(String pacienteId, {String? cpf}) {
+  // Localiza a viagem e o passageiro vinculados ao paciente autenticado
+  (ViagemModel?, PassageiroViagemModel?) _localizarViagemEPassageiro(
+    String pacienteId, {
+    String? cpf,
+  }) {
     final cpfLimpo = cpf?.replaceAll(RegExp(r'\D'), '') ?? '';
     final viagens = ViagemService().todasViagens;
+    final idViagemAuth = FirebaseAuthService.pacienteViagemId?.trim();
     final ordenadas = [
-      ...viagens.where((v) => v.isAtiva && !v.isCancelada && !v.isConcluida),
-      ...viagens.where((v) => v.isPlanejada && !v.isCancelada && !v.isConcluida),
-      ...viagens.where((v) => !v.isAtiva && !v.isPlanejada),
+      if (idViagemAuth != null && idViagemAuth.isNotEmpty)
+        ...viagens.where((v) => v.id == idViagemAuth),
+      ...viagens.where(
+        (v) =>
+            v.id != idViagemAuth && v.isAtiva && !v.isCancelada && !v.isConcluida,
+      ),
+      ...viagens.where(
+        (v) =>
+            v.id != idViagemAuth &&
+            v.isPlanejada &&
+            !v.isCancelada &&
+            !v.isConcluida,
+      ),
+      ...viagens.where(
+        (v) => v.id != idViagemAuth && !v.isAtiva && !v.isPlanejada,
+      ),
     ];
 
     for (final v in ordenadas) {
       for (final p in v.passageiros) {
         if (p.pacienteId == pacienteId) {
-          return p;
+          return (v, p);
         }
         if (cpfLimpo.isNotEmpty && p.pacienteCpf != null) {
           final pCpfLimpo = p.pacienteCpf!.replaceAll(RegExp(r'\D'), '');
           if (pCpfLimpo == cpfLimpo) {
-            return p;
+            return (v, p);
           }
         }
       }
     }
-    return null;
+    return (null, null);
   }
 
   PacienteModel _enriquecerComDadosViagem(PacienteModel paciente) {
-    final pv = _localizarPassageiroNaViagem(paciente.id, cpf: paciente.cpf);
+    final (viagemEncontrada, pv) =
+        _localizarViagemEPassageiro(paciente.id, cpf: paciente.cpf);
     if (pv == null) return paciente;
+
+    final pMem = viagemEncontrada != null
+        ? _syncService.obterPacienteMemoria(
+            pv.pacienteId,
+            viagemId: viagemEncontrada.id,
+          )
+        : null;
+    final usarEstadoViagem =
+        widget.pacienteStreamOverride == null && viagemEncontrada != null;
+    final statusEfetivo =
+        usarEstadoViagem ? (pMem?.status ?? pv.statusEmbarque) : paciente.status;
+    final prontoRetornoEfetivo = usarEstadoViagem
+        ? (pMem?.prontoRetorno ?? pv.prontoRetorno)
+        : paciente.prontoRetorno;
+    final janelaReversaoEfetiva = usarEstadoViagem
+        ? (pMem?.janelaReversao ?? pv.janelaReversao)
+        : paciente.janelaReversao;
 
     final localConsultaVazio = paciente.localConsulta.trim().isEmpty ||
         paciente.localConsulta.trim() == 'Local da consulta não informado';
@@ -397,7 +522,7 @@ class _PacienteState extends State<Paciente> {
       horarioConsulta: horarioVazio && pv.horarioAtendimento.trim().isNotEmpty
           ? pv.horarioAtendimento.trim()
           : paciente.horarioConsulta,
-      status: paciente.status,
+      status: statusEfetivo,
       nomeAcompanhante: acompNomeVazio &&
               pv.acompanhanteNome != null &&
               pv.acompanhanteNome!.trim().isNotEmpty
@@ -414,30 +539,42 @@ class _PacienteState extends State<Paciente> {
       role: paciente.role,
       ativo: paciente.ativo,
       criadoEm: paciente.criadoEm,
-      prontoRetorno: paciente.prontoRetorno,
-      janelaReversao: paciente.janelaReversao,
+      prontoRetorno: prontoRetornoEfetivo,
+      janelaReversao: janelaReversaoEfetiva,
       ultimaIdempotencyKey: paciente.ultimaIdempotencyKey,
     );
   }
 
   PacienteModel? _buscarPacienteEmViagem(String docId) {
-    final pv = _localizarPassageiroNaViagem(docId);
+    final (viagem, pv) = _localizarViagemEPassageiro(docId);
     if (pv == null) return null;
-    return PacienteModel(
+    final pMem = viagem != null
+        ? _syncService.obterPacienteMemoria(pv.pacienteId, viagemId: viagem.id)
+        : null;
+    final modelo = PacienteModel(
       id: pv.pacienteId,
       nome: pv.pacienteNome,
       cpf: pv.pacienteCpf ?? '000.000.000-00',
-      telefone: 'Telefone não informado',
+      telefone: pv.pacienteTelefone ?? 'Telefone não informado',
       enderecoPaciente: 'Endereço não informado',
       localConsulta: pv.localDestino.trim().isNotEmpty
           ? pv.localDestino.trim()
           : 'Local da consulta não informado',
       localSaida: pv.localOrigem.trim(),
       horarioConsulta: pv.horarioAtendimento.trim(),
-      status: pv.statusEmbarque,
+      status: pMem?.status ?? pv.statusEmbarque,
       nomeAcompanhante: pv.acompanhanteNome,
       telAcompanhante: pv.acompanhanteTelefone,
+      prontoRetorno: pMem?.prontoRetorno ?? pv.prontoRetorno,
+      janelaReversao: pMem?.janelaReversao ?? pv.janelaReversao,
     );
+    if (viagem != null) {
+      _syncService.registrarPacienteEmMemoriaSeAusente(
+        modelo,
+        viagemId: viagem.id,
+      );
+    }
+    return modelo;
   }
 
   // Retorna a stream de dados do paciente ativo em tempo real
@@ -479,8 +616,13 @@ class _PacienteState extends State<Paciente> {
                   return null;
                 }
                 final base = PacienteModel.fromMap(dados, docId: doc.id);
+                final (viagemBase, _) =
+                    _localizarViagemEPassageiro(base.id, cpf: base.cpf);
                 final enriquecido = _enriquecerComDadosViagem(base);
-                _syncService.atualizarPacienteEmMemoria(enriquecido);
+                _syncService.registrarPacienteEmMemoriaSeAusente(
+                  enriquecido,
+                  viagemId: viagemBase?.id,
+                );
                 return enriquecido;
               }
               return _buscarPacienteEmViagem(docIdAlvo);
@@ -506,8 +648,13 @@ class _PacienteState extends State<Paciente> {
                 continue;
               }
               final base = PacienteModel.fromMap(dados, docId: doc.id);
+              final (viagemBase, _) =
+                  _localizarViagemEPassageiro(base.id, cpf: base.cpf);
               final enriquecido = _enriquecerComDadosViagem(base);
-              _syncService.atualizarPacienteEmMemoria(enriquecido);
+              _syncService.registrarPacienteEmMemoriaSeAusente(
+                enriquecido,
+                viagemId: viagemBase?.id,
+              );
               return enriquecido;
             }
             return null;

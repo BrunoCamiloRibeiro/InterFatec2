@@ -77,7 +77,8 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
   late DateTime _dataSelecionada;
   StreamSubscription<List<ViagemModel>>? _subViagens;
   StreamSubscription<List<VeiculoModel>>? _subVeiculos;
-  StreamSubscription<PacienteModel>? _subSyncPacientes;
+  StreamSubscription<({String? viagemId, PacienteModel paciente})>?
+      _subSyncPacientes;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _subFirestoreVeiculos;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _subFirestoreUsuarios;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _subFirestoreViagens;
@@ -125,12 +126,19 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
       }
     });
 
-    _subSyncPacientes = PacienteSyncService().alteracoesGlobaisStream.listen((p) {
-      _viagemService.atualizarStatusPassageiroNaViagem(
-        viagemId: '',
-        pacienteId: p.id,
-        novoStatus: p.status,
-      );
+    _subSyncPacientes = PacienteSyncService().alteracoesPorViagemStream.listen((evento) {
+      if (evento.viagemId == null || evento.viagemId!.trim().isEmpty) {
+        final p = evento.paciente;
+        _viagemService.atualizarStatusPassageiroNaViagem(
+          viagemId: '',
+          pacienteId: p.id,
+          novoStatus: p.status,
+          prontoRetorno: p.prontoRetorno,
+          janelaReversao: p.janelaReversao,
+          limparJanelaReversao: p.janelaReversao == null,
+          persistirRemoto: false,
+        );
+      }
       if (mounted) {
         setState(() {
           _todasViagensDoDia = _viagemService.obterViagensPorData(_dataSelecionada);
@@ -764,18 +772,11 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
     ViagemModel viagem,
     PassageiroViagemModel passageiro,
   ) {
-    final pacSync = PacienteSyncService().obterPacienteMemoria(passageiro.pacienteId);
-    final pacCadastrado = _pacientesCadastrados
-        .where((p) => p.id == passageiro.pacienteId)
-        .firstOrNull;
-
-    int statusEfetivo = passageiro.statusEmbarque;
-    if (pacSync != null && (pacSync.status != 0 || statusEfetivo == 0)) {
-      statusEfetivo = pacSync.status;
-    } else if (pacCadastrado != null &&
-        (pacCadastrado.status != 0 || statusEfetivo == 0)) {
-      statusEfetivo = pacCadastrado.status;
-    }
+    final pacSync = PacienteSyncService().obterPacienteMemoria(
+      passageiro.pacienteId,
+      viagemId: viagem.id,
+    );
+    int statusEfetivo = pacSync?.status ?? passageiro.statusEmbarque;
     if (viagem.isConcluida && statusEfetivo != 5) {
       statusEfetivo = 4;
     }
@@ -1101,25 +1102,14 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
         passageiro.acompanhanteNome!.trim().isNotEmpty;
     final codigoAcesso = viagem.codigosAcesso[passageiro.pacienteId]?.trim();
 
-    // Resolve o status em tempo real do passageiro (memória de sincronização, banco ou horário)
-    final pacSync = PacienteSyncService().obterPacienteMemoria(passageiro.pacienteId);
-    final pacCadastrado = _pacientesCadastrados
-        .where((p) => p.id == passageiro.pacienteId)
-        .firstOrNull;
-
-    int statusEfetivo = passageiro.statusEmbarque;
-    if (pacSync != null && (pacSync.status != 0 || statusEfetivo == 0)) {
-      statusEfetivo = pacSync.status;
-    } else if (pacCadastrado != null && (pacCadastrado.status != 0 || statusEfetivo == 0)) {
-      statusEfetivo = pacCadastrado.status;
-    }
-    if (viagem.isConcluida && statusEfetivo != 5) {
-      statusEfetivo = 4;
-    }
-
-    final prontoRetornoEfetivo = pacSync?.prontoRetorno ??
-        pacCadastrado?.prontoRetorno ??
-        false;
+    // Resolve o status e a prontidão isolados para esta viagem específica
+    final pacSync = PacienteSyncService().obterPacienteMemoria(
+      passageiro.pacienteId,
+      viagemId: viagem.id,
+    );
+    final statusEfetivo = _resolverStatusEfetivoPassageiro(viagem, passageiro);
+    final prontoRetornoEfetivo =
+        pacSync?.prontoRetorno ?? passageiro.prontoRetorno;
 
     final (nomeStatus, corStatus, iconeStatus) =
         PacienteModel.dadosStatus(statusEfetivo);
@@ -1749,6 +1739,9 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                       pacienteId: pacienteObj.id,
                       pacienteNome: pacienteObj.nome,
                       pacienteCpf: pacienteObj.cpf,
+                      pacienteTelefone: pacienteObj.telefone.trim().isNotEmpty
+                          ? pacienteObj.telefone.trim()
+                          : null,
                       acompanhanteNome: controllerAcompNome.text.trim().isNotEmpty
                           ? controllerAcompNome.text.trim()
                           : null,

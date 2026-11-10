@@ -134,14 +134,12 @@ class _MotoristaState extends State<Motorista> {
   StreamSubscription<List<ViagemModel>>? _subViagensAtivas;
 
   // Inscrições para escutar a frota de veículos e viagens diretamente do Firestore
-  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _subMotoristaFirestore;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _subMotorista;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _subVeiculosFirestore;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _subViagensFirestore;
-  StreamSubscription<PacienteModel>? _subSyncPacientes;
-  StreamSubscription<({String pacienteId, String mensagem, PacienteModel estadoRevertido})>? _subFalhasSync;
+  StreamSubscription<({String? viagemId, PacienteModel paciente})>? _subSyncPacientes;
+  StreamSubscription<({String? viagemId, String pacienteId, String mensagem, PacienteModel estadoRevertido})>? _subFalhasSync;
   StreamSubscription<String>? _subErrosViagem;
-  Stream<QuerySnapshot<Map<String, dynamic>>>? _streamSnapshotsPacientesFirestore;
-  Stream<List<PacienteModel>>? _streamPacientesMapeadosFirestore;
 
   // Cache local da frota de veículos carregada do Firebase para resolução de capacidade
   List<VeiculoModel> _veiculosFrota = [];
@@ -175,14 +173,39 @@ class _MotoristaState extends State<Motorista> {
   String _motoristaNome = '';
 
   // Estado emViagem do motorista persistido no Firestore
-  bool? _motoristaEmViagem;
+  bool? _emViagemFirestore;
 
   // Timer defensivo de carregamento de viagem ativa para evitar bloqueio eterno da UI
   Timer? _timeoutCarregamentoViagem;
 
+  void _selecionarViagemPreservandoId(
+    List<ViagemModel> ativas, {
+    String? idPreferido,
+  }) {
+    _viagensAtivas = ativas;
+    if (ativas.isEmpty) {
+      _indiceViagemAtual = 0;
+      _viagemAtiva = _viagemService.viagemAtiva;
+      return;
+    }
+    final alvoId = idPreferido ?? _viagemAtiva?.id;
+    if (alvoId != null && alvoId.isNotEmpty) {
+      final idx = ativas.indexWhere((v) => v.id == alvoId);
+      if (idx != -1) {
+        _indiceViagemAtual = idx;
+        _viagemAtiva = ativas[idx];
+        return;
+      }
+    }
+    if (_indiceViagemAtual >= ativas.length || _indiceViagemAtual < 0) {
+      _indiceViagemAtual = ativas.length - 1;
+    }
+    _viagemAtiva = ativas[_indiceViagemAtual];
+  }
+
   void _resetarEstadoParaNovaViagem(String idMot) {
     setState(() {
-      _motoristaEmViagem = false;
+      _emViagemFirestore = false;
       FirebaseAuthService.motoristaEmViagemStatic = false;
       _viagemAtiva = null;
       _viagensAtivas = [];
@@ -193,7 +216,6 @@ class _MotoristaState extends State<Motorista> {
           _veiculosFrota[i] = veic.copyWith(emUso: false, motoristaAtualId: null);
         }
       }
-      _streamPacientesMapeadosFirestore = null;
     });
     if (idMot.isNotEmpty && _isFirebaseDisponivel()) {
       FirebaseFirestore.instance
@@ -215,7 +237,7 @@ class _MotoristaState extends State<Motorista> {
     _timeoutCarregamentoViagem?.cancel();
     _timeoutCarregamentoViagem = Timer(const Duration(milliseconds: 2500), () {
       if (!mounted) return;
-      if (!_temViagemAtiva && _motoristaEmViagem == true) {
+      if (!_temViagemAtiva && _emViagemFirestore == true) {
         final idMot = _motoristaId ??
             FirebaseAuthService().currentDocId ??
             FirebaseAuthService().currentUserId ??
@@ -271,7 +293,7 @@ class _MotoristaState extends State<Motorista> {
     if (_viagemAtiva == null && _viagemService.viagemAtiva != null) {
       _viagemAtiva = _viagemService.viagemAtiva;
     }
-    _motoristaEmViagem = _viagemService.viagemAtiva != null
+    _emViagemFirestore = _viagemService.viagemAtiva != null
         ? true
         : FirebaseAuthService.motoristaEmViagemStatic;
     _veiculosFrota = List<VeiculoModel>.from(_viagemService.todosVeiculos);
@@ -289,11 +311,11 @@ class _MotoristaState extends State<Motorista> {
         if (_viagemService.viagemAtiva != null) {
           _viagemAtiva = _viagemService.viagemAtiva;
           _viagensAtivas = _viagemService.viagensAtivas;
-          _motoristaEmViagem = true;
+          _emViagemFirestore = true;
         }
       }
     }
-    if (_motoristaEmViagem == true && !_temViagemAtiva) {
+    if (_emViagemFirestore == true && !_temViagemAtiva) {
       _iniciarTimeoutCarregamentoViagem();
     }
     _capacidadeVeiculo = _resolverCapacidadeVeiculo();
@@ -309,10 +331,20 @@ class _MotoristaState extends State<Motorista> {
         }
         // Notifica a árvore do Flutter que o estado interno mudou e requer redesenho
         setState(() {
-          // Atualiza a viagem ativa com o novo objeto emitido pela stream
-          _viagemAtiva = viagem;
+          if (viagem == null) {
+            _viagemAtiva = null;
+          } else if (_viagensAtivas.length <= 1 ||
+              _viagemAtiva == null ||
+              _viagemAtiva!.id == viagem.id ||
+              !_viagensAtivas.any((v) => v.id == _viagemAtiva!.id)) {
+            // Atualiza a viagem em foco sem deslocar o índice escolhido pelo motorista em múltiplas viagens.
+            _viagemAtiva = viagem;
+          } else {
+            _viagensAtivas = _viagensAtivas
+                .map((v) => v.id == viagem.id ? viagem : v)
+                .toList();
+          }
           _capacidadeVeiculo = _resolverCapacidadeVeiculo();
-          _streamPacientesMapeadosFirestore = null;
         // Fechamento da função de callback de setState
         });
         _atualizarTransmissaoGpsMotorista();
@@ -337,17 +369,8 @@ class _MotoristaState extends State<Motorista> {
           _cancelarTimeoutCarregamentoViagem();
         }
         setState(() {
-          _viagensAtivas = ativas;
-          if (_viagensAtivas.isNotEmpty) {
-            if (_indiceViagemAtual >= _viagensAtivas.length) {
-              _indiceViagemAtual = _viagensAtivas.length - 1;
-            }
-            _viagemAtiva = _viagensAtivas[_indiceViagemAtual];
-          } else {
-            _viagemAtiva = _viagemService.viagemAtiva;
-          }
+          _selecionarViagemPreservandoId(ativas);
           _capacidadeVeiculo = _resolverCapacidadeVeiculo();
-          _streamPacientesMapeadosFirestore = null;
         });
         _atualizarTransmissaoGpsMotorista();
       }
@@ -362,19 +385,29 @@ class _MotoristaState extends State<Motorista> {
     // Fechamento da condicional de verificação do Firebase
     }
 
-    _subSyncPacientes = _syncService.alteracoesGlobaisStream.listen((_) {
+    _subSyncPacientes = _syncService.alteracoesPorViagemStream.listen((evento) {
+      final idViagemEvento = evento.viagemId?.trim();
+      if (idViagemEvento != null &&
+          idViagemEvento.isNotEmpty &&
+          _viagemAtiva != null &&
+          _viagemAtiva!.id != idViagemEvento) {
+        return;
+      }
       if (mounted) {
         setState(() {});
       }
     });
 
-    _subFalhasSync = _syncService.falhasSincronizacaoStream.listen((falha) {
-      final idViagemAlvo = _viagemAtiva?.id;
+    _subFalhasSync = _syncService.falhasPorViagemStream.listen((falha) {
+      final idViagemAlvo = falha.viagemId ?? _viagemAtiva?.id;
       if (idViagemAlvo != null && !idViagemAlvo.startsWith('sessao_ativa_')) {
         _viagemService.atualizarStatusPassageiroNaViagem(
           viagemId: idViagemAlvo,
           pacienteId: falha.pacienteId,
           novoStatus: falha.estadoRevertido.status,
+          prontoRetorno: falha.estadoRevertido.prontoRetorno,
+          janelaReversao: falha.estadoRevertido.janelaReversao,
+          limparJanelaReversao: falha.estadoRevertido.janelaReversao == null,
           persistirRemoto: false,
         );
       }
@@ -382,15 +415,7 @@ class _MotoristaState extends State<Motorista> {
       unawaited(SystemSound.play(SystemSoundType.alert));
       if (mounted) {
         setState(() {
-          _viagensAtivas = _viagemService.viagensAtivas;
-          if (_viagensAtivas.isNotEmpty) {
-            if (_indiceViagemAtual >= _viagensAtivas.length) {
-              _indiceViagemAtual = _viagensAtivas.length - 1;
-            }
-            _viagemAtiva = _viagensAtivas[_indiceViagemAtual];
-          } else {
-            _viagemAtiva = _viagemService.viagemAtiva;
-          }
+          _selecionarViagemPreservandoId(_viagemService.viagensAtivas);
         });
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
@@ -412,17 +437,33 @@ class _MotoristaState extends State<Motorista> {
       unawaited(SystemSound.play(SystemSoundType.alert));
       if (mounted) {
         setState(() {
-          _viagensAtivas = _viagemService.viagensAtivas;
-          if (_viagensAtivas.isNotEmpty) {
-            if (_indiceViagemAtual >= _viagensAtivas.length) {
-              _indiceViagemAtual = _viagensAtivas.length - 1;
-            }
-            _viagemAtiva = _viagensAtivas[_indiceViagemAtual];
-          } else {
-            _viagemAtiva = _viagemService.viagemAtiva;
-          }
+          _selecionarViagemPreservandoId(_viagemService.viagensAtivas);
           _capacidadeVeiculo = _resolverCapacidadeVeiculo();
         });
+        final ativa = _viagemAtiva;
+        if (ativa != null && !ativa.id.startsWith('sessao_ativa_')) {
+          for (final pv in ativa.passageiros) {
+            _syncService.sincronizarPassageiroDeViagemEmMemoria(
+              ativa.id,
+              PacienteModel(
+                id: pv.pacienteId,
+                nome: pv.pacienteNome,
+                cpf: pv.pacienteCpf ?? '',
+                telefone:
+                    pv.pacienteTelefone ?? pv.acompanhanteTelefone ?? '',
+                enderecoPaciente: pv.localOrigem,
+                localSaida: pv.localOrigem,
+                localConsulta: pv.localDestino,
+                horarioConsulta: pv.horarioAtendimento,
+                nomeAcompanhante: pv.acompanhanteNome,
+                telAcompanhante: pv.acompanhanteTelefone,
+                status: pv.statusEmbarque,
+                prontoRetorno: pv.prontoRetorno,
+                janelaReversao: pv.janelaReversao,
+              ),
+            );
+          }
+        }
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
           ..showSnackBar(
@@ -457,13 +498,12 @@ class _MotoristaState extends State<Motorista> {
           _cancelarTimeoutCarregamentoViagem();
           // Atribui a viagem recebida via rota à variável de estado
           _viagemAtiva = args;
-          _motoristaEmViagem = true;
+          _emViagemFirestore = true;
           FirebaseAuthService.motoristaEmViagemStatic = true;
           if (_viagensAtivas.isEmpty) {
             _viagensAtivas = [args];
           }
           _capacidadeVeiculo = _resolverCapacidadeVeiculo();
-          _streamPacientesMapeadosFirestore = null;
         // Fechamento do if de verificação de tipo de argumento
         }
       // Fechamento da verificação se _viagemAtiva é nula
@@ -476,13 +516,12 @@ class _MotoristaState extends State<Motorista> {
     if (!mounted) return;
     _cancelarTimeoutCarregamentoViagem();
     setState(() {
-      _motoristaEmViagem = false;
+      _emViagemFirestore = false;
       FirebaseAuthService.motoristaEmViagemStatic = false;
       _viagemAtiva = null;
       _viagensAtivas = [];
       _indiceViagemAtual = 0;
       _capacidadeVeiculo = _resolverCapacidadeVeiculo();
-      _streamPacientesMapeadosFirestore = null;
     });
     _atualizarTransmissaoGpsMotorista();
   }
@@ -518,7 +557,7 @@ class _MotoristaState extends State<Motorista> {
     // Cancela as inscrições nas streams de viagem ativa, N viagens e Firestore
     _subViagemAtiva?.cancel();
     _subViagensAtivas?.cancel();
-    _subMotoristaFirestore?.cancel();
+    _subMotorista?.cancel();
     _subVeiculosFirestore?.cancel();
     _subViagensFirestore?.cancel();
     _subSyncPacientes?.cancel();
@@ -611,7 +650,6 @@ class _MotoristaState extends State<Motorista> {
               _viagensAtivas = _viagemService.viagensAtivas;
               _viagemAtiva = _viagemService.viagemAtiva;
               _cancelarTimeoutCarregamentoViagem();
-              _streamPacientesMapeadosFirestore = null;
             }
             _capacidadeVeiculo = _resolverCapacidadeVeiculo();
           });
@@ -655,23 +693,14 @@ class _MotoristaState extends State<Motorista> {
           if (_viagemAtiva != null || _viagemService.viagemAtiva != null) {
             _cancelarTimeoutCarregamentoViagem();
             setState(() {
-              _viagensAtivas = _viagemService.viagensAtivas;
-              if (_viagensAtivas.isNotEmpty) {
-                if (_indiceViagemAtual >= _viagensAtivas.length) {
-                  _indiceViagemAtual = _viagensAtivas.length - 1;
-                }
-                _viagemAtiva = _viagensAtivas[_indiceViagemAtual];
-              } else if (_viagemService.viagemAtiva != null) {
-                _viagemAtiva = _viagemService.viagemAtiva;
-              }
+              _selecionarViagemPreservandoId(_viagemService.viagensAtivas);
               _capacidadeVeiculo = _resolverCapacidadeVeiculo();
-              _streamPacientesMapeadosFirestore = null;
             });
             _atualizarTransmissaoGpsMotorista();
           } else {
             // Nenhuma viagem ativa encontrada no banco para esse condutor:
             // libera o estado emViagem para permitir que o motorista inicie uma viagem normalmente
-            if (_motoristaEmViagem == true) {
+            if (_emViagemFirestore == true) {
               _cancelarTimeoutCarregamentoViagem();
               _resetarEstadoParaNovaViagem(idMot);
             }
@@ -728,9 +757,9 @@ class _MotoristaState extends State<Motorista> {
   // Consulta os dados do motorista na coleção 'usuarios' do Firestore
   // Inicia um ouvinte em tempo real no Firestore para obter a capacidade do veículo do motorista
   void _ouvirDadosMotorista() {
-    _subMotoristaFirestore?.cancel();
+    _subMotorista?.cancel();
     // Acessa a instância global do Firestore
-    _subMotoristaFirestore = FirebaseFirestore.instance
+    _subMotorista = FirebaseFirestore.instance
         // Navega até a coleção raiz 'usuarios'
         .collection('usuarios')
         // Filtra os usuários com papel funcional de motorista
@@ -764,7 +793,7 @@ class _MotoristaState extends State<Motorista> {
               _capacidadeMotoristaDoc = motorista.capacidadeVeiculo;
               _placaMotoristaDoc = motorista.veiculoPlaca;
               _motoristaId = motorista.id.isNotEmpty ? motorista.id : docSelecionado.id;
-              _motoristaEmViagem = motorista.emViagem;
+              _emViagemFirestore = motorista.emViagem;
               FirebaseAuthService.motoristaEmViagemStatic = motorista.emViagem;
               if (motorista.nome.trim().isNotEmpty) {
                 _motoristaNome = motorista.nome.trim();
@@ -778,14 +807,13 @@ class _MotoristaState extends State<Motorista> {
                 if (_viagemService.viagemAtiva != null) {
                   _viagensAtivas = _viagemService.viagensAtivas;
                   _viagemAtiva = _viagemService.viagemAtiva;
-                  _motoristaEmViagem = true;
+                  _emViagemFirestore = true;
                   _cancelarTimeoutCarregamentoViagem();
-                  _streamPacientesMapeadosFirestore = null;
                 }
               }
-              if (_motoristaEmViagem == true && !_temViagemAtiva) {
+              if (_emViagemFirestore == true && !_temViagemAtiva) {
                 _iniciarTimeoutCarregamentoViagem();
-              } else if (_motoristaEmViagem == false) {
+              } else if (_emViagemFirestore == false) {
                 _cancelarTimeoutCarregamentoViagem();
               }
               // Atribui a capacidade numérica de assentos do veículo resolvida da frota
@@ -803,203 +831,72 @@ class _MotoristaState extends State<Motorista> {
   // Retorna a stream de pacientes cadastrados
   // Retorna a stream reativa de lista de pacientes, respeitando mocks ou conectando ao Firestore
   Stream<List<PacienteModel>> carregarPacientes() {
-    // Se foi injetada uma stream simulada para testes, retorna-a diretamente
     if (widget.pacientesStreamOverride != null) {
-      // Retorna o fluxo mockado injetado no construtor
       return widget.pacientesStreamOverride!;
-    // Fechamento da condicional de stream injetada
     }
-
-    // Se o serviço do Firebase estiver ativo e inicializado no app
-    if (_isFirebaseDisponivel()) {
-      // Reutiliza o mesmo stream de snapshots do Firestore para evitar recriação de listener a cada setState
-      _streamSnapshotsPacientesFirestore ??= FirebaseFirestore.instance
-          // Coleção onde os perfis estão armazenados
-          .collection('usuarios')
-          // Filtra apenas os usuários com papel de paciente
-          .where('role', isEqualTo: 'paciente')
-          // Ouve as emissões em tempo real de documentos
-          .snapshots();
-      _streamPacientesMapeadosFirestore ??= _streamSnapshotsPacientesFirestore!
-          // Mapeia o snapshot de documentos para uma lista tipada de PacienteModel
-          .map((snapshot) {
-            // Filtra documentos ativos e desconsidera registros excluídos logicamente (Issue #34)
-            final pacientesNoBanco = snapshot.docs.where((d) {
-              final dados = d.data();
-              final ativo = dados['ativo'];
-              final status = dados['status']?.toString().toLowerCase().trim();
-              final situacao = dados['situacao']?.toString().toLowerCase().trim();
-              return ativo != false &&
-                  ativo != 'false' &&
-                  status != 'inativo' &&
-                  situacao != 'inativo' &&
-                  status != 'excluido' &&
-                  situacao != 'excluido';
-            }).map((doc) {
-              return PacienteModel.fromMap(doc.data(), docId: doc.id);
-            }).toList();
-
-            for (final p in pacientesNoBanco) {
-              final emMem = _syncService.obterPacienteMemoria(p.id);
-              // Não sobrescreve transição otimista mais recente em memória com snapshot antigo do banco
-              if (emMem == null || p.status >= emMem.status || p.status == 0) {
-                _syncService.atualizarPacienteEmMemoria(p);
-              }
-            }
-
-            // Se a viagem ativa já foi concluída, cancelada ou todos os passageiros já voltaram,
-            // não exibe mais passageiros para o motorista.
-            if (_viagemAtiva == null ||
-                _viagemAtiva!.isConcluida ||
-                _viagemAtiva!.isCancelada ||
-                _viagemService.todosPacientesVoltaram(_viagemAtiva!)) {
-              return const <PacienteModel>[];
-            }
-
-            // Se a viagem ativa possuir passageiros específicos do Horário, mescla com o estado em tempo real do banco
-            if (_viagemAtiva!.passageiros.isNotEmpty) {
-              final mapaBanco = {for (final p in pacientesNoBanco) p.id: p};
-              final listaMapeada = _viagemAtiva!.passageiros.map<PacienteModel>((pv) {
-                final pRemoto = mapaBanco[pv.pacienteId];
-                final pMem = _syncService.obterPacienteMemoria(pv.pacienteId);
-                int statusEfetivo = pv.statusEmbarque;
-                if (pMem != null &&
-                    pMem.status > statusEfetivo &&
-                    !(statusEfetivo == 0 && pMem.status == 4)) {
-                  statusEfetivo = pMem.status;
-                }
-                if (pRemoto != null &&
-                    pRemoto.status > statusEfetivo &&
-                    !(statusEfetivo == 0 && pRemoto.status == 4)) {
-                  statusEfetivo = pRemoto.status;
-                }
-                final modelo = PacienteModel(
-                  id: pv.pacienteId,
-                  nome: pv.pacienteNome.isNotEmpty ? pv.pacienteNome : (pRemoto?.nome ?? ''),
-                  cpf: (pv.pacienteCpf != null && pv.pacienteCpf!.isNotEmpty)
-                      ? pv.pacienteCpf!
-                      : (pRemoto?.cpf ?? ''),
-                  telefone: (pRemoto != null && pRemoto.telefone.isNotEmpty)
-                      ? pRemoto.telefone
-                      : (pv.acompanhanteTelefone ?? ''),
-                  enderecoPaciente: pv.localOrigem.isNotEmpty
-                      ? pv.localOrigem
-                      : (pRemoto?.enderecoPaciente ?? ''),
-                  localSaida: pv.localOrigem.isNotEmpty
-                      ? pv.localOrigem
-                      : (pRemoto?.localSaida ?? ''),
-                  localConsulta: pv.localDestino.isNotEmpty
-                      ? pv.localDestino
-                      : (pRemoto?.localConsulta ?? ''),
-                  horarioConsulta: pv.horarioAtendimento.isNotEmpty
-                      ? pv.horarioAtendimento
-                      : (pRemoto?.horarioConsulta ?? ''),
-                  nomeAcompanhante: (pv.acompanhanteNome != null && pv.acompanhanteNome!.isNotEmpty)
-                      ? pv.acompanhanteNome
-                      : pRemoto?.nomeAcompanhante,
-                  cpfAcompanhante: pRemoto?.cpfAcompanhante,
-                  telAcompanhante: (pv.acompanhanteTelefone != null && pv.acompanhanteTelefone!.isNotEmpty)
-                      ? pv.acompanhanteTelefone
-                      : pRemoto?.telAcompanhante,
-                  rg: pRemoto?.rg,
-                  cnh: pRemoto?.cnh,
-                  status: statusEfetivo,
-                  prontoRetorno: pMem?.prontoRetorno ?? pRemoto?.prontoRetorno ?? false,
-                  janelaReversao: pMem?.janelaReversao ?? pRemoto?.janelaReversao,
-                );
-                _syncService.atualizarPacienteEmMemoria(modelo);
-                return modelo;
-              }).toList();
-
-              final validos = listaMapeada.where((p) => p.status != 5).toList();
-              if (validos.isNotEmpty && validos.every((p) => p.status == 4)) {
-                final idViagemConcluida = _viagemAtiva!.id;
-                final idUltimoPac = validos.last.id;
-                Future.microtask(() {
-                  _viagemService.atualizarStatusPassageiroNaViagem(
-                    viagemId: idViagemConcluida,
-                    pacienteId: idUltimoPac,
-                    novoStatus: 4,
-                  );
-                });
-                return const <PacienteModel>[];
-              }
-
-              return listaMapeada;
-            }
-
-            // Fallback para pacientes da base quando a viagem ativa não possui passageiros embutidos
-            final destinoViagem = _viagemAtiva?.cidadeDestino.trim().toLowerCase() ?? '';
-            final pacientesDaRota = destinoViagem.isNotEmpty
-                ? pacientesNoBanco.where((p) {
-                    final lc = p.localConsulta.toLowerCase();
-                    return lc.contains(destinoViagem) || destinoViagem.contains(lc);
-                  }).toList()
-                : <PacienteModel>[];
-
-            final listaBase = pacientesDaRota.isNotEmpty
-                ? pacientesDaRota
-                : (pacientesNoBanco.isNotEmpty
-                    ? pacientesNoBanco
-                    : _mapearPassageirosLocaisDaViagemAtiva());
-
-            return listaBase.map((p) {
-              final pMem = _syncService.obterPacienteMemoria(p.id);
-              if (pMem != null && pMem.status != p.status) {
-                return p.copyWith(
-                  status: pMem.status,
-                  prontoRetorno: pMem.prontoRetorno,
-                  janelaReversao: pMem.janelaReversao,
-                );
-              }
-              return p;
-            }).toList();
-          // Fechamento do mapeamento
-          });
-      return _streamPacientesMapeadosFirestore!;
-    // Fechamento da condicional de verificação do Firebase
-    }
-
-    // Se a viagem ativa possuir passageiros cadastrados em ambiente sem Firebase (testes unitários)
-    if (_viagemAtiva != null &&
-        !_viagemAtiva!.isConcluida &&
-        !_viagemAtiva!.isCancelada &&
-        !_viagemService.todosPacientesVoltaram(_viagemAtiva!) &&
-        _viagemAtiva!.passageiros.isNotEmpty) {
-      return Stream.value(_mapearPassageirosLocaisDaViagemAtiva());
-    }
-
-    // Retorna lista vazia quando o Firebase não está inicializado e não há streamOverride
-    return Stream.value(const <PacienteModel>[]);
-  // Fechamento do método carregarPacientes
+    return Stream.value(_mapearPassageirosLocaisDaViagemAtiva());
   }
 
   List<PacienteModel> _mapearPassageirosLocaisDaViagemAtiva() {
-    if (_viagemAtiva == null ||
-        _viagemAtiva!.isConcluida ||
-        _viagemAtiva!.isCancelada ||
-        _viagemService.todosPacientesVoltaram(_viagemAtiva!) ||
-        _viagemAtiva!.passageiros.isEmpty) {
+    final viagem = _viagemAtiva;
+    if (viagem == null ||
+        viagem.isConcluida ||
+        viagem.isCancelada ||
+        _viagemService.todosPacientesVoltaram(viagem) ||
+        viagem.passageiros.isEmpty) {
       return const <PacienteModel>[];
     }
-    return _viagemAtiva!.passageiros.map<PacienteModel>((pv) {
-      final pMem = _syncService.obterPacienteMemoria(pv.pacienteId);
+    return viagem.passageiros.map<PacienteModel>((pv) {
+      final pMem = _syncService.obterPacienteMemoria(
+        pv.pacienteId,
+        viagemId: viagem.id,
+      );
+      final perfil = _viagemService.obterPerfilCadastralPaciente(pv.pacienteId);
       final modelo = PacienteModel(
         id: pv.pacienteId,
-        nome: pv.pacienteNome,
-        cpf: pv.pacienteCpf ?? '',
-        telefone: pv.acompanhanteTelefone ?? '',
-        enderecoPaciente: pv.localOrigem,
-        localSaida: pv.localOrigem,
-        localConsulta: pv.localDestino,
-        horarioConsulta: pv.horarioAtendimento,
-        nomeAcompanhante: pv.acompanhanteNome,
-        telAcompanhante: pv.acompanhanteTelefone,
+        nome: pv.pacienteNome.isNotEmpty
+            ? pv.pacienteNome
+            : (perfil?.nome ?? ''),
+        cpf: (pv.pacienteCpf != null && pv.pacienteCpf!.isNotEmpty)
+            ? pv.pacienteCpf!
+            : (perfil?.cpf ?? ''),
+        telefone: (pv.pacienteTelefone != null &&
+                pv.pacienteTelefone!.isNotEmpty)
+            ? pv.pacienteTelefone!
+            : ((perfil != null && perfil.telefone.isNotEmpty)
+                ? perfil.telefone
+                : (pv.acompanhanteTelefone ?? '')),
+        enderecoPaciente: pv.localOrigem.isNotEmpty
+            ? pv.localOrigem
+            : (perfil?.enderecoPaciente ?? ''),
+        localSaida: pv.localOrigem.isNotEmpty
+            ? pv.localOrigem
+            : (perfil?.localSaida ?? ''),
+        localConsulta: pv.localDestino.isNotEmpty
+            ? pv.localDestino
+            : (perfil?.localConsulta ?? ''),
+        horarioConsulta: pv.horarioAtendimento.isNotEmpty
+            ? pv.horarioAtendimento
+            : (perfil?.horarioConsulta ?? ''),
+        nomeAcompanhante:
+            (pv.acompanhanteNome != null && pv.acompanhanteNome!.isNotEmpty)
+                ? pv.acompanhanteNome
+                : perfil?.nomeAcompanhante,
+        cpfAcompanhante: perfil?.cpfAcompanhante,
+        telAcompanhante: (pv.acompanhanteTelefone != null &&
+                pv.acompanhanteTelefone!.isNotEmpty)
+            ? pv.acompanhanteTelefone
+            : perfil?.telAcompanhante,
+        rg: perfil?.rg,
+        cnh: perfil?.cnh,
         status: pMem?.status ?? pv.statusEmbarque,
-        prontoRetorno: pMem?.prontoRetorno ?? false,
-        janelaReversao: pMem?.janelaReversao,
+        prontoRetorno: pMem?.prontoRetorno ?? pv.prontoRetorno,
+        janelaReversao: pMem?.janelaReversao ?? pv.janelaReversao,
       );
-      _syncService.registrarPacienteEmMemoriaSeAusente(modelo);
+      _syncService.registrarPacienteEmMemoriaSeAusente(
+        modelo,
+        viagemId: viagem.id,
+      );
       return modelo;
     }).toList();
   }
@@ -1019,7 +916,7 @@ class _MotoristaState extends State<Motorista> {
   Widget build(BuildContext context) {
     // Se o motorista possui comprovadamente emViagem == true mas a viagem ativa ainda está sendo restaurada:
     // Exibe tela de carregamento para evitar flash da tela 'Iniciar Viagem'
-    if (!_temViagemAtiva && _motoristaEmViagem == true) {
+    if (!_temViagemAtiva && _emViagemFirestore == true) {
       return Scaffold(
         backgroundColor: const Color(0xFF0F172A),
         body: Center(
@@ -1099,7 +996,7 @@ class _MotoristaState extends State<Motorista> {
                 onViagemIniciada: (novaViagem) {
                   _cancelarTimeoutCarregamentoViagem();
                   setState(() {
-                    _motoristaEmViagem = true;
+                    _emViagemFirestore = true;
                     FirebaseAuthService.motoristaEmViagemStatic = true;
                     _viagemAtiva = novaViagem;
                     _viagensAtivas = _viagemService.viagensAtivas.isNotEmpty
@@ -1107,7 +1004,6 @@ class _MotoristaState extends State<Motorista> {
                         : [novaViagem];
                     _indiceViagemAtual = 0;
                     _capacidadeVeiculo = _resolverCapacidadeVeiculo();
-                    _streamPacientesMapeadosFirestore = null;
                   });
                   _atualizarTransmissaoGpsMotorista();
                 },
@@ -1120,6 +1016,9 @@ class _MotoristaState extends State<Motorista> {
 
     // Constrói a UI de forma reativa a partir da Stream de pacientes
     return StreamBuilder<List<PacienteModel>>(
+      key: widget.pacientesStreamOverride == null
+          ? ValueKey('stream_viagem_${_viagemAtiva?.id ?? "vazio"}')
+          : null,
       initialData: widget.pacientesStreamOverride != null
           ? null
           : _mapearPassageirosLocaisDaViagemAtiva(),
@@ -1150,41 +1049,12 @@ class _MotoristaState extends State<Motorista> {
         // Fechamento do bloco if de erro
         }
 
-        // Obtém os pacientes emitidos pela Stream, aplicando imediatamente o estado otimista em memória
-        List<PacienteModel> pacientes;
+        // Obtém os pacientes emitidos pela Stream no escopo exclusivo da viagem em foco
+        final List<PacienteModel> pacientes;
         if (widget.pacientesStreamOverride != null) {
           pacientes = snapshot.data ?? [];
-        } else if (_viagemAtiva == null ||
-            _viagemAtiva!.isConcluida ||
-            _viagemAtiva!.isCancelada ||
-            _viagemService.todosPacientesVoltaram(_viagemAtiva!)) {
-          pacientes = const <PacienteModel>[];
         } else {
-          final passageirosLocais = _mapearPassageirosLocaisDaViagemAtiva();
-          final base = (snapshot.data != null && snapshot.data!.isNotEmpty)
-              ? snapshot.data!
-              : passageirosLocais;
-          pacientes = base.map((p) {
-            final pMem = _syncService.obterPacienteMemoria(p.id);
-            final pv = _viagemAtiva!.passageiros
-                .where((x) => x.pacienteId == p.id)
-                .firstOrNull;
-            int st = p.status;
-            if (pv != null && pv.statusEmbarque != st) {
-              st = pv.statusEmbarque;
-            }
-            if (pMem != null && !(st == 0 && pMem.status == 4)) {
-              st = pMem.status;
-            }
-            if (st != p.status || (pMem != null && pMem.prontoRetorno != p.prontoRetorno)) {
-              return p.copyWith(
-                status: st,
-                prontoRetorno: pMem?.prontoRetorno ?? p.prontoRetorno,
-                janelaReversao: pMem?.janelaReversao ?? p.janelaReversao,
-              );
-            }
-            return p;
-          }).toList();
+          pacientes = _mapearPassageirosLocaisDaViagemAtiva();
         }
         // Garante emissão de códigos de acesso para todos os pacientes presentes na viagem ativa
         _garantirCodigosPacientesNaViagemAtiva(pacientes);
@@ -1450,18 +1320,22 @@ class _MotoristaState extends State<Motorista> {
                           return false;
                         }
 
-                        // Centraliza o disparo da mutação otimista no serviço oficial (< 16 ms, persistência remota em background)
-                        _syncService.registrarPacienteEmMemoriaSeAusente(paciente);
+                        // Centraliza o disparo da mutação otimista no serviço oficial isolado por viagem
+                        final idViagemAlvo = _viagemAtiva?.id;
+                        _syncService.registrarPacienteEmMemoriaSeAusente(
+                          paciente,
+                          viagemId: idViagemAlvo,
+                        );
                         final resultado = await _syncService.avancarEtapaMotorista(
                           pacienteId: paciente.id,
                           motoristaId: _motoristaId ?? 'motorista',
                           acao: acao,
+                          viagemId: idViagemAlvo,
                         );
 
                         if (!context.mounted) return false;
 
                         if (resultado.sucesso) {
-                          final idViagemAlvo = _viagemAtiva?.id;
                           if (idViagemAlvo != null &&
                               !idViagemAlvo.startsWith('sessao_ativa_')) {
                             unawaited(
@@ -1469,26 +1343,27 @@ class _MotoristaState extends State<Motorista> {
                                 viagemId: idViagemAlvo,
                                 pacienteId: paciente.id,
                                 novoStatus: proximoStatus,
+                                prontoRetorno: resultado.paciente?.prontoRetorno,
+                                janelaReversao: resultado.paciente?.janelaReversao,
+                                limparJanelaReversao:
+                                    resultado.paciente?.janelaReversao == null,
                               ),
                             );
                           }
-                          if (mounted) {
+                          if (mounted && widget.pacientesStreamOverride == null) {
                             setState(() {
-                              _viagensAtivas = _viagemService.viagensAtivas;
-                              if (_viagensAtivas.isNotEmpty) {
-                                if (_indiceViagemAtual >= _viagensAtivas.length) {
-                                  _indiceViagemAtual = _viagensAtivas.length - 1;
-                                }
-                                _viagemAtiva = _viagensAtivas[_indiceViagemAtual];
-                              } else {
-                                _viagemAtiva = _viagemService.viagemAtiva;
-                              }
+                              _selecionarViagemPreservandoId(
+                                _viagemService.viagensAtivas,
+                                idPreferido: idViagemAlvo,
+                              );
+                              _capacidadeVeiculo = _resolverCapacidadeVeiculo();
                             });
                           }
                           // Se o paciente avançou para embarque/viagem (status >= 1 e < 4) e a viagem continua ativa, gera ou obtém código de acesso (Issue #65)
                           if (proximoStatus >= 1 &&
                               proximoStatus < 4 &&
                               _viagemAtiva != null &&
+                              _viagemAtiva!.id == idViagemAlvo &&
                               !_viagemAtiva!.id.startsWith('sessao_ativa_') &&
                               !_viagemAtiva!.isConcluida) {
                             final idViagemCodigo = _viagemAtiva!.id;
@@ -1501,6 +1376,7 @@ class _MotoristaState extends State<Motorista> {
                                   .then((codigo) {
                                     if (mounted &&
                                         _viagemAtiva != null &&
+                                        _viagemAtiva!.id == idViagemCodigo &&
                                         !_viagemAtiva!.id.startsWith('sessao_ativa_') &&
                                         !_viagemAtiva!.isConcluida) {
                                       setState(() {
