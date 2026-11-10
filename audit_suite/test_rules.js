@@ -91,7 +91,7 @@ async function runRulesTests() {
       ativo: true,
     });
 
-    // 5. Viagens (uma ativa e uma já encerrada)
+    // 5. Viagens (ativa, aberta e encerrada)
     await db.collection('viagens').doc('viagem_ativa').set({
       destino: 'BARRETOS',
       dataViagem: '2026-11-09',
@@ -99,6 +99,16 @@ async function runRulesTests() {
       codigoAcesso: '5821',
       passageiros: [
         { pacienteId: 'paciente_maria', status: 'a bordo' },
+      ],
+    });
+
+    await db.collection('viagens').doc('viagem_aberta').set({
+      destino: 'RIO PRETO',
+      dataViagem: '2026-11-09',
+      status: 'aberta',
+      codigoAcesso: '1630',
+      passageiros: [
+        { pacienteId: 'paciente_jose', statusEmbarque: 0 },
       ],
     });
 
@@ -207,6 +217,158 @@ async function runRulesTests() {
       teste: 'Motorista A tentando ler dados privados de Motorista B',
       esperado: 'NEGADO (assertFails)',
       obtido: 'PERMITIDO (Falha de isolamento entre motoristas!)',
+      status: 'FALHOU',
+    });
+  }
+
+  // Permitido: Motorista B consulta viagens não encerradas (inclusive 'aberta') com viagem_encerrada no banco
+  try {
+    const motBCtx = testEnv.authenticatedContext('motorista_B');
+    const dbMotB = motBCtx.firestore();
+    const snap = await assertSucceeds(
+      dbMotB.collection('viagens').where('status', '!=', 'encerrada').get()
+    );
+    const ids = snap.docs.map((d) => d.id);
+    const contemAtiva = ids.includes('viagem_ativa');
+    const contemAberta = ids.includes('viagem_aberta');
+    const ocultouEncerrada = !ids.includes('viagem_encerrada');
+    if (!contemAtiva || !contemAberta || !ocultouEncerrada) {
+      throw new Error(`IDs inesperados na consulta: ${ids.join(', ')}`);
+    }
+    results.push({
+      ator: 'MOTORISTA',
+      teste: 'Motorista B consulta viagens (status != encerrada) recebendo ativa e aberta',
+      esperado: 'PERMITIDO',
+      obtido: 'PERMITIDO',
+      status: 'PASSOU',
+    });
+  } catch (err) {
+    results.push({
+      ator: 'MOTORISTA',
+      teste: 'Motorista B consulta viagens (status != encerrada) recebendo ativa e aberta',
+      esperado: 'PERMITIDO',
+      obtido: 'FALHOU: ' + err.message,
+      status: 'FALHOU',
+    });
+  }
+
+  // Permitido: Motorista B lê o próprio documento em /usuarios/{uid}
+  try {
+    const motBCtx = testEnv.authenticatedContext('motorista_B');
+    const dbMotB = motBCtx.firestore();
+    await assertSucceeds(dbMotB.collection('usuarios').doc('motorista_B').get());
+    results.push({
+      ator: 'MOTORISTA',
+      teste: 'Motorista B lê diretamente seu documento /usuarios/motorista_B',
+      esperado: 'PERMITIDO',
+      obtido: 'PERMITIDO',
+      status: 'PASSOU',
+    });
+  } catch (err) {
+    results.push({
+      ator: 'MOTORISTA',
+      teste: 'Motorista B lê diretamente seu documento /usuarios/motorista_B',
+      esperado: 'PERMITIDO',
+      obtido: 'FALHOU: ' + err.message,
+      status: 'FALHOU',
+    });
+  }
+
+  // Permitido: Motorista B grava sessão em /sessoes_veiculo compatível com SessaoVeiculoModel.toMap()
+  try {
+    const motBCtx = testEnv.authenticatedContext('motorista_B');
+    const dbMotB = motBCtx.firestore();
+    await assertSucceeds(
+      dbMotB.collection('sessoes_veiculo').doc('sessao_b').set({
+        id: 'sessao_b',
+        motoristaId: 'motorista_B',
+        motoristaNome: 'Motorista B',
+        veiculoId: 'veic_spin',
+        veiculoPlaca: 'ABC-1D23',
+        veiculoModelo: 'Spin LTZ',
+        kmInicial: 45000,
+        dataHoraInicio: new Date().toISOString(),
+        status: 'ativa',
+        viagensIds: ['viagem_ativa', 'viagem_aberta'],
+      })
+    );
+    results.push({
+      ator: 'MOTORISTA',
+      teste: 'Motorista B grava sessão em /sessoes_veiculo/sessao_b (schema válido)',
+      esperado: 'PERMITIDO',
+      obtido: 'PERMITIDO',
+      status: 'PASSOU',
+    });
+  } catch (err) {
+    results.push({
+      ator: 'MOTORISTA',
+      teste: 'Motorista B grava sessão em /sessoes_veiculo/sessao_b (schema válido)',
+      esperado: 'PERMITIDO',
+      obtido: 'FALHOU: ' + err.message,
+      status: 'FALHOU',
+    });
+  }
+
+  // Permitido: Motorista B grava GPS em /localizacoes_motoristas com campo atualizadoEm
+  try {
+    const motBCtx = testEnv.authenticatedContext('motorista_B');
+    const dbMotB = motBCtx.firestore();
+    await assertSucceeds(
+      dbMotB.collection('localizacoes_motoristas').doc('motorista_B').set({
+        id: 'motorista_B',
+        motoristaId: 'motorista_B',
+        motoristaNome: 'Motorista B',
+        veiculoPlaca: 'ABC-1D23',
+        veiculoModelo: 'Spin LTZ',
+        cidadeDestino: 'BARRETOS',
+        latitude: -20.7389,
+        longitude: -49.8217,
+        atualizadoEm: new Date().toISOString(),
+        emViagem: true,
+        viagemId: 'viagem_ativa',
+      })
+    );
+    results.push({
+      ator: 'MOTORISTA',
+      teste: 'Motorista B grava GPS em /localizacoes_motoristas/motorista_B (atualizadoEm)',
+      esperado: 'PERMITIDO',
+      obtido: 'PERMITIDO',
+      status: 'PASSOU',
+    });
+  } catch (err) {
+    results.push({
+      ator: 'MOTORISTA',
+      teste: 'Motorista B grava GPS em /localizacoes_motoristas/motorista_B (atualizadoEm)',
+      esperado: 'PERMITIDO',
+      obtido: 'FALHOU: ' + err.message,
+      status: 'FALHOU',
+    });
+  }
+
+  // Permitido: Motorista B atualiza passageiros de viagem compartilhada em operação
+  try {
+    const motBCtx = testEnv.authenticatedContext('motorista_B');
+    const dbMotB = motBCtx.firestore();
+    await assertSucceeds(
+      dbMotB.collection('viagens').doc('viagem_ativa').update({
+        passageiros: [
+          { pacienteId: 'paciente_maria', status: 'pronto' },
+        ],
+      })
+    );
+    results.push({
+      ator: 'MOTORISTA',
+      teste: 'Motorista B atualiza status de paciente em viagem compartilhada ativa',
+      esperado: 'PERMITIDO',
+      obtido: 'PERMITIDO',
+      status: 'PASSOU',
+    });
+  } catch (err) {
+    results.push({
+      ator: 'MOTORISTA',
+      teste: 'Motorista B atualiza status de paciente em viagem compartilhada ativa',
+      esperado: 'PERMITIDO',
+      obtido: 'FALHOU: ' + err.message,
       status: 'FALHOU',
     });
   }

@@ -40,6 +40,7 @@ class FormularioEncerramento extends StatefulWidget {
   final ViagemModel? viagem;
   final List<ViagemModel>? viagens;
   final List<PacienteModel>? pacientes;
+  final String? motoristaId;
   final void Function(String retorno, String kmRetorno, String kmRodado)?
       onConfirmar;
   final VoidCallback? onViagemEncerrada;
@@ -49,6 +50,7 @@ class FormularioEncerramento extends StatefulWidget {
     this.viagem,
     this.viagens,
     this.pacientes,
+    this.motoristaId,
     this.onConfirmar,
     this.onViagemEncerrada,
   });
@@ -69,11 +71,21 @@ class _FormularioEncerramentoState extends State<FormularioEncerramento> {
     _kmRetornoController.addListener(_aoMudarKmRetorno);
   }
 
-  int get _kmInicialBase =>
-      widget.viagem?.kmInicial ??
-      widget.viagens?.firstOrNull?.kmInicial ??
-      ViagemService().viagemAtiva?.kmInicial ??
-      0;
+  int get _kmInicialBase {
+    final sessaoAtiva = ViagemService().sessaoAtiva;
+    final motFiltro = widget.motoristaId?.trim() ?? '';
+    final sessaoPertenceAoMotorista = sessaoAtiva != null &&
+        (motFiltro.isEmpty ||
+            sessaoAtiva.motoristaId.trim().isEmpty ||
+            sessaoAtiva.motoristaId.trim() == motFiltro);
+    if (sessaoPertenceAoMotorista && sessaoAtiva.kmInicial > 0) {
+      return sessaoAtiva.kmInicial;
+    }
+    return widget.viagem?.kmInicial ??
+        widget.viagens?.firstOrNull?.kmInicial ??
+        ViagemService().viagemAtiva?.kmInicial ??
+        0;
+  }
 
   void _aoMudarKmRetorno() {
     final kmRet = int.tryParse(_kmRetornoController.text.trim());
@@ -194,6 +206,7 @@ class _FormularioEncerramentoState extends State<FormularioEncerramento> {
         kmRodado: kmRodadoNum,
         viagensExplicitas: viagensSnapshot,
         pacientes: pacientesSnapshot,
+        motoristaId: widget.motoristaId,
       ),
     );
 

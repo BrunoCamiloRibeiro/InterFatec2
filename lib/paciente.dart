@@ -300,10 +300,13 @@ class _PacienteState extends State<Paciente> {
       ),
       ...viagens.where(
         (v) =>
-            v.id != idViagemAuth && v.isPlanejada && !v.isCancelada && !v.isConcluida,
+            v.id != idViagemAuth &&
+            (v.isPlanejada || v.isAberta) &&
+            !v.isCancelada &&
+            !v.isConcluida,
       ),
       ...viagens.where(
-        (v) => v.id != idViagemAuth && !v.isAtiva && !v.isPlanejada,
+        (v) => v.id != idViagemAuth && !v.isAtiva && !v.isPlanejada && !v.isAberta,
       ),
     ];
 

@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:crypto/crypto.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 
@@ -131,6 +132,9 @@ class ViagemService {
 
   /// Viagens com transação em voo no Firestore para evitar flickering por snapshots pré-commit.
   final Set<String> _viagensComEscritaEmVoo = {};
+
+  /// Viagens explícitamente liberadas na sessão atual (evita re-inserção local antes da troca/encerramento).
+  final Set<String> _viagensLiberadasNaSessaoAtual = {};
 
   /// Sessões ativas indexadas por motorista para isolamento de concorrência.
   final Map<String, SessaoVeiculoModel> _sessoesAtivasPorMotorista = {};
@@ -481,6 +485,17 @@ class ViagemService {
     }
   }
 
+  String? _obterAuthUidAtual() {
+    try {
+      return FirebaseAuth.instance.currentUser?.uid;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Garante que as escutas reativas do Firestore estejam ativas após autenticação.
+  void garantirEscutaFirestore() => _garantirEscutaFirestore();
+
   void _emitirStreamsViagens() {
     if (!_todasViagensController.isClosed) {
       _todasViagensController.add(List.unmodifiable(_todasViagensMemoria));
@@ -530,8 +545,24 @@ class ViagemService {
     required String motoristaId,
     required String mensagemConflito,
   }) async {
+    final authUid = _obterAuthUidAtual()?.trim() ?? '';
+    final motLimpo = motoristaId.trim();
+    final idUsuarioAlvo = (motLimpo.isNotEmpty && motLimpo != 'motorista_atual')
+        ? motLimpo
+        : authUid;
+
     final docRef = FirebaseFirestore.instance.collection('veiculos').doc(veiculo.id);
     final docSnap = await transaction.get(docRef);
+    DocumentReference<Map<String, dynamic>>? motoristaRef;
+    DocumentSnapshot<Map<String, dynamic>>? motoristaSnap;
+    if (idUsuarioAlvo.isNotEmpty) {
+      motoristaRef =
+          FirebaseFirestore.instance.collection('usuarios').doc(idUsuarioAlvo);
+      try {
+        motoristaSnap = await transaction.get(motoristaRef);
+      } catch (_) {}
+    }
+
     if (docSnap.exists) {
       final dados = docSnap.data() ?? {};
       final emUsoRemoto = dados['emUso'] == true;
@@ -554,11 +585,11 @@ class ViagemService {
       'status': 'emViagem',
     }, SetOptions(merge: true));
 
-    if (motoristaId.isNotEmpty) {
+    if (motoristaRef != null && motoristaSnap != null && motoristaSnap.exists) {
       FirebaseAuthService.motoristaEmViagemStatic = true;
-      final motoristaRef =
-          FirebaseFirestore.instance.collection('usuarios').doc(motoristaId);
       transaction.set(motoristaRef, {'emViagem': true}, SetOptions(merge: true));
+    } else if (idUsuarioAlvo.isNotEmpty) {
+      FirebaseAuthService.motoristaEmViagemStatic = true;
     }
   }
 
@@ -614,48 +645,67 @@ class ViagemService {
 
   void _garantirEscutaFirestore() {
     if (_escutandoFirestore || !_isFirebaseDisponivel()) return;
+    String? authUid;
+    bool ehAnonimo = false;
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      authUid = user?.uid;
+      ehAnonimo = user?.isAnonymous ?? false;
+    } catch (_) {}
+    if (authUid == null || authUid.isEmpty) return;
+
+    final roleAtual = FirebaseAuthService().getCachedRole(authUid);
+    final podeLerColecoesOperacionais =
+        roleAtual != UserRole.paciente && !ehAnonimo;
     _escutandoFirestore = true;
     try {
-      _subVeiculosRemoto?.cancel();
-      _subVeiculosRemoto = FirebaseFirestore.instance
-          .collection('veiculos')
-          .snapshots()
-          .listen((snap) {
-        _veiculosMemoria
-          ..clear()
-          ..addAll(snap.docs.map((d) => VeiculoModel.fromMap(d.data(), docId: d.id)));
-        if (!_veiculosController.isClosed) {
-          _veiculosController
-              .add(ValidacaoViagem.filtrarVeiculosDisponiveis(_veiculosMemoria));
-        }
-      }, onError: (Object e) {
-        _tratarFalhaFirestore('escutar_veiculos', e);
-      });
+      if (podeLerColecoesOperacionais) {
+        _subVeiculosRemoto?.cancel();
+        _subVeiculosRemoto = FirebaseFirestore.instance
+            .collection('veiculos')
+            .snapshots()
+            .listen((snap) {
+          _veiculosMemoria
+            ..clear()
+            ..addAll(snap.docs.map((d) => VeiculoModel.fromMap(d.data(), docId: d.id)));
+          if (!_veiculosController.isClosed) {
+            _veiculosController
+                .add(ValidacaoViagem.filtrarVeiculosDisponiveis(_veiculosMemoria));
+          }
+        }, onError: (Object e) {
+          _escutandoFirestore = false;
+          _tratarFalhaFirestore('escutar_veiculos', e);
+        });
 
-      _subPacientesRemoto?.cancel();
-      _subPacientesRemoto = FirebaseFirestore.instance
-          .collection('usuarios')
-          .where('role', isEqualTo: 'paciente')
-          .snapshots()
-          .listen((snap) {
-        for (final d in snap.docs) {
-          _perfisPacientesPorId[d.id] =
-              PacienteModel.fromMap(d.data(), docId: d.id);
-        }
-      }, onError: (Object e) {
-        _tratarFalhaFirestore('escutar_pacientes', e);
-      });
+        _subPacientesRemoto?.cancel();
+        _subPacientesRemoto = FirebaseFirestore.instance
+            .collection('usuarios')
+            .where('role', isEqualTo: 'paciente')
+            .snapshots()
+            .listen((snap) {
+          for (final d in snap.docs) {
+            _perfisPacientesPorId[d.id] =
+                PacienteModel.fromMap(d.data(), docId: d.id);
+          }
+        }, onError: (Object e) {
+          _escutandoFirestore = false;
+          _tratarFalhaFirestore('escutar_pacientes', e);
+        });
+      }
 
       // Listener passivo (nunca escreve no Firestore para evitar loops reentrantes).
+      // Não-administradores filtram status != 'encerrada' conforme Security Rules.
+      final queryViagens = (roleAtual == UserRole.admin)
+          ? FirebaseFirestore.instance.collection('viagens')
+          : FirebaseFirestore.instance
+              .collection('viagens')
+              .where('status', isNotEqualTo: 'encerrada');
       _subViagensRemoto?.cancel();
-      _subViagensRemoto = FirebaseFirestore.instance
-          .collection('viagens')
-          .snapshots()
-          .listen((snap) {
+      _subViagensRemoto = queryViagens.snapshots().listen((snap) {
         final viagensCarregadas = <ViagemModel>[];
         for (final d in snap.docs) {
           var v = ViagemModel.fromMap(d.data(), docId: d.id);
-          if ((v.isAtiva || v.isPlanejada) && !v.isCancelada && !v.isConcluida) {
+          if (v.isEmOperacao) {
             final (codigos, hashes, alterou) = _sincronizarCodigosDaViagem(
               viagemId: v.id,
               passageiros: v.passageiros,
@@ -671,6 +721,7 @@ class ViagemService {
         }
         sincronizarViagensRemotas(viagensCarregadas);
       }, onError: (Object e) {
+        _escutandoFirestore = false;
         _tratarFalhaFirestore('escutar_viagens', e);
       });
     } catch (e) {
@@ -700,6 +751,7 @@ class ViagemService {
     _sessaoAtiva = null;
     _viagemAtiva = null;
     _viagensAtivasMemoria.clear();
+    _viagensLiberadasNaSessaoAtual.clear();
     _viagensConcluidasNaSessao.clear();
     if (!_sessaoAtivaController.isClosed) {
       _sessaoAtivaController.add(null);
@@ -793,6 +845,7 @@ class ViagemService {
         (vm) => vm.id == veicViagem && vm.emUso && vm.motoristaAtualId != motAlvo,
       );
       if (v.isPlanejada ||
+          v.isAberta ||
           outroEmUso ||
           (sessaoViagem.isNotEmpty && !vinculadaAoMotorista)) {
         return false;
@@ -809,6 +862,7 @@ class ViagemService {
             vm.motoristaAtualId != motAlvo,
       );
       if (v.isPlanejada ||
+          v.isAberta ||
           outroEmUso ||
           (sessaoViagem.isNotEmpty && !vinculadaAoMotorista)) {
         return false;
@@ -829,6 +883,55 @@ class ViagemService {
     }
 
     return true;
+  }
+
+  bool _ehViagemCompartilhavel(ViagemModel v) {
+    if (v.id.isEmpty || v.id.startsWith('sessao_ativa_')) return false;
+    if (!v.isEmOperacao) return false;
+    if (_viagensLiberadasNaSessaoAtual.contains(v.id)) return false;
+    if (todosPacientesVoltaram(v)) return false;
+    return true;
+  }
+
+  /// Disponibiliza todas as viagens operacionais compartilhadas na sessão atual
+  /// sem sobrescrever veículo, sessão ou motorista de outros condutores.
+  bool _adicionarViagensCompartilhadasParaSessao(SessaoVeiculoModel sessao) {
+    bool adicionou = false;
+    for (int i = 0; i < _todasViagensMemoria.length; i++) {
+      var base = _todasViagensMemoria[i];
+      if (!_ehViagemCompartilhavel(base)) continue;
+      if (_viagensAtivasMemoria.any((va) => va.id == base.id)) continue;
+
+      final (codigosSinc, hashesSinc, alterouCodigos) =
+          _sincronizarCodigosDaViagem(
+        viagemId: base.id,
+        passageiros: base.passageiros,
+        passageirosIds: base.passageirosIds,
+        codigosExistentes: base.codigosAcesso,
+        hashesExistentes: base.codigosHash,
+      );
+      if (alterouCodigos) {
+        base = base.copyWith(
+          codigosAcesso: codigosSinc,
+          codigosHash: hashesSinc,
+        );
+        _todasViagensMemoria[i] = base;
+      }
+      for (final pv in base.passageiros) {
+        if (PacienteSyncService().obterPacienteMemoria(
+              pv.pacienteId,
+              viagemId: base.id,
+            ) ==
+            null) {
+          _sincronizarPassageiroEmMemoriaPorViagem(base.id, pv);
+        }
+      }
+      _viagensAtivasMemoria
+          .removeWhere((va) => va.id.startsWith('sessao_ativa_'));
+      _viagensAtivasMemoria.add(base);
+      adicionou = true;
+    }
+    return adicionou;
   }
 
   /// Retorna as viagens ativas filtradas especificamente para um motorista ou sessão.
@@ -985,6 +1088,7 @@ class ViagemService {
         _sincronizarPassageiroEmMemoriaPorViagem(v.id, pv);
       }
       if (!v.isPlanejada &&
+          !v.isAberta &&
           !v.isCancelada &&
           !v.isConcluida &&
           v.passageiros.isNotEmpty &&
@@ -1015,12 +1119,22 @@ class ViagemService {
     }
 
     bool atualizouAtiva = false;
+    String cidadeFallback = '';
     for (int i = _viagensAtivasMemoria.length - 1; i >= 0; i--) {
       final atualMem = _viagensAtivasMemoria[i];
       if (atualMem.id.startsWith('sessao_ativa_')) continue;
       final vRemota =
           processadas.where((v) => v.id == atualMem.id).firstOrNull;
-      if (vRemota == null) continue;
+      if (vRemota == null) {
+        if (!_viagensComEscritaEmVoo.contains(atualMem.id)) {
+          _viagensAtivasMemoria.removeAt(i);
+          atualizouAtiva = true;
+          if (_viagemAtiva?.id == atualMem.id && cidadeFallback.isEmpty) {
+            cidadeFallback = atualMem.cidadeDestino;
+          }
+        }
+        continue;
+      }
 
       if (vRemota.isCancelada ||
           vRemota.isConcluida ||
@@ -1036,22 +1150,25 @@ class ViagemService {
             referenciaSessao: atualMem,
           );
         }
-        final idRemovido = atualMem.id;
         _viagensAtivasMemoria.removeAt(i);
         atualizouAtiva = true;
-        if (_viagemAtiva?.id == idRemovido) {
-          _selecionarProximaOuPlaceholder(cidadeFallback: vRemota.cidadeDestino);
+        if (_viagemAtiva?.id == atualMem.id && cidadeFallback.isEmpty) {
+          cidadeFallback = vRemota.cidadeDestino;
         }
       } else {
-        final pertenceSessaoAtual = _sessaoAtiva != null &&
+        final ehPropriaDaSessao = _sessaoAtiva != null &&
             _viagemElegivelParaSessao(
               vRemota,
               motoristaId: _sessaoAtiva!.motoristaId,
               veiculoId: _sessaoAtiva!.veiculoId,
               veiculoPlaca: _sessaoAtiva!.veiculoPlaca,
               sessaoId: _sessaoAtiva!.id,
-            );
-        final vComVeiculo = pertenceSessaoAtual
+            ) &&
+            ((vRemota.sessaoId?.trim().isNotEmpty == true &&
+                    vRemota.sessaoId!.trim() == _sessaoAtiva!.id) ||
+                vRemota.veiculoId.trim() == _sessaoAtiva!.veiculoId ||
+                (vRemota.veiculoId.trim().isEmpty && !vRemota.isAtiva));
+        final vComVeiculo = ehPropriaDaSessao
             ? vRemota.copyWith(
                 veiculoId: _sessaoAtiva!.veiculoId,
                 veiculoPlaca: _sessaoAtiva!.veiculoPlaca,
@@ -1075,6 +1192,7 @@ class ViagemService {
       final destinoSessao = _viagemAtiva?.cidadeDestino ?? '';
       final novasAbertas = processadas.where(
         (v) =>
+            !_viagensLiberadasNaSessaoAtual.contains(v.id) &&
             _viagemElegivelParaSessao(
               v,
               motoristaId: _sessaoAtiva!.motoristaId,
@@ -1100,11 +1218,26 @@ class ViagemService {
         );
         atualizouAtiva = true;
       }
-      if (atualizouAtiva &&
-          (_viagemAtiva == null ||
-              _viagemAtiva!.id.startsWith('sessao_ativa_')) &&
-          _viagensAtivasMemoria.isNotEmpty) {
-        _viagemAtiva = _viagensAtivasMemoria.first;
+
+      if (_adicionarViagensCompartilhadasParaSessao(_sessaoAtiva!)) {
+        atualizouAtiva = true;
+      }
+
+      final viagemEmFocoAusente = _viagemAtiva == null ||
+          _viagemAtiva!.id.startsWith('sessao_ativa_') ||
+          !_viagensAtivasMemoria.any((v) => v.id == _viagemAtiva!.id);
+      if (viagemEmFocoAusente &&
+          (atualizouAtiva || _viagensAtivasMemoria.isNotEmpty)) {
+        _selecionarProximaOuPlaceholder(cidadeFallback: cidadeFallback);
+        atualizouAtiva = true;
+        if (!_viagemAtivaController.isClosed) {
+          _viagemAtivaController.add(_viagemAtiva);
+        }
+      }
+    } else if (atualizouAtiva) {
+      if (_viagemAtiva != null &&
+          !_viagensAtivasMemoria.any((v) => v.id == _viagemAtiva!.id)) {
+        _selecionarProximaOuPlaceholder(cidadeFallback: cidadeFallback);
         if (!_viagemAtivaController.isClosed) {
           _viagemAtivaController.add(_viagemAtiva);
         }
@@ -1132,7 +1265,7 @@ class ViagemService {
     if (_sessaoFinalizadaPeloMotorista) return;
     if (_sessaoAtiva != null &&
         _viagemAtiva != null &&
-        _viagemAtiva!.isAtiva &&
+        _viagemAtiva!.isEmOperacao &&
         !_viagemAtiva!.id.startsWith('sessao_ativa_')) {
       return;
     }
@@ -1253,8 +1386,8 @@ class ViagemService {
       _sessaoAtivaController.add(_sessaoAtiva);
     }
 
-    _viagensAtivasMemoria
-        .removeWhere((va) => va.id.startsWith('sessao_ativa_'));
+    _viagensLiberadasNaSessaoAtual.clear();
+    _viagensAtivasMemoria.clear();
     for (final base in _todasViagensMemoria) {
       if (!_viagemElegivelParaSessao(
         base,
@@ -1283,23 +1416,26 @@ class ViagemService {
       }
     }
 
+    if (viagemDoMotorista != null &&
+        !_viagensAtivasMemoria.any((va) => va.id == viagemDoMotorista!.id)) {
+      _viagensAtivasMemoria.add(
+        viagemDoMotorista.copyWith(
+          motoristaId: viagemDoMotorista.motoristaId.isNotEmpty
+              ? viagemDoMotorista.motoristaId
+              : idMotLimpo,
+          motoristaNome: viagemDoMotorista.motoristaNome.isNotEmpty
+              ? viagemDoMotorista.motoristaNome
+              : motoristaNome,
+          status: 'ativa',
+          sessaoId: _sessaoAtiva!.id,
+        ),
+      );
+    }
+
+    _adicionarViagensCompartilhadasParaSessao(_sessaoAtiva!);
+
     if (_viagensAtivasMemoria.isEmpty) {
-      if (viagemDoMotorista != null) {
-        _viagensAtivasMemoria.add(
-          viagemDoMotorista.copyWith(
-            motoristaId: viagemDoMotorista.motoristaId.isNotEmpty
-                ? viagemDoMotorista.motoristaId
-                : idMotLimpo,
-            motoristaNome: viagemDoMotorista.motoristaNome.isNotEmpty
-                ? viagemDoMotorista.motoristaNome
-                : motoristaNome,
-            status: 'ativa',
-            sessaoId: _sessaoAtiva!.id,
-          ),
-        );
-      } else {
-        _viagensAtivasMemoria.add(_criarPlaceholderSessaoAtiva(_sessaoAtiva!));
-      }
+      _viagensAtivasMemoria.add(_criarPlaceholderSessaoAtiva(_sessaoAtiva!));
     }
 
     _viagemAtiva = _viagensAtivasMemoria.first;
@@ -1513,8 +1649,8 @@ class ViagemService {
         .add(ValidacaoViagem.filtrarVeiculosDisponiveis(_veiculosMemoria));
 
     _viagensConcluidasNaSessao.clear();
-    _viagensAtivasMemoria
-        .removeWhere((va) => va.id.startsWith('sessao_ativa_'));
+    _viagensLiberadasNaSessaoAtual.clear();
+    _viagensAtivasMemoria.clear();
 
     final viagensAbertas = _todasViagensMemoria.where(
       (v) => _viagemElegivelParaSessao(
@@ -1576,12 +1712,22 @@ class ViagemService {
       _sessaoAtivaController.add(_sessaoAtiva);
     }
 
+    _adicionarViagensCompartilhadasParaSessao(_sessaoAtiva!);
+
     final viagensDestaSessao = _viagensAtivasMemoria
         .where((va) => va.sessaoId == novaSessao.id || va.veiculoId == veiculo.id)
         .toList();
     if (viagensDestaSessao.isNotEmpty) {
       _viagemAtiva = viagensDestaSessao.first;
       _emitirStreamsViagens();
+    } else {
+      final compartilhadaInicial = _viagensAtivasMemoria
+          .where((va) => !va.id.startsWith('sessao_ativa_'))
+          .firstOrNull;
+      if (compartilhadaInicial != null) {
+        _viagemAtiva = compartilhadaInicial;
+        _emitirStreamsViagens();
+      }
     }
 
     if (executorPersistenciaRemotaOverride != null || _isFirebaseDisponivel()) {
@@ -1677,6 +1823,8 @@ class ViagemService {
       sessaoId: sessao.id,
     );
 
+    _viagensAtivasMemoria
+        .removeWhere((va) => va.id.startsWith('sessao_ativa_'));
     _viagensAtivasMemoria.add(novaViagem);
     _todasViagensMemoria.add(novaViagem);
     _viagemAtiva = novaViagem;
@@ -1689,6 +1837,7 @@ class ViagemService {
 
     if (executorPersistenciaRemotaOverride != null || _isFirebaseDisponivel()) {
       final idsAtualizados = List<String>.from(_sessaoAtiva!.viagensIds);
+      _viagensComEscritaEmVoo.add(novaViagem.id);
       unawaited(
         Future.microtask(() async {
           try {
@@ -1726,6 +1875,8 @@ class ViagemService {
             );
           } catch (e) {
             _tratarFalhaFirestore('criar_viagem_sessao', e);
+          } finally {
+            _viagensComEscritaEmVoo.remove(novaViagem.id);
           }
         }),
       );
@@ -1804,6 +1955,7 @@ class ViagemService {
     }
 
     _viagensConcluidasNaSessao.clear();
+    _viagensLiberadasNaSessaoAtual.clear();
     _viagensAtivasMemoria.removeWhere(
       (va) =>
           va.id.startsWith('sessao_ativa_') ||
@@ -1864,15 +2016,22 @@ class ViagemService {
       }
     }
 
+    _adicionarViagensCompartilhadasParaSessao(sessaoCorrente);
+
     final viagensDestaSessao = _viagensAtivasMemoria
         .where((va) => va.sessaoId == sessaoCorrente.id || va.veiculoId == veiculo.id)
+        .toList();
+    final viagensReaisCompartilhadas = _viagensAtivasMemoria
+        .where((va) => !va.id.startsWith('sessao_ativa_'))
         .toList();
 
     final ViagemModel novaViagem;
     if (viagensDestaSessao.isNotEmpty) {
       novaViagem = viagensDestaSessao.first;
+    } else if (viagensReaisCompartilhadas.isNotEmpty) {
+      novaViagem = viagensReaisCompartilhadas.first;
     } else {
-      // Placeholder local de sessão quando o admin ainda não cadastrou viagens na rota.
+      // Placeholder local apenas quando nenhuma viagem ativa/aberta existe no sistema.
       novaViagem = _criarPlaceholderSessaoAtiva(
         sessaoCorrente,
         cidadeDestino: cidadeDestino,
@@ -1884,6 +2043,19 @@ class ViagemService {
     _emitirStreamsViagens();
     _veiculosController
         .add(ValidacaoViagem.filtrarVeiculosDisponiveis(_veiculosMemoria));
+
+    if (viagensExistentesParaPersistir.isNotEmpty) {
+      final idsSessao = {
+        ...sessaoCorrente.viagensIds,
+        ...viagensExistentesParaPersistir.map((v) => v.id),
+      }.toList();
+      _sessaoAtiva = sessaoCorrente.copyWith(viagensIds: idsSessao);
+      if (motoristaId.isNotEmpty) {
+        _sessoesAtivasPorMotorista[motoristaId] = _sessaoAtiva!;
+      }
+      _sessaoAtivaController.add(_sessaoAtiva);
+    }
+    final sessaoParaPersistir = _sessaoAtiva ?? sessaoCorrente;
 
     if (executorPersistenciaRemotaOverride != null || _isFirebaseDisponivel()) {
       void rollback() => _restaurarSnapshotSessao(
@@ -1919,6 +2091,12 @@ class ViagemService {
               ),
             );
             _totalGravacoesFirestoreJornada += 2;
+
+            await FirebaseFirestore.instance
+                .collection('sessoes_veiculo')
+                .doc(sessaoParaPersistir.id)
+                .set(sessaoParaPersistir.toMap(), SetOptions(merge: true));
+            _totalGravacoesFirestoreJornada++;
 
             for (final vp in viagensExistentesParaPersistir) {
               await FirebaseFirestore.instance
@@ -2208,6 +2386,13 @@ class ViagemService {
         dataHoraFim: DateTime.now(),
         codigosAcesso: const {},
       );
+    } else if (!atualizada.isCancelada &&
+        !atualizada.isConcluida &&
+        (atualizada.isPlanejada || atualizada.isAberta) &&
+        novosPassageiros.any(
+          (p) => p.statusEmbarque > 0 && p.statusEmbarque != 5,
+        )) {
+      atualizada = atualizada.copyWith(status: 'ativa');
     }
     return atualizada;
   }
@@ -2286,6 +2471,9 @@ class ViagemService {
                 passageirosMerged.where((p) => p.statusEmbarque != 5).toList();
             final todosConcluidos =
                 ativos.isEmpty || ativos.every((p) => p.statusEmbarque == 4);
+            final temPassageiroEmTransito = passageirosMerged.any(
+              (p) => p.statusEmbarque > 0 && p.statusEmbarque != 5,
+            );
 
             final updateDados = <String, dynamic>{
               'passageiros': passageirosMerged.map((p) => p.toMap()).toList(),
@@ -2299,6 +2487,25 @@ class ViagemService {
               updateDados['dataHoraFim'] =
                   (vp.dataHoraFim ?? DateTime.now()).toIso8601String();
               updateDados['codigosAcesso'] = <String, dynamic>{};
+            } else if (!remoto.isCancelada &&
+                !remoto.isConcluida &&
+                (remoto.isPlanejada || remoto.isAberta) &&
+                temPassageiroEmTransito) {
+              updateDados['status'] = 'ativa';
+            }
+            if (!todosConcluidos &&
+                vp.codigosAcesso.isNotEmpty &&
+                (remoto.codigosAcesso.isEmpty ||
+                    vp.codigosAcesso.keys
+                        .any((k) => !remoto.codigosAcesso.containsKey(k)))) {
+              updateDados['codigosAcesso'] = <String, String>{
+                ...vp.codigosAcesso,
+                ...remoto.codigosAcesso,
+              };
+              updateDados['codigosHash'] = <String, String>{
+                ...vp.codigosHash,
+                ...remoto.codigosHash,
+              };
             }
             tx.update(docRef, updateDados);
           });
@@ -2450,6 +2657,9 @@ class ViagemService {
     final sessaoFinalizada =
         _viagensAtivasMemoria.isEmpty || !aindaTemViagensDaSessao;
     final sessaoIdEncerrada = sessaoIdAlvo.isNotEmpty ? sessaoIdAlvo : null;
+    if (!sessaoFinalizada && !ehPlaceholderSessao) {
+      _viagensLiberadasNaSessaoAtual.add(idAlvo);
+    }
 
     if (sessaoFinalizada) {
       final ehSessaoPrincipal = _sessaoAtiva == null ||
@@ -2471,13 +2681,10 @@ class ViagemService {
         );
         _sessaoAtivaController.add(_sessaoAtiva);
         _sessaoAtiva = null;
-        if (_viagemAtiva != null &&
-            (sessaoIdEncerrada != null &&
-                    _viagemAtiva!.sessaoId == sessaoIdEncerrada ||
-                _viagemAtiva!.veiculoId == veiculoId)) {
-          _viagemAtiva = null;
-          _viagemAtivaController.add(null);
-        }
+        _viagensAtivasMemoria.clear();
+        _viagensLiberadasNaSessaoAtual.clear();
+        _viagemAtiva = null;
+        _emitirStreamsViagens();
       }
 
       final veicIndex = _veiculosMemoria.indexWhere((v) => v.id == veiculoId);
@@ -2511,6 +2718,14 @@ class ViagemService {
           : (FirebaseAuthService().currentDocId ??
                 FirebaseAuthService().currentUserId ??
                 '');
+      final authUid = _obterAuthUidAtual()?.trim() ?? '';
+      final idDocLogado = FirebaseAuthService().currentDocId?.trim() ?? '';
+      final ehDoUsuarioAutenticado = authUid.isNotEmpty &&
+          (idMotoristaParaLiberar.isEmpty ||
+              idMotoristaParaLiberar == idDocLogado ||
+              idMotoristaParaLiberar == authUid);
+      final idLocalizacaoParaLiberar =
+          ehDoUsuarioAutenticado ? authUid : idMotoristaParaLiberar;
       final nomeMotoristaParaLiberar = nomeMotoristaSessao.isNotEmpty
           ? nomeMotoristaSessao
           : 'Motorista';
@@ -2529,6 +2744,7 @@ class ViagemService {
           sessaoFinalizada: sessaoFinalizada,
           sessaoIdEncerrada: sessaoIdEncerrada,
           idMotoristaParaLiberar: idMotoristaParaLiberar,
+          idLocalizacaoParaLiberar: idLocalizacaoParaLiberar,
           nomeMotoristaParaLiberar: nomeMotoristaParaLiberar,
         ),
       );
@@ -2548,6 +2764,7 @@ class ViagemService {
     required bool sessaoFinalizada,
     required String? sessaoIdEncerrada,
     required String idMotoristaParaLiberar,
+    required String idLocalizacaoParaLiberar,
     required String nomeMotoristaParaLiberar,
   }) async {
     try {
@@ -2611,6 +2828,7 @@ class ViagemService {
               tx.set(veicRef, {
                 'emUso': false,
                 'motoristaAtualId': null,
+                'status': 'disponivel',
                 'quilometragemAtual': ?kmFinalCalculado,
               }, SetOptions(merge: true));
               return;
@@ -2625,6 +2843,7 @@ class ViagemService {
               tx.set(veicRef, {
                 'emUso': false,
                 'motoristaAtualId': null,
+                'status': 'disponivel',
                 'quilometragemAtual': ?kmFinalCalculado,
               }, SetOptions(merge: true));
             }
@@ -2638,8 +2857,10 @@ class ViagemService {
               .doc(idMotoristaParaLiberar)
               .set({'emViagem': false}, SetOptions(merge: true));
           _totalGravacoesFirestoreJornada++;
+        }
+        if (idLocalizacaoParaLiberar.isNotEmpty) {
           LocalizacaoMotoristaService()
-              .removerOuInativarMotorista(idMotoristaParaLiberar);
+              .removerOuInativarMotorista(idLocalizacaoParaLiberar);
         }
       }
     } catch (e) {
@@ -2701,27 +2922,39 @@ class ViagemService {
     List<PacienteModel>? pacientes,
     String? motoristaId,
   }) async {
-    final sessaoAlvo = (motoristaId != null &&
-            motoristaId.trim().isNotEmpty &&
-            _sessoesAtivasPorMotorista.containsKey(motoristaId.trim()))
-        ? _sessoesAtivasPorMotorista[motoristaId.trim()]
-        : _sessaoAtiva;
-    final idMotoristaDaSessaoAntes = (motoristaId?.trim().isNotEmpty == true)
-        ? motoristaId!.trim()
-        : (sessaoAlvo?.motoristaId ?? '');
-    final sessaoIdAlvo = sessaoAlvo?.id ?? '';
-    final veiculoIdAlvo = sessaoAlvo?.veiculoId ?? '';
-    if (motoristaId == null ||
-        _sessaoAtiva == null ||
+    final motArg = motoristaId?.trim() ?? '';
+    final sessaoDoMapa =
+        motArg.isNotEmpty ? _sessoesAtivasPorMotorista[motArg] : null;
+    final sessaoCorrenteCompat = (_sessaoAtiva != null &&
+            (motArg.isEmpty ||
+                _sessaoAtiva!.motoristaId.trim().isEmpty ||
+                _sessaoAtiva!.motoristaId.trim() == motArg))
+        ? _sessaoAtiva
+        : null;
+    final sessaoAlvo = sessaoDoMapa ?? sessaoCorrenteCompat;
+
+    final idMotoristaDaSessaoAntes = motArg.isNotEmpty
+        ? motArg
+        : (sessaoAlvo?.motoristaId.trim() ?? '');
+    final sessaoIdAlvo = sessaoAlvo?.id.trim() ?? '';
+    final veiculoIdAlvo = sessaoAlvo?.veiculoId.trim() ?? '';
+    final temEscopoCondutor = sessaoAlvo != null || motArg.isNotEmpty;
+    final encerrandoSessaoCorrente = _sessaoAtiva == null ||
+        (sessaoAlvo != null && _sessaoAtiva!.id == sessaoAlvo.id) ||
+        idMotoristaDaSessaoAntes.isEmpty ||
         _sessaoAtiva!.motoristaId.trim().isEmpty ||
-        _sessaoAtiva!.motoristaId.trim() == idMotoristaDaSessaoAntes) {
+        _sessaoAtiva!.motoristaId.trim() == idMotoristaDaSessaoAntes;
+
+    if (encerrandoSessaoCorrente) {
       _sessaoFinalizadaPeloMotorista = true;
     }
     final mapaParaEncerrar = <String, ViagemModel>{};
 
     bool pertenceAoCondutor(ViagemModel v) {
+      if (!temEscopoCondutor) return true;
       final motV = v.motoristaId.trim();
       final sessV = v.sessaoId?.trim() ?? '';
+      final veicV = v.veiculoId.trim();
       if (idMotoristaDaSessaoAntes.isNotEmpty &&
           motV.isNotEmpty &&
           motV != 'motorista_atual' &&
@@ -2731,17 +2964,29 @@ class ViagemService {
       if (sessaoIdAlvo.isNotEmpty && sessV.isNotEmpty && sessV != sessaoIdAlvo) {
         return false;
       }
-      if (veiculoIdAlvo.isNotEmpty &&
-          v.veiculoId.isNotEmpty &&
-          v.veiculoId != veiculoIdAlvo) {
+      if (veiculoIdAlvo.isNotEmpty && veicV.isNotEmpty && veicV != veiculoIdAlvo) {
         return false;
       }
-      return true;
+      final matchPlaceholder = veiculoIdAlvo.isNotEmpty &&
+          v.id.startsWith('sessao_ativa_$veiculoIdAlvo');
+      final matchSessao = sessaoIdAlvo.isNotEmpty && sessV == sessaoIdAlvo;
+      final matchMotorista =
+          idMotoristaDaSessaoAntes.isNotEmpty && motV == idMotoristaDaSessaoAntes;
+      final matchVeiculoSemOutroDono = veiculoIdAlvo.isNotEmpty &&
+          veicV == veiculoIdAlvo &&
+          motV.isEmpty &&
+          sessV.isEmpty;
+      return matchPlaceholder ||
+          matchSessao ||
+          matchMotorista ||
+          matchVeiculoSemOutroDono;
     }
 
     if (viagensExplicitas != null && viagensExplicitas.isNotEmpty) {
       for (final v in viagensExplicitas) {
-        if (v.id.isNotEmpty) mapaParaEncerrar[v.id] = v;
+        if (v.id.isNotEmpty && (!temEscopoCondutor || pertenceAoCondutor(v))) {
+          mapaParaEncerrar[v.id] = v;
+        }
       }
     } else {
       for (final vc in _viagensConcluidasNaSessao) {
@@ -2789,6 +3034,11 @@ class ViagemService {
         );
       }
     } else if (sessaoAlvo != null) {
+      final agoraFim = DateTime.now();
+      final kmRodadoCalc = kmRodado ??
+          ((kmFinal != null && kmFinal >= sessaoAlvo.kmInicial)
+              ? (kmFinal - sessaoAlvo.kmInicial)
+              : null);
       if (idMotoristaDaSessaoAntes.isNotEmpty) {
         _sessoesAtivasPorMotorista.remove(idMotoristaDaSessaoAntes);
       }
@@ -2813,11 +3063,24 @@ class ViagemService {
         if (_isFirebaseDisponivel()) {
           unawaited(
             FirebaseFirestore.instance
+                .collection('sessoes_veiculo')
+                .doc(sessaoAlvo.id)
+                .set({
+                  'status': 'encerrada',
+                  'dataHoraFim': agoraFim.toIso8601String(),
+                  'kmFinal': ?kmFinal,
+                  'kmRodado': ?kmRodadoCalc,
+                }, SetOptions(merge: true))
+                .catchError((_) {}),
+          );
+          unawaited(
+            FirebaseFirestore.instance
                 .collection('veiculos')
                 .doc(veiculoIdAlvo)
                 .set({
                   'emUso': false,
                   'motoristaAtualId': null,
+                  'status': 'disponivel',
                   'quilometragemAtual': ?kmFinal,
                 }, SetOptions(merge: true))
                 .catchError((_) {}),
@@ -2831,8 +3094,7 @@ class ViagemService {
     }
 
     _viagensConcluidasNaSessao.clear();
-    if (motoristaId == null ||
-        idMotoristaDaSessaoAntes.isEmpty ||
+    if (encerrandoSessaoCorrente ||
         idMotoristaDaSessaoAntes ==
             (FirebaseAuthService().currentDocId ??
                 FirebaseAuthService().currentUserId ??
@@ -2858,6 +3120,10 @@ class ViagemService {
               : (FirebaseAuthService().currentDocId ??
                     FirebaseAuthService().currentUserId ??
                     ''));
+    final authUid = _obterAuthUidAtual()?.trim() ?? '';
+    final idLocalizacaoFinal = (encerrandoSessaoCorrente && authUid.isNotEmpty)
+        ? authUid
+        : idMotoristaFinal;
     if (_isFirebaseDisponivel() && idMotoristaFinal.isNotEmpty) {
       unawaited(
         FirebaseFirestore.instance
@@ -2866,26 +3132,21 @@ class ViagemService {
             .set({'emViagem': false}, SetOptions(merge: true))
             .catchError((_) {}),
       );
+    }
+    if (_isFirebaseDisponivel() && idLocalizacaoFinal.isNotEmpty) {
       LocalizacaoMotoristaService()
-          .removerOuInativarMotorista(idMotoristaFinal);
+          .removerOuInativarMotorista(idLocalizacaoFinal);
     }
 
-    if ((viagensExplicitas == null && motoristaId == null) &&
-        (_viagensAtivasMemoria.isNotEmpty ||
-            _viagemAtiva != null ||
-            _sessaoAtiva != null)) {
+    if (encerrandoSessaoCorrente) {
       _viagensAtivasMemoria.clear();
       _viagemAtiva = null;
       _sessaoAtiva = null;
-      _viagensAtivasController.add(const <ViagemModel>[]);
-      _viagemAtivaController.add(null);
-      _sessaoAtivaController.add(null);
-    } else if (_viagensAtivasMemoria.isEmpty &&
-        (_viagemAtiva != null || _sessaoAtiva != null)) {
-      _viagemAtiva = null;
-      _sessaoAtiva = null;
-      _viagemAtivaController.add(null);
-      _sessaoAtivaController.add(null);
+      _viagensLiberadasNaSessaoAtual.clear();
+      if (!_sessaoAtivaController.isClosed) {
+        _sessaoAtivaController.add(null);
+      }
+      _emitirStreamsViagens();
     }
   }
 
@@ -3637,6 +3898,7 @@ class ViagemService {
     _sessoesAtivasPorMotorista.clear();
     _perfisPacientesPorId.clear();
     _viagensComEscritaEmVoo.clear();
+    _viagensLiberadasNaSessaoAtual.clear();
     _totalGravacoesFirestoreJornada = 0;
     executorPersistenciaRemotaOverride = null;
     _sessaoAtiva = sessaoAtivaInicial;

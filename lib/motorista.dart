@@ -10,7 +10,6 @@ import 'package:trans_saude/models/paciente_model.dart';
 import 'package:trans_saude/models/veiculo_model.dart';
 import 'package:trans_saude/models/viagem_model.dart';
 import 'package:trans_saude/services/auth_service.dart';
-import 'package:trans_saude/services/cpf_validator.dart';
 import 'package:trans_saude/services/localizacao_motorista_service.dart';
 import 'package:trans_saude/services/paciente_sync_service.dart';
 import 'package:trans_saude/services/transicao_paciente_service.dart';
@@ -49,7 +48,7 @@ class _MotoristaState extends State<Motorista> {
 
   StreamSubscription<ViagemModel?>? _subViagemAtiva;
   StreamSubscription<List<ViagemModel>>? _subViagensAtivas;
-  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _subMotorista;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _subMotorista;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _subVeiculosFirestore;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _subViagensFirestore;
   StreamSubscription<({String? viagemId, PacienteModel paciente})>?
@@ -149,6 +148,8 @@ class _MotoristaState extends State<Motorista> {
 
     _registrarListenersServico();
     if (_isFirebaseDisponivel()) {
+      _viagemService.garantirEscutaFirestore();
+      LocalizacaoMotoristaService().garantirEscutasFirestore();
       _ouvirDadosMotorista();
       _ouvirVeiculosEViagensFirestore();
     }
@@ -157,7 +158,7 @@ class _MotoristaState extends State<Motorista> {
   void _registrarListenersServico() {
     _subViagemAtiva = _viagemService.viagemAtivaStream.listen((viagem) {
       if (!mounted) return;
-      if (viagem != null && viagem.isAtiva) {
+      if (viagem != null && viagem.isEmOperacao) {
         _cancelarTimeoutCarregamentoViagem();
       }
       setState(() {
@@ -190,7 +191,7 @@ class _MotoristaState extends State<Motorista> {
                     !_viagemService.todosPacientesVoltaram(v)),
           )
           .toList();
-      if (ativas.any((v) => v.isAtiva)) {
+      if (ativas.any((v) => v.isEmOperacao)) {
         _cancelarTimeoutCarregamentoViagem();
       }
       setState(() {
@@ -311,12 +312,13 @@ class _MotoristaState extends State<Motorista> {
 
   bool get _temViagemAtiva {
     if (widget.pacientesStreamOverride != null) return true;
-    if (_viagemAtiva != null && _viagemAtiva!.isAtiva) return true;
-    if (_viagensAtivas.isNotEmpty && _viagensAtivas.any((v) => v.isAtiva)) {
+    if (_viagemAtiva != null && _viagemAtiva!.isEmOperacao) return true;
+    if (_viagensAtivas.isNotEmpty &&
+        _viagensAtivas.any((v) => v.isEmOperacao)) {
       return true;
     }
     if (_viagemService.viagemAtiva != null &&
-        _viagemService.viagemAtiva!.isAtiva) {
+        _viagemService.viagemAtiva!.isEmOperacao) {
       return true;
     }
     return false;
@@ -416,31 +418,50 @@ class _MotoristaState extends State<Motorista> {
 
   void _atualizarTransmissaoGpsMotorista() {
     final v = _viagemAtiva;
-    if (v != null &&
-        (v.isAtiva || v.isPlanejada) &&
-        !v.isCancelada &&
-        !v.isConcluida) {
-      final idMot =
-          (v.motoristaId.isNotEmpty && v.motoristaId != 'motorista_atual')
-              ? v.motoristaId
-              : (_motoristaId ??
-                    FirebaseAuthService().currentDocId ??
-                    FirebaseAuthService().currentUserId ??
-                    'motorista_atual');
-      final nomeMot =
-          (v.motoristaNome.isNotEmpty &&
-                  v.motoristaNome != 'Motorista da Saúde')
-              ? v.motoristaNome
-              : (_motoristaNome.isNotEmpty
-                    ? _motoristaNome
-                    : 'Motorista Municipal');
+    final sessao = _viagemService.sessaoAtiva;
+    final emTransito = (v != null && v.isEmOperacao) ||
+        (sessao != null && sessao.status == 'ativa');
+    if (emTransito) {
+      String? authUid;
+      try {
+        authUid = FirebaseAuth.instance.currentUser?.uid;
+      } catch (_) {}
+      final docLogado = _motoristaId ??
+          FirebaseAuthService().currentDocId ??
+          FirebaseAuthService().currentUserId;
+      final idMot = (authUid != null && authUid.trim().isNotEmpty)
+          ? authUid.trim()
+          : ((docLogado != null && docLogado.trim().isNotEmpty)
+                ? docLogado.trim()
+                : ((v != null &&
+                          v.motoristaId.isNotEmpty &&
+                          v.motoristaId != 'motorista_atual')
+                      ? v.motoristaId
+                      : 'motorista_atual'));
+      final nomeMot = _motoristaNome.trim().isNotEmpty
+          ? _motoristaNome.trim()
+          : ((sessao != null && sessao.motoristaNome.trim().isNotEmpty)
+                ? sessao.motoristaNome.trim()
+                : ((v != null &&
+                          v.motoristaNome.trim().isNotEmpty &&
+                          v.motoristaNome != 'Motorista da Saúde')
+                      ? v.motoristaNome.trim()
+                      : 'Motorista Municipal'));
+      final veiculoSessao = _resolverVeiculoSessaoAtual();
+      final placaSessao = _resolverPlacaVeiculoSessao();
+      final modeloSessao = (veiculoSessao != null &&
+              veiculoSessao.modelo.trim().isNotEmpty)
+          ? veiculoSessao.modelo.trim()
+          : ((sessao != null && sessao.veiculoModelo.trim().isNotEmpty)
+                ? sessao.veiculoModelo.trim()
+                : (v?.veiculoModelo ?? ''));
       LocalizacaoMotoristaService().iniciarTransmissaoGpsMotorista(
         motoristaId: idMot,
         motoristaNome: nomeMot,
-        veiculoPlaca: v.veiculoPlaca,
-        veiculoModelo: v.veiculoModelo,
-        cidadeDestino: v.cidadeDestino,
-        viagemId: v.id,
+        veiculoPlaca: placaSessao,
+        veiculoModelo: modeloSessao,
+        cidadeDestino: v?.cidadeDestino ?? '',
+        viagemId: v?.id ?? sessao?.id ?? '',
       );
     } else {
       LocalizacaoMotoristaService().pararTransmissaoGpsMotorista();
@@ -448,176 +469,200 @@ class _MotoristaState extends State<Motorista> {
   }
 
   void _ouvirVeiculosEViagensFirestore() {
+    _subVeiculosFirestore?.cancel();
     _subVeiculosFirestore = FirebaseFirestore.instance
         .collection('veiculos')
         .snapshots()
-        .listen((snapshot) {
-      if (!mounted) return;
-      final frota = snapshot.docs
-          .map((d) => VeiculoModel.fromMap(d.data(), docId: d.id))
-          .toList();
-      final idMot = _obterIdMotoristaSessao();
-      if (_emViagemFirestore == true && _viagemAtiva == null && idMot.isNotEmpty) {
-        _viagemService.restaurarSessaoMotoristaSeAtiva(
-          motoristaId: idMot,
-          motoristaNome: _motoristaNome,
-          frota: frota,
-        );
-      }
-      setState(() {
-        _veiculosFrota = frota;
-        if (_emViagemFirestore == true &&
-            _viagemAtiva == null &&
-            _viagemService.viagemAtiva != null) {
-          _viagensAtivas = _viagemService.viagensAtivas;
-          _viagemAtiva = _viagemService.viagemAtiva;
-          _cancelarTimeoutCarregamentoViagem();
+        .listen(
+      (snapshot) {
+        if (!mounted) return;
+        final frota = snapshot.docs
+            .map((d) => VeiculoModel.fromMap(d.data(), docId: d.id))
+            .toList();
+        final idMot = _obterIdMotoristaSessao();
+        final precisaRestaurar = _viagemAtiva == null ||
+            _viagemAtiva!.id.startsWith('sessao_ativa_');
+        if (_emViagemFirestore == true && precisaRestaurar && idMot.isNotEmpty) {
+          _viagemService.restaurarSessaoMotoristaSeAtiva(
+            motoristaId: idMot,
+            motoristaNome: _motoristaNome,
+            frota: frota,
+          );
         }
-        _capacidadeVeiculo = _resolverCapacidadeVeiculo();
-      });
-    });
+        setState(() {
+          _veiculosFrota = frota;
+          if (_emViagemFirestore == true &&
+              (_viagemAtiva == null ||
+                  _viagemAtiva!.id.startsWith('sessao_ativa_')) &&
+              _viagemService.viagemAtiva != null) {
+            _selecionarViagemPreservandoId(_viagemService.viagensAtivas);
+            _cancelarTimeoutCarregamentoViagem();
+          }
+          _capacidadeVeiculo = _resolverCapacidadeVeiculo();
+        });
+      },
+      onError: (_) {},
+    );
 
     _subViagensFirestore?.cancel();
     _subViagensFirestore = FirebaseFirestore.instance
         .collection('viagens')
+        .where('status', isNotEqualTo: 'encerrada')
         .snapshots()
-        .listen((snapshot) {
-      if (!mounted) return;
-      final todas = snapshot.docs
-          .map((d) => ViagemModel.fromMap(d.data(), docId: d.id))
-          .toList();
+        .listen(
+      (snapshot) {
+        if (!mounted) return;
+        final todas = snapshot.docs
+            .map((d) => ViagemModel.fromMap(d.data(), docId: d.id))
+            .toList();
 
-      _viagemService.sincronizarViagensRemotas(todas);
+        _viagemService.sincronizarViagensRemotas(todas);
 
-      final idMot = _obterIdMotoristaSessao();
-      if (_emViagemFirestore == true && _viagemAtiva == null && idMot.isNotEmpty) {
-        _viagemService.restaurarSessaoMotoristaSeAtiva(
-          motoristaId: idMot,
-          motoristaNome: _motoristaNome,
-          frota: _veiculosFrota,
-        );
-      }
-
-      if (_emViagemFirestore == true &&
-          (_viagemAtiva != null || _viagemService.viagemAtiva != null)) {
-        _cancelarTimeoutCarregamentoViagem();
-        setState(() {
-          _selecionarViagemPreservandoId(_viagemService.viagensAtivas);
-          _capacidadeVeiculo = _resolverCapacidadeVeiculo();
-        });
-        _atualizarTransmissaoGpsMotorista();
-      }
-    });
-  }
-
-  void _ouvirDadosMotorista() {
-    _subMotorista?.cancel();
-    _subMotorista = FirebaseFirestore.instance
-        .collection('usuarios')
-        .where('role', isEqualTo: 'motorista')
-        .snapshots()
-        .listen((snapshot) {
-      if (snapshot.docs.isEmpty || !mounted) return;
-
-      final uidLogado = FirebaseAuthService().currentUserId;
-      final docIdLogado = FirebaseAuthService().currentDocId;
-      String? emailAuth;
-      try {
-        emailAuth = FirebaseAuth.instance.currentUser?.email?.trim().toLowerCase();
-      } catch (_) {}
-
-      final docSelecionado = snapshot.docs.where((d) {
-        if (docIdLogado != null && docIdLogado.isNotEmpty && d.id == docIdLogado) {
-          return true;
-        }
-        if (uidLogado != null && uidLogado.isNotEmpty) {
-          if (d.id == uidLogado || d.data()['authUid'] == uidLogado) {
-            return true;
-          }
-        }
-        if (emailAuth != null && emailAuth.isNotEmpty) {
-          final emailDoc = (d.data()['email'] ?? '').toString().trim().toLowerCase();
-          final cpfDoc = (d.data()['cpf'] ?? '').toString();
-          final emailDerivado = cpfDoc.trim().isNotEmpty
-              ? CpfValidator.derivarEmail(cpfDoc).toLowerCase()
-              : '';
-          if (emailDoc == emailAuth || emailDerivado == emailAuth) {
-            return true;
-          }
-        }
-        return false;
-      }).firstOrNull;
-
-      if (docSelecionado == null) return;
-
-      final motorista = MotoristaModel.fromMap(
-        docSelecionado.data(),
-        docId: docSelecionado.id,
-      );
-      final idResolvido =
-          motorista.id.isNotEmpty ? motorista.id : docSelecionado.id;
-
-      final sessaoMem = _viagemService.sessaoAtiva;
-      if (sessaoMem != null &&
-          sessaoMem.motoristaId.trim().isNotEmpty &&
-          sessaoMem.motoristaId.trim() != idResolvido) {
-        _viagemService.limparSessaoLocal();
-        _viagemAtiva = null;
-        _viagensAtivas = [];
-      }
-
-      setState(() {
-        _capacidadeMotoristaDoc = motorista.capacidadeVeiculo;
-        _placaMotoristaDoc = motorista.veiculoPlaca;
-        _motoristaId = idResolvido;
-        if (motorista.nome.trim().isNotEmpty) {
-          _motoristaNome = motorista.nome.trim();
-        }
-
-        final emJanelaOptimista = _inicioViagemOptimistaEm != null &&
-            DateTime.now().difference(_inicioViagemOptimistaEm!) <
-                const Duration(seconds: 6);
-        if (motorista.emViagem) {
-          _inicioViagemOptimistaEm = null;
-          _emViagemFirestore = true;
-          FirebaseAuthService.motoristaEmViagemStatic = true;
-        } else if (!emJanelaOptimista) {
-          _inicioViagemOptimistaEm = null;
-          _emViagemFirestore = false;
-          FirebaseAuthService.motoristaEmViagemStatic = false;
-          _cancelarTimeoutCarregamentoViagem();
-          if (_viagemAtiva != null || _viagemService.sessaoAtiva != null) {
-            _viagemService.limparSessaoLocal();
-            _viagemAtiva = null;
-            _viagensAtivas = [];
-            _indiceViagemAtual = 0;
-          }
-        }
-
-        if (_emViagemFirestore == true &&
-            _viagemAtiva == null &&
-            _motoristaId != null &&
-            _motoristaId!.isNotEmpty) {
+        final idMot = _obterIdMotoristaSessao();
+        final precisaRestaurar = _viagemAtiva == null ||
+            _viagemAtiva!.id.startsWith('sessao_ativa_');
+        if (_emViagemFirestore == true && precisaRestaurar && idMot.isNotEmpty) {
           _viagemService.restaurarSessaoMotoristaSeAtiva(
-            motoristaId: _motoristaId!,
+            motoristaId: idMot,
             motoristaNome: _motoristaNome,
             frota: _veiculosFrota,
           );
-          if (_viagemService.viagemAtiva != null) {
-            _viagensAtivas = _viagemService.viagensAtivas;
-            _viagemAtiva = _viagemService.viagemAtiva;
-            _cancelarTimeoutCarregamentoViagem();
-          }
         }
-        if (_emViagemFirestore == true && !_temViagemAtiva) {
-          _iniciarTimeoutCarregamentoViagem();
-        } else if (_emViagemFirestore == false) {
+
+        if (_emViagemFirestore == true &&
+            (_viagemAtiva != null || _viagemService.viagemAtiva != null)) {
           _cancelarTimeoutCarregamentoViagem();
+          setState(() {
+            _selecionarViagemPreservandoId(_viagemService.viagensAtivas);
+            _capacidadeVeiculo = _resolverCapacidadeVeiculo();
+          });
+          _atualizarTransmissaoGpsMotorista();
         }
-        _capacidadeVeiculo = _resolverCapacidadeVeiculo();
-      });
-      _atualizarTransmissaoGpsMotorista();
-    });
+      },
+      onError: (_) {},
+    );
+  }
+
+  void _ouvirDadosMotorista() {
+    String? authUid;
+    try {
+      authUid = FirebaseAuth.instance.currentUser?.uid;
+    } catch (_) {}
+    final docIdLogado = FirebaseAuthService().currentDocId;
+    final idOperacional = FirebaseAuthService().currentUserId;
+    final candidatos = <String>[
+      if (docIdLogado != null && docIdLogado.trim().isNotEmpty)
+        docIdLogado.trim(),
+      if (authUid != null && authUid.trim().isNotEmpty) authUid.trim(),
+      if (idOperacional != null && idOperacional.trim().isNotEmpty)
+        idOperacional.trim(),
+    ];
+    if (candidatos.isEmpty) return;
+
+    void escutarDocumento(String docIdAlvo, {String? fallbackUid}) {
+      _subMotorista?.cancel();
+      _subMotorista = FirebaseFirestore.instance
+          .collection('usuarios')
+          .doc(docIdAlvo)
+          .snapshots()
+          .listen(
+        (docSelecionado) {
+          if (!mounted) return;
+          if (!docSelecionado.exists || docSelecionado.data() == null) {
+            if (fallbackUid != null &&
+                fallbackUid.isNotEmpty &&
+                fallbackUid != docIdAlvo) {
+              escutarDocumento(fallbackUid);
+            }
+            return;
+          }
+
+          final motorista = MotoristaModel.fromMap(
+            docSelecionado.data()!,
+            docId: docSelecionado.id,
+          );
+          final idResolvido =
+              motorista.id.isNotEmpty ? motorista.id : docSelecionado.id;
+
+          final sessaoMem = _viagemService.sessaoAtiva;
+          if (sessaoMem != null &&
+              sessaoMem.motoristaId.trim().isNotEmpty &&
+              sessaoMem.motoristaId.trim() != idResolvido) {
+            _viagemService.limparSessaoLocal();
+            _viagemAtiva = null;
+            _viagensAtivas = [];
+          }
+
+          setState(() {
+            _capacidadeMotoristaDoc = motorista.capacidadeVeiculo;
+            _placaMotoristaDoc = motorista.veiculoPlaca;
+            _motoristaId = idResolvido;
+            if (motorista.nome.trim().isNotEmpty) {
+              _motoristaNome = motorista.nome.trim();
+            }
+
+            final emJanelaOptimista = _inicioViagemOptimistaEm != null &&
+                DateTime.now().difference(_inicioViagemOptimistaEm!) <
+                    const Duration(seconds: 6);
+            if (motorista.emViagem) {
+              _inicioViagemOptimistaEm = null;
+              _emViagemFirestore = true;
+              FirebaseAuthService.motoristaEmViagemStatic = true;
+              _viagemService.garantirEscutaFirestore();
+            } else if (!emJanelaOptimista) {
+              _inicioViagemOptimistaEm = null;
+              _emViagemFirestore = false;
+              FirebaseAuthService.motoristaEmViagemStatic = false;
+              _cancelarTimeoutCarregamentoViagem();
+              if (_viagemAtiva != null || _viagemService.sessaoAtiva != null) {
+                _viagemService.limparSessaoLocal();
+                _viagemAtiva = null;
+                _viagensAtivas = [];
+                _indiceViagemAtual = 0;
+              }
+            }
+
+            if (_emViagemFirestore == true &&
+                (_viagemAtiva == null ||
+                    _viagemAtiva!.id.startsWith('sessao_ativa_')) &&
+                _motoristaId != null &&
+                _motoristaId!.isNotEmpty) {
+              _viagemService.restaurarSessaoMotoristaSeAtiva(
+                motoristaId: _motoristaId!,
+                motoristaNome: _motoristaNome,
+                frota: _veiculosFrota,
+              );
+              if (_viagemService.viagemAtiva != null) {
+                _selecionarViagemPreservandoId(_viagemService.viagensAtivas);
+                _cancelarTimeoutCarregamentoViagem();
+              }
+            }
+            if (_emViagemFirestore == true && !_temViagemAtiva) {
+              _iniciarTimeoutCarregamentoViagem();
+            } else if (_emViagemFirestore == false) {
+              _cancelarTimeoutCarregamentoViagem();
+            }
+            _capacidadeVeiculo = _resolverCapacidadeVeiculo();
+          });
+          _atualizarTransmissaoGpsMotorista();
+        },
+        onError: (_) {
+          if (!mounted) return;
+          if (fallbackUid != null &&
+              fallbackUid.isNotEmpty &&
+              fallbackUid != docIdAlvo) {
+            escutarDocumento(fallbackUid);
+          }
+        },
+      );
+    }
+
+    final fallback = (authUid != null &&
+            authUid.trim().isNotEmpty &&
+            authUid.trim() != candidatos.first)
+        ? authUid.trim()
+        : null;
+    escutarDocumento(candidatos.first, fallbackUid: fallback);
   }
   // Fechamento do método _ouvirDadosMotorista
 
@@ -628,41 +673,92 @@ class _MotoristaState extends State<Motorista> {
   String _normalizarPlaca(String placa) =>
       placa.replaceAll(RegExp(r'[^A-Za-z0-9]'), '').toUpperCase();
 
-  int _resolverCapacidadeVeiculo() {
+  VeiculoModel? _resolverVeiculoSessaoAtual() {
     final listaVeiculos = _veiculosFrota.isNotEmpty
         ? _veiculosFrota
         : _viagemService.todosVeiculos;
+    final sessao = _viagemService.sessaoAtiva;
 
-    if (_viagemAtiva != null && listaVeiculos.isNotEmpty) {
-      final vid = _viagemAtiva!.veiculoId.trim();
-      final vplaca = _normalizarPlaca(_viagemAtiva!.veiculoPlaca);
+    // 1. Prioriza o veículo da sessão ativa declarada pelo motorista logado.
+    if (sessao != null) {
+      final vidSessao = sessao.veiculoId.trim();
+      final placaSessao = _normalizarPlaca(sessao.veiculoPlaca);
+      for (final v in listaVeiculos) {
+        if ((vidSessao.isNotEmpty && v.id == vidSessao) ||
+            (placaSessao.isNotEmpty && _normalizarPlaca(v.placa) == placaSessao)) {
+          return v;
+        }
+      }
+    }
+
+    // 2. Procura na frota o veículo atualmente ocupado por este motorista.
+    final idsCondutor = <String>{
+      if (_motoristaId != null && _motoristaId!.trim().isNotEmpty)
+        _motoristaId!.trim(),
+      if (FirebaseAuthService().currentDocId?.trim().isNotEmpty == true)
+        FirebaseAuthService().currentDocId!.trim(),
+      if (FirebaseAuthService().currentUserId?.trim().isNotEmpty == true)
+        FirebaseAuthService().currentUserId!.trim(),
+    };
+    if (idsCondutor.isNotEmpty) {
+      for (final v in listaVeiculos) {
+        final motVeic = v.motoristaAtualId?.trim() ?? '';
+        if (v.emUso && motVeic.isNotEmpty && idsCondutor.contains(motVeic)) {
+          return v;
+        }
+      }
+    }
+
+    // 3. Fallback para viagem inicial/em foco quando não há sessão explícita.
+    final viagemRef = widget.viagemInicial ?? _viagemAtiva;
+    if (viagemRef != null) {
+      final vid = viagemRef.veiculoId.trim();
+      final vplaca = _normalizarPlaca(viagemRef.veiculoPlaca);
       for (final v in listaVeiculos) {
         if ((vid.isNotEmpty && v.id == vid) ||
             (vplaca.isNotEmpty && _normalizarPlaca(v.placa) == vplaca)) {
-          if (v.capacidade > 0) return v.capacidade;
+          return v;
         }
       }
     }
 
-    final uidAtual = _motoristaId ?? FirebaseAuthService().currentUserId;
-    if (uidAtual != null && uidAtual.isNotEmpty && listaVeiculos.isNotEmpty) {
-      for (final v in listaVeiculos) {
-        if (v.motoristaAtualId == uidAtual && v.capacidade > 0) {
-          return v.capacidade;
-        }
-      }
-    }
-
-    if (_placaMotoristaDoc.isNotEmpty && listaVeiculos.isNotEmpty) {
+    // 4. Fallback pela placa habitual do cadastro do motorista.
+    if (_placaMotoristaDoc.trim().isNotEmpty) {
       final placaDoc = _normalizarPlaca(_placaMotoristaDoc);
       for (final v in listaVeiculos) {
-        if (_normalizarPlaca(v.placa) == placaDoc && v.capacidade > 0) {
-          return v.capacidade;
+        if (_normalizarPlaca(v.placa) == placaDoc) {
+          return v;
         }
       }
     }
+    return null;
+  }
 
+  String _resolverPlacaVeiculoSessao() {
+    final placaSessao = _viagemService.sessaoAtiva?.veiculoPlaca.trim() ?? '';
+    if (placaSessao.isNotEmpty) return placaSessao;
+    final veicAtual = _resolverVeiculoSessaoAtual();
+    if (veicAtual != null && veicAtual.placa.trim().isNotEmpty) {
+      return veicAtual.placa.trim();
+    }
+    if (widget.viagemInicial?.veiculoPlaca.trim().isNotEmpty == true) {
+      return widget.viagemInicial!.veiculoPlaca.trim();
+    }
+    if (_placaMotoristaDoc.trim().isNotEmpty) {
+      return _placaMotoristaDoc.trim();
+    }
+    return _viagemAtiva?.veiculoPlaca.trim() ?? '';
+  }
+
+  int _resolverCapacidadeVeiculo() {
+    final veicAtual = _resolverVeiculoSessaoAtual();
+    if (veicAtual != null && veicAtual.capacidade > 0) {
+      return veicAtual.capacidade;
+    }
     if (_capacidadeMotoristaDoc > 0) return _capacidadeMotoristaDoc;
+    final listaVeiculos = _veiculosFrota.isNotEmpty
+        ? _veiculosFrota
+        : _viagemService.todosVeiculos;
     if (listaVeiculos.isNotEmpty) {
       final emUso =
           listaVeiculos.where((v) => v.emUso && v.capacidade > 0).firstOrNull;
@@ -674,7 +770,13 @@ class _MotoristaState extends State<Motorista> {
 
   void _garantirCodigosPacientesNaViagemAtiva(List<PacienteModel> pacientes) {
     final viagem = _viagemAtiva;
-    if (viagem == null || viagem.id.isEmpty || pacientes.isEmpty) return;
+    if (viagem == null ||
+        viagem.id.isEmpty ||
+        viagem.id.startsWith('sessao_ativa_') ||
+        !viagem.isEmOperacao ||
+        pacientes.isEmpty) {
+      return;
+    }
 
     final faltantes = <PacienteModel>[];
     for (final p in pacientes) {
@@ -965,6 +1067,24 @@ class _MotoristaState extends State<Motorista> {
         _garantirCodigosPacientesNaViagemAtiva(pacientes);
         final preenchidos = _contarAssentosOcupados(pacientes);
 
+        final placaSessao = _resolverPlacaVeiculoSessao();
+        final placaViagem = _viagemAtiva?.veiculoPlaca.trim() ?? '';
+        final veiculoViagemHeader = placaViagem.isNotEmpty &&
+                _normalizarPlaca(placaViagem) != _normalizarPlaca(placaSessao)
+            ? placaViagem
+            : null;
+        final motViagemHeader = _viagemAtiva?.motoristaNome.trim() ?? '';
+        final motoristaHeader = (motViagemHeader.isNotEmpty &&
+                motViagemHeader != 'motorista_atual')
+            ? motViagemHeader
+            : null;
+        final destinoHeader = (_viagensAtivas.length <= 1 &&
+                (_viagemAtiva?.cidadeDestino.trim().isNotEmpty == true))
+            ? _viagemAtiva!.cidadeDestino.trim()
+            : null;
+        final saidaRaw = _viagemAtiva?.nomeHorario?.trim() ?? '';
+        final saidaHeader = saidaRaw.isNotEmpty ? saidaRaw : null;
+
         return Scaffold(
           appBar: _construirAppBarEmViagem(),
           backgroundColor: const Color(0xFFF8FAFC),
@@ -978,6 +1098,10 @@ class _MotoristaState extends State<Motorista> {
                       : (_viagemAtiva != null && _viagemAtiva!.id.isNotEmpty
                             ? 'Viagem ${_viagemAtiva!.id}'
                             : 'Viagem 1'),
+                  motoristaNome: motoristaHeader,
+                  destino: destinoHeader,
+                  veiculo: veiculoViagemHeader,
+                  saida: saidaHeader,
                   onAnterior: _viagensAtivas.length > 1 && _indiceViagemAtual > 0
                       ? () => setState(() {
                           _indiceViagemAtual--;
@@ -1006,6 +1130,7 @@ class _MotoristaState extends State<Motorista> {
             viagem: _viagemAtiva,
             viagens: _viagensAtivas,
             pacientes: pacientes,
+            motoristaId: _obterIdMotoristaSessao(),
             onViagemEncerrada: _aoEncerrarViagemMotorista,
           ),
         );
@@ -1163,7 +1288,7 @@ class _MotoristaState extends State<Motorista> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
-                      'Em Viagem: ${_viagemAtiva!.veiculoPlaca}',
+                      'Em Viagem: ${_resolverPlacaVeiculoSessao()}',
                       maxLines: 1,
                       style: const TextStyle(
                         color: Colors.white,

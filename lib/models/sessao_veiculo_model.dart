@@ -105,18 +105,21 @@ class SessaoVeiculoModel {
     return {
       'id': id,
       'motoristaId': motoristaId,
-      'motoristaNome': motoristaNome,
+      if (motoristaNome.trim().isNotEmpty)
+        'motoristaNome': motoristaNome.trim(),
       'veiculoId': veiculoId,
-      'veiculoPlaca': veiculoPlaca,
-      'veiculoModelo': veiculoModelo,
+      if (veiculoPlaca.trim().isNotEmpty) 'veiculoPlaca': veiculoPlaca.trim(),
+      if (veiculoModelo.trim().isNotEmpty)
+        'veiculoModelo': veiculoModelo.trim(),
       'kmInicial': kmInicial,
       'dataHoraInicio': dataHoraInicio.toIso8601String(),
       'status': status,
-      'kmFinal': kmFinal,
-      'kmRodado': kmRodado,
-      'dataHoraFim': dataHoraFim?.toIso8601String(),
+      if (kmFinal != null) 'kmFinal': kmFinal,
+      if (kmRodado != null) 'kmRodado': kmRodado,
+      if (dataHoraFim != null) 'dataHoraFim': dataHoraFim!.toIso8601String(),
       'viagensIds': viagensIds,
-      'observacoes': observacoes,
+      if (observacoes != null && observacoes!.trim().isNotEmpty)
+        'observacoes': observacoes!.trim(),
     };
   }
 

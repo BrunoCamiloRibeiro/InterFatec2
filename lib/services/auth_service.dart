@@ -519,6 +519,8 @@ class FirebaseAuthService implements AuthService {
               sessaoAtual.motoristaId.trim() != idOperacional) {
             ViagemService().limparSessaoLocal();
           }
+          ViagemService().garantirEscutaFirestore();
+          LocalizacaoMotoristaService().garantirEscutasFirestore();
           return role;
         }
         await auth.signOut();
@@ -589,6 +591,8 @@ class FirebaseAuthService implements AuthService {
               sessaoAtual.motoristaId.trim() != uidFinal) {
             ViagemService().limparSessaoLocal();
           }
+          ViagemService().garantirEscutaFirestore();
+          LocalizacaoMotoristaService().garantirEscutasFirestore();
           return role;
         }
         encontrouUsuarioSemSenhaNoFirestore =
@@ -684,21 +688,19 @@ class FirebaseAuthService implements AuthService {
       viagensAtivas.add(viagemService.viagemAtiva!);
     }
     for (final tv in viagemService.todasViagens) {
-      if ((tv.isAtiva || tv.isPlanejada) &&
-          !tv.isCancelada &&
-          !tv.isConcluida &&
-          !viagensAtivas.any((v) => v.id == tv.id)) {
+      if (tv.isEmOperacao && !viagensAtivas.any((v) => v.id == tv.id)) {
         viagensAtivas.add(tv);
       }
     }
 
     try {
-      final querySnap = await firestore.collection('viagens').get();
+      final querySnap = await firestore
+          .collection('viagens')
+          .where('status', isNotEqualTo: 'encerrada')
+          .get();
       for (final doc in querySnap.docs) {
         final vRemota = ViagemModel.fromMap(doc.data(), docId: doc.id);
-        if ((!vRemota.isAtiva && !vRemota.isPlanejada) ||
-            vRemota.isCancelada ||
-            vRemota.isConcluida) {
+        if (!vRemota.isEmOperacao) {
           continue;
         }
         final docIndex = viagensAtivas.indexWhere((v) => v.id == doc.id);
@@ -756,6 +758,8 @@ class FirebaseAuthService implements AuthService {
           _pacienteLogadoId = paciente.id;
           _pacienteViagemId = viagem.id;
           _roleCache[paciente.id] = UserRole.paciente;
+          ViagemService().garantirEscutaFirestore();
+          LocalizacaoMotoristaService().garantirEscutasFirestore();
           return UserRole.paciente;
         }
       }
@@ -777,6 +781,8 @@ class FirebaseAuthService implements AuthService {
           _pacienteLogadoId = pv.pacienteId;
           _pacienteViagemId = viagem.id;
           _roleCache[pv.pacienteId] = UserRole.paciente;
+          ViagemService().garantirEscutaFirestore();
+          LocalizacaoMotoristaService().garantirEscutasFirestore();
           return UserRole.paciente;
         }
       }

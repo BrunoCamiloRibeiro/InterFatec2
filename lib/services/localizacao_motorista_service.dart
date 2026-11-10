@@ -29,6 +29,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
@@ -140,6 +141,15 @@ class LocalizacaoMotoristaService {
   }
 
 
+  /// Inicia ou reata a escuta do Firestore quando há sessão autenticada.
+  void garantirEscutasFirestore() {
+    if (!_inicializado ||
+        (_subLocalizacoesFirestore == null && _isFirebaseDisponivel())) {
+      _inicializado = false;
+      _inicializarOuvintes();
+    }
+  }
+
   void _inicializarOuvintes() {
     if (_inicializado) return;
     _inicializado = true;
@@ -154,16 +164,29 @@ class LocalizacaoMotoristaService {
       debugPrint('ViagemService stream listener error: $e');
     }
 
-    // 2. Se o Firebase estiver ativo, escuta apenas a coleção dedicada de telemetria
+    // 2. Se o Firebase estiver ativo e autenticado, escuta a coleção dedicada de telemetria
     if (_isFirebaseDisponivel()) {
+      String? authUid;
       try {
-        // Escuta coleção dedicada de localizações de motoristas, se disponível
+        authUid = FirebaseAuth.instance.currentUser?.uid;
+      } catch (_) {}
+      if (authUid == null || authUid.isEmpty) {
+        return;
+      }
+      try {
         _subLocalizacoesFirestore?.cancel();
         _subLocalizacoesFirestore = FirebaseFirestore.instance
             .collection('localizacoes_motoristas')
             .where('emViagem', isEqualTo: true)
             .snapshots()
             .listen((snapshot) {
+          final removidos = snapshot.docChanges
+              .where((c) => c.type == DocumentChangeType.removed);
+          for (final ch in removidos) {
+            final motIdRemovido =
+                (ch.doc.data()?['motoristaId'] ?? ch.doc.id).toString();
+            _motoristasAtivosMemoria.remove(motIdRemovido);
+          }
           for (final doc in snapshot.docs) {
             final loc = LocalizacaoMotoristaModel.fromMap(doc.data(), docId: doc.id);
             _motoristasAtivosMemoria[loc.motoristaId] = loc;
@@ -171,6 +194,8 @@ class LocalizacaoMotoristaService {
           _motoristasAtivosController.add(motoristasAtivos);
         }, onError: (Object erro) {
           debugPrint('Erro no listener de localizacoes_motoristas: $erro');
+          _subLocalizacoesFirestore?.cancel();
+          _subLocalizacoesFirestore = null;
         });
       } catch (e) {
         debugPrint('Firestore location listeners error: $e');
@@ -205,12 +230,10 @@ class LocalizacaoMotoristaService {
       }
     }
 
-    // Sincroniza apenas viagens ativas ou planejadas que já possuam coordenadas GPS reais
+    // Sincroniza apenas viagens operacionais que já possuam coordenadas GPS reais
     final viagensValidas = viagens
         .where((v) =>
-            (v.isAtiva || v.isPlanejada) &&
-            !v.isCancelada &&
-            !v.isConcluida &&
+            v.isEmOperacao &&
             v.ultimaLatitude != null &&
             v.ultimaLongitude != null)
         .toList();
@@ -319,9 +342,7 @@ class LocalizacaoMotoristaService {
     double longitude,
   ) async {
     final viagens = ViagemService().todasViagens.where((v) =>
-        (v.isAtiva || v.isPlanejada) &&
-        !v.isCancelada &&
-        !v.isConcluida &&
+        v.isEmOperacao &&
         v.motoristaId.isNotEmpty &&
         v.motoristaId != 'motorista_atual');
 
@@ -352,7 +373,11 @@ class LocalizacaoMotoristaService {
         FirebaseFirestore.instance
             .collection('localizacoes_motoristas')
             .doc(motoristaId)
-            .set({'emViagem': false}, SetOptions(merge: true));
+            .update({
+              'emViagem': false,
+              'atualizadoEm': FieldValue.serverTimestamp(),
+            })
+            .catchError((_) {});
       } catch (e) {
         debugPrint('Erro ao inativar localização do motorista: $e');
       }

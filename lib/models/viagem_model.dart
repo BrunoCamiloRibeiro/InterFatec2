@@ -22,7 +22,7 @@ class ViagemModel {
   final String cidadeDestino;
   final DateTime dataHoraInicio;
 
-  /// Situação operacional: `'planejada'`, `'ativa'`, `'encerrada'` ou `'cancelada'`.
+  /// Situação operacional: `'aberta'`, `'planejada'`, `'ativa'`, `'encerrada'` ou `'cancelada'`.
   final String status;
 
   final int? kmFinal;
@@ -102,12 +102,17 @@ class ViagemModel {
     return st == 'planejada' || st == 'agendada';
   }
 
+  bool get isAberta => status.trim().toLowerCase() == 'aberta';
+
   bool get isConcluida {
     final st = status.trim().toLowerCase();
     return st == 'encerrada' || st == 'concluida' || st == 'finalizada';
   }
 
   bool get isCancelada => status.trim().toLowerCase() == 'cancelada';
+
+  /// Indica viagem ainda operacional (nem encerrada nem cancelada).
+  bool get isEmOperacao => !isConcluida && !isCancelada;
 
   Map<String, dynamic> toMap() {
     final effectivePassageirosIds = passageirosIds.isNotEmpty
@@ -127,14 +132,15 @@ class ViagemModel {
       'status': status,
       'kmFinal': kmFinal,
       'kmRodado': kmRodado,
-      'dataHoraFim': dataHoraFim?.toIso8601String(),
+      if (dataHoraFim != null) 'dataHoraFim': dataHoraFim!.toIso8601String(),
       'observacoes': observacoes,
       'passageirosIds': effectivePassageirosIds,
       'sessaoId': sessaoId,
       'codigosAcesso': codigosAcesso,
       'codigosHash': codigosHash,
       if (nomeHorario != null) 'nomeHorario': nomeHorario,
-      if (nomeHorario != null) 'horario': nomeHorario,
+      if (nomeHorario != null && nomeHorario!.length <= 60)
+        'horario': nomeHorario,
       'dataViagem': (dataViagem ?? dataHoraInicio).toIso8601String(),
       'passageiros': passageiros.map((p) => p.toMap()).toList(),
       if (ultimaLatitude != null) 'ultimaLatitude': ultimaLatitude,

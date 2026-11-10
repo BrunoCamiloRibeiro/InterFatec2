@@ -105,7 +105,7 @@ class LocalizacaoMotoristaModel {
       cidadeDestino: map['cidadeDestino']?.toString() ?? 'Destino em Trânsito',
       latitude: parseCoord(map['latitude'], -20.7389),
       longitude: parseCoord(map['longitude'], -49.8217),
-      ultimaAtualizacao: parseData(map['ultimaAtualizacao']),
+      ultimaAtualizacao: parseData(map['atualizadoEm'] ?? map['ultimaAtualizacao']),
       emViagem: map['emViagem'] as bool? ?? true,
       viagemId: map['viagemId']?.toString(),
     );
@@ -116,15 +116,19 @@ class LocalizacaoMotoristaModel {
     return {
       'id': id,
       'motoristaId': motoristaId,
-      'motoristaNome': motoristaNome,
-      'veiculoPlaca': veiculoPlaca,
-      'veiculoModelo': veiculoModelo,
-      'cidadeDestino': cidadeDestino,
+      if (motoristaNome.trim().isNotEmpty)
+        'motoristaNome': motoristaNome.trim(),
+      if (veiculoPlaca.trim().isNotEmpty) 'veiculoPlaca': veiculoPlaca.trim(),
+      if (veiculoModelo.trim().isNotEmpty)
+        'veiculoModelo': veiculoModelo.trim(),
+      if (cidadeDestino.trim().isNotEmpty)
+        'cidadeDestino': cidadeDestino.trim(),
       'latitude': latitude,
       'longitude': longitude,
-      'ultimaAtualizacao': Timestamp.fromDate(ultimaAtualizacao),
+      'atualizadoEm': Timestamp.fromDate(ultimaAtualizacao),
       'emViagem': emViagem,
-      if (viagemId != null) 'viagemId': viagemId,
+      if (viagemId != null && viagemId!.trim().isNotEmpty)
+        'viagemId': viagemId!.trim(),
     };
   }
 

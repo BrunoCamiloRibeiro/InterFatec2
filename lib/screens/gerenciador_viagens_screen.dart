@@ -215,7 +215,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
   List<ViagemModel> get _viagensFiltradas {
     return _todasViagensDoDia.where((v) {
       if (_filtroStatus != 'todos') {
-        if (_filtroStatus == 'planejada' && !v.isPlanejada) return false;
+        if (_filtroStatus == 'planejada' && !v.isPlanejada && !v.isAberta) return false;
         if (_filtroStatus == 'ativa' && !v.isAtiva) return false;
         if (_filtroStatus == 'concluida' && !v.isConcluida) return false;
         if (_filtroStatus == 'cancelada' && !v.isCancelada) return false;
@@ -281,7 +281,8 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
     final viagensExibicao = _viagensFiltradas;
     final totalHorarios = _todasViagensDoDia.length;
     final totalAtivos = _todasViagensDoDia.where((v) => v.isAtiva).length;
-    final totalPlanejados = _todasViagensDoDia.where((v) => v.isPlanejada).length;
+    final totalPlanejados =
+        _todasViagensDoDia.where((v) => v.isPlanejada || v.isAberta).length;
     final totalConcluidos = _todasViagensDoDia.where((v) => v.isConcluida).length;
     final totalCancelados = _todasViagensDoDia.where((v) => v.isCancelada).length;
 
@@ -768,8 +769,14 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
     String textoBadge;
     switch (viagem.status.toLowerCase()) {
       case 'ativa':
+      case 'em_andamento':
+      case 'em andamento':
         corBadge = const Color(0xFF059669);
         textoBadge = 'EM TRÂNSITO (ATIVA)';
+        break;
+      case 'aberta':
+        corBadge = const Color(0xFF0284C7);
+        textoBadge = 'ABERTA';
         break;
       case 'concluida':
       case 'encerrada':
