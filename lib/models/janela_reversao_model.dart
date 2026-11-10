@@ -41,6 +41,8 @@
 
 import 'package:flutter/foundation.dart';
 
+import 'firestore_parse_utils.dart';
+
 /// Modelo imutável que representa uma janela de reversão ativa de ação do paciente.
 @immutable
 class JanelaReversaoModel {
@@ -96,27 +98,12 @@ class JanelaReversaoModel {
     };
   }
 
-  /// Função utilitária resiliente para conversão de datas (suporta Timestamp e ISO-8601).
-  static DateTime? _parsearData(dynamic valor) {
-    if (valor == null) return null;
-    if (valor is DateTime) return valor.toUtc();
-    try {
-      final dynamic dyn = valor;
-      if (dyn.toDate is Function) {
-        return (dyn.toDate() as DateTime).toUtc();
-      }
-    } catch (_) {}
-    try {
-      final parsed = DateTime.tryParse(valor.toString());
-      if (parsed != null) return parsed.toUtc();
-    } catch (_) {}
-    return null;
-  }
-
   /// Reconstrói uma instância de JanelaReversaoModel a partir de um Map NoSQL do Firestore.
   factory JanelaReversaoModel.fromMap(Map<String, dynamic> map) {
-    final iniciado = _parsearData(map['iniciadoEm']) ?? DateTime.now().toUtc();
-    final expira = _parsearData(map['expiraEm']) ?? iniciado.add(const Duration(minutes: 5));
+    final iniciado =
+        parsearDataFirestore(map['iniciadoEm'], emUtc: true) ?? DateTime.now().toUtc();
+    final expira = parsearDataFirestore(map['expiraEm'], emUtc: true) ??
+        iniciado.add(const Duration(minutes: 5));
 
     final estadoAntRaw = map['estadoAnterior'];
     final int estadoAnt = (estadoAntRaw is num)

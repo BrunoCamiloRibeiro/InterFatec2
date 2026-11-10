@@ -1,36 +1,3 @@
-// ============================================================================
-// CABEÇALHO DE DOCUMENTAÇÃO DE ARQUIVO
-// ============================================================================
-// Arquivo: lib/screens/gerenciador_viagens_screen.dart
-// Camada: Apresentação / Telas Administrativas (Screens / UI)
-//
-// O QUE ESTE ARQUIVO FAZ:
-// Implementa o painel de Gerenciamento Diário de Viagens e Grade de Horários
-// ("Gerenciador do Dia" / "Horários de Saída") acessível exclusivamente pelo
-// Administrador do sistema de saúde (TFD). Permite ao gestor:
-// 1) Selecionar qualquer data com navegação dia a dia e seletor de calendário;
-// 2) Visualizar os indicadores consolidados (total de horários, ativos, assentos);
-// 3) Filtrar a grade por texto (cidade, motorista, veículo) e por status;
-// 4) Criar novos Horários com validação rigorosa de conflitos (veículo, condutor,
-//    capacidade de assentos, consultas prévias e pacientes simultâneos);
-// 5) Vincular passageiros e acompanhantes a partir das pessoas cadastradas;
-// 6) Reordenar o itinerário de embarque (ordem 1..N);
-// 7) Duplicar a escala completa de viagens de outro dia para agilizar o trabalho;
-// 8) Cancelar horários com exclusão lógica segura e invalidação de credenciais;
-// 9) Oferecer layout 100% responsivo para celular (360dp) e desktop.
-//
-// VOCABULÁRIO ADOTADO:
-// Em estrita conformidade com a especificação, as viagens são apresentadas na
-// interface exclusivamente sob o vocabulário "Horário" (ex.: "Horário de Saída",
-// "Grade de Horários", "Novo Horário", "Duplicar Horários").
-//
-// ONDE É USADO NO PROJETO:
-// - lib/routes/route_guard.dart (rota protegida '/gerenciador-horarios' e '/administrativo')
-// - lib/screens/admin_placeholder_screen.dart (incorporado como painel principal)
-// - test/gerenciador_viagens_test.dart (testes funcionais e de regras de borda)
-// - test/screens/gerenciador_viagens_mobile_web_test.dart (testes de responsividade)
-// ============================================================================
-
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -77,7 +44,8 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
   late DateTime _dataSelecionada;
   StreamSubscription<List<ViagemModel>>? _subViagens;
   StreamSubscription<List<VeiculoModel>>? _subVeiculos;
-  StreamSubscription<PacienteModel>? _subSyncPacientes;
+  StreamSubscription<({String? viagemId, PacienteModel paciente})>?
+      _subSyncPacientes;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _subFirestoreVeiculos;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _subFirestoreUsuarios;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _subFirestoreViagens;
@@ -96,8 +64,6 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
 
   String _filtroTexto = '';
   String _filtroStatus = 'todos'; // todos, planejada, ativa, concluida, cancelada
-
-  final bool _carregando = false;
 
   @override
   void initState() {
@@ -125,12 +91,19 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
       }
     });
 
-    _subSyncPacientes = PacienteSyncService().alteracoesGlobaisStream.listen((p) {
-      _viagemService.atualizarStatusPassageiroNaViagem(
-        viagemId: '',
-        pacienteId: p.id,
-        novoStatus: p.status,
-      );
+    _subSyncPacientes = PacienteSyncService().alteracoesPorViagemStream.listen((evento) {
+      if (evento.viagemId == null || evento.viagemId!.trim().isEmpty) {
+        final p = evento.paciente;
+        _viagemService.atualizarStatusPassageiroNaViagem(
+          viagemId: '',
+          pacienteId: p.id,
+          novoStatus: p.status,
+          prontoRetorno: p.prontoRetorno,
+          janelaReversao: p.janelaReversao,
+          limparJanelaReversao: p.janelaReversao == null,
+          persistirRemoto: false,
+        );
+      }
       if (mounted) {
         setState(() {
           _todasViagensDoDia = _viagemService.obterViagensPorData(_dataSelecionada);
@@ -180,17 +153,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
           final pacientes = <PacienteModel>[];
           for (final doc in snapshot.docs) {
             final dados = doc.data();
-            final ativo = dados['ativo'];
-            final status = dados['status']?.toString().toLowerCase().trim();
-            final situacao = dados['situacao']?.toString().toLowerCase().trim();
-            if (ativo == false ||
-                ativo == 'false' ||
-                status == 'inativo' ||
-                situacao == 'inativo' ||
-                status == 'excluido' ||
-                situacao == 'excluido') {
-              continue;
-            }
+            if (_documentoEstaInativo(dados)) continue;
             final role = (dados['role'] ?? dados['tipo'] ?? '')
                 .toString()
                 .toLowerCase()
@@ -252,7 +215,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
   List<ViagemModel> get _viagensFiltradas {
     return _todasViagensDoDia.where((v) {
       if (_filtroStatus != 'todos') {
-        if (_filtroStatus == 'planejada' && !v.isPlanejada) return false;
+        if (_filtroStatus == 'planejada' && !v.isPlanejada && !v.isAberta) return false;
         if (_filtroStatus == 'ativa' && !v.isAtiva) return false;
         if (_filtroStatus == 'concluida' && !v.isConcluida) return false;
         if (_filtroStatus == 'cancelada' && !v.isCancelada) return false;
@@ -274,6 +237,33 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
     }).toList();
   }
 
+  bool _documentoEstaInativo(Map<String, dynamic> dados) {
+    final ativo = dados['ativo'];
+    final status = dados['status']?.toString().toLowerCase().trim();
+    final situacao = dados['situacao']?.toString().toLowerCase().trim();
+    return ativo == false ||
+        ativo == 'false' ||
+        status == 'inativo' ||
+        situacao == 'inativo' ||
+        status == 'excluido' ||
+        situacao == 'excluido';
+  }
+
+  VeiculoModel _resolverVeiculoDaViagem(ViagemModel viagem) {
+    return _veiculosCadastrados.firstWhere(
+      (ve) =>
+          (viagem.veiculoId.isNotEmpty && ve.id == viagem.veiculoId) ||
+          (viagem.veiculoPlaca.isNotEmpty && ve.placa == viagem.veiculoPlaca),
+      orElse: () => VeiculoModel(
+        id: viagem.veiculoId,
+        placa: viagem.veiculoPlaca,
+        modelo: viagem.veiculoModelo,
+        capacidade: 0,
+        quilometragemAtual: 0,
+      ),
+    );
+  }
+
   String _formatarDataBrasileira(DateTime dt) {
     final dia = dt.day.toString().padLeft(2, '0');
     final mes = dt.month.toString().padLeft(2, '0');
@@ -291,7 +281,8 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
     final viagensExibicao = _viagensFiltradas;
     final totalHorarios = _todasViagensDoDia.length;
     final totalAtivos = _todasViagensDoDia.where((v) => v.isAtiva).length;
-    final totalPlanejados = _todasViagensDoDia.where((v) => v.isPlanejada).length;
+    final totalPlanejados =
+        _todasViagensDoDia.where((v) => v.isPlanejada || v.isAberta).length;
     final totalConcluidos = _todasViagensDoDia.where((v) => v.isConcluida).length;
     final totalCancelados = _todasViagensDoDia.where((v) => v.isCancelada).length;
 
@@ -299,19 +290,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
     int assentosTotais = 0;
     for (final v in _todasViagensDoDia.where((v) => !v.isCancelada)) {
       assentosOcupados += _calcularAssentosComBaixa(v);
-      final veic = _veiculosCadastrados.firstWhere(
-        (ve) =>
-            (v.veiculoId.isNotEmpty && ve.id == v.veiculoId) ||
-            (v.veiculoPlaca.isNotEmpty && ve.placa == v.veiculoPlaca),
-        orElse: () => VeiculoModel(
-          id: v.veiculoId,
-          placa: v.veiculoPlaca,
-          modelo: v.veiculoModelo,
-          capacidade: 0,
-          quilometragemAtual: 0,
-        ),
-      );
-      assentosTotais += veic.capacidade;
+      assentosTotais += _resolverVeiculoDaViagem(v).capacidade;
     }
 
     return Scaffold(
@@ -321,23 +300,27 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
         backgroundColor: const Color(0xFF0F172A),
         foregroundColor: Colors.white,
         elevation: 0,
-        title: const Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Gerenciador de Horários',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
-              overflow: TextOverflow.ellipsis,
-              maxLines: 1,
-            ),
-            Text(
-              'Escala e Grade Diária',
-              style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
-              overflow: TextOverflow.ellipsis,
-              maxLines: 1,
-            ),
-          ],
+        title: const FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Gerenciador de Horários',
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+              ),
+              Text(
+                'Escala e Grade Diária',
+                style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+              ),
+            ],
+          ),
         ),
         actions: [
           IconButton(
@@ -365,7 +348,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 88),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -390,14 +373,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
               const SizedBox(height: 14),
 
               // Lista com os cartões dos Horários
-              if (_carregando)
-                const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(32.0),
-                    child: CircularProgressIndicator(),
-                  ),
-                )
-              else if (viagensExibicao.isEmpty)
+              if (viagensExibicao.isEmpty)
                 _construirEstadoVazio()
               else
                 ...viagensExibicao.map((v) => _construirCardHorario(v)),
@@ -726,6 +702,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
           const SizedBox(height: 12),
           const Text(
             'Nenhum Horário cadastrado nesta data',
+            textAlign: TextAlign.center,
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
           ),
           const SizedBox(height: 6),
@@ -736,6 +713,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
           ),
           const SizedBox(height: 16),
           Wrap(
+            alignment: WrapAlignment.center,
             spacing: 8,
             runSpacing: 8,
             children: [
@@ -764,18 +742,11 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
     ViagemModel viagem,
     PassageiroViagemModel passageiro,
   ) {
-    final pacSync = PacienteSyncService().obterPacienteMemoria(passageiro.pacienteId);
-    final pacCadastrado = _pacientesCadastrados
-        .where((p) => p.id == passageiro.pacienteId)
-        .firstOrNull;
-
-    int statusEfetivo = passageiro.statusEmbarque;
-    if (pacSync != null && (pacSync.status != 0 || statusEfetivo == 0)) {
-      statusEfetivo = pacSync.status;
-    } else if (pacCadastrado != null &&
-        (pacCadastrado.status != 0 || statusEfetivo == 0)) {
-      statusEfetivo = pacCadastrado.status;
-    }
+    final pacSync = PacienteSyncService().obterPacienteMemoria(
+      passageiro.pacienteId,
+      viagemId: viagem.id,
+    );
+    int statusEfetivo = pacSync?.status ?? passageiro.statusEmbarque;
     if (viagem.isConcluida && statusEfetivo != 5) {
       statusEfetivo = 4;
     }
@@ -798,8 +769,14 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
     String textoBadge;
     switch (viagem.status.toLowerCase()) {
       case 'ativa':
+      case 'em_andamento':
+      case 'em andamento':
         corBadge = const Color(0xFF059669);
         textoBadge = 'EM TRÂNSITO (ATIVA)';
+        break;
+      case 'aberta':
+        corBadge = const Color(0xFF0284C7);
+        textoBadge = 'ABERTA';
         break;
       case 'concluida':
       case 'encerrada':
@@ -819,18 +796,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
 
     final temVeiculoDefinido =
         viagem.veiculoId.trim().isNotEmpty || viagem.veiculoPlaca.trim().isNotEmpty;
-    final veic = _veiculosCadastrados.firstWhere(
-      (v) =>
-          (viagem.veiculoId.isNotEmpty && v.id == viagem.veiculoId) ||
-          (viagem.veiculoPlaca.isNotEmpty && v.placa == viagem.veiculoPlaca),
-      orElse: () => VeiculoModel(
-        id: viagem.veiculoId,
-        placa: viagem.veiculoPlaca,
-        modelo: viagem.veiculoModelo,
-        capacidade: 0,
-        quilometragemAtual: 0,
-      ),
-    );
+    final veic = _resolverVeiculoDaViagem(viagem);
 
     final capacidade = temVeiculoDefinido
         ? (veic.capacidade > 0 ? veic.capacidade : 7)
@@ -989,6 +955,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                   border: Border.all(color: Colors.amber.shade300),
                 ),
                 child: const Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Icon(Icons.warning_amber_rounded, size: 16, color: Colors.amber),
                     SizedBox(width: 6),
@@ -1101,25 +1068,14 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
         passageiro.acompanhanteNome!.trim().isNotEmpty;
     final codigoAcesso = viagem.codigosAcesso[passageiro.pacienteId]?.trim();
 
-    // Resolve o status em tempo real do passageiro (memória de sincronização, banco ou horário)
-    final pacSync = PacienteSyncService().obterPacienteMemoria(passageiro.pacienteId);
-    final pacCadastrado = _pacientesCadastrados
-        .where((p) => p.id == passageiro.pacienteId)
-        .firstOrNull;
-
-    int statusEfetivo = passageiro.statusEmbarque;
-    if (pacSync != null && (pacSync.status != 0 || statusEfetivo == 0)) {
-      statusEfetivo = pacSync.status;
-    } else if (pacCadastrado != null && (pacCadastrado.status != 0 || statusEfetivo == 0)) {
-      statusEfetivo = pacCadastrado.status;
-    }
-    if (viagem.isConcluida && statusEfetivo != 5) {
-      statusEfetivo = 4;
-    }
-
-    final prontoRetornoEfetivo = pacSync?.prontoRetorno ??
-        pacCadastrado?.prontoRetorno ??
-        false;
+    // Resolve o status e a prontidão isolados para esta viagem específica
+    final pacSync = PacienteSyncService().obterPacienteMemoria(
+      passageiro.pacienteId,
+      viagemId: viagem.id,
+    );
+    final statusEfetivo = _resolverStatusEfetivoPassageiro(viagem, passageiro);
+    final prontoRetornoEfetivo =
+        pacSync?.prontoRetorno ?? passageiro.prontoRetorno;
 
     final (nomeStatus, corStatus, iconeStatus) =
         PacienteModel.dadosStatus(statusEfetivo);
@@ -1358,9 +1314,13 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                 passageirosTemp.fold<int>(0, (acc, p) => acc + p.assentosOcupados);
 
             return AlertDialog(
+              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
               title: Text(eEdicao ? 'Editar Horário' : 'Novo Horário de Saída'),
-              content: SizedBox(
-                width: 600,
+              content: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: 600,
+                  maxHeight: MediaQuery.sizeOf(ctx).height * 0.72,
+                ),
                 child: SingleChildScrollView(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -1630,9 +1590,13 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                 (_pacientesCadastrados.isNotEmpty ? _pacientesCadastrados.first : null);
 
             return AlertDialog(
+              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
               title: const Text('Adicionar Passageiro ao Horário'),
-              content: SizedBox(
-                width: 500,
+              content: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: 500,
+                  maxHeight: MediaQuery.sizeOf(ctx).height * 0.72,
+                ),
                 child: SingleChildScrollView(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -1749,6 +1713,9 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                       pacienteId: pacienteObj.id,
                       pacienteNome: pacienteObj.nome,
                       pacienteCpf: pacienteObj.cpf,
+                      pacienteTelefone: pacienteObj.telefone.trim().isNotEmpty
+                          ? pacienteObj.telefone.trim()
+                          : null,
                       acompanhanteNome: controllerAcompNome.text.trim().isNotEmpty
                           ? controllerAcompNome.text.trim()
                           : null,
@@ -1778,11 +1745,17 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (context, setReorderState) {
+            final tamanhoTela = MediaQuery.sizeOf(ctx);
             return AlertDialog(
-              title: Text('Reordenar Embarque - ${viagem.tituloHorario}'),
+              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+              title: Text(
+                'Reordenar Embarque - ${viagem.tituloHorario}',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
               content: SizedBox(
-                width: 500,
-                height: 400,
+                width: (tamanhoTela.width - 88).clamp(200.0, 500.0),
+                height: (tamanhoTela.height * 0.5).clamp(220.0, 400.0),
                 child: ReorderableListView(
                   // ignore: deprecated_member_use
                   onReorder: (oldIndex, newIndex) {
@@ -1801,9 +1774,15 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                           foregroundColor: Colors.white,
                           child: Text('${i + 1}'),
                         ),
-                        title: Text(passageirosReordenaveis[i].pacienteNome),
+                        title: Text(
+                          passageirosReordenaveis[i].pacienteNome,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                         subtitle: Text(
                           'Destino: ${passageirosReordenaveis[i].localDestino} (${passageirosReordenaveis[i].horarioAtendimento})',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
                         trailing: const Icon(Icons.drag_handle),
                       ),
@@ -1853,50 +1832,53 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
             final viagensOrigem = _viagemService.obterViagensPorData(dataOrigem);
 
             return AlertDialog(
+              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
               title: const Text('Duplicar Grade de Horários'),
-              content: SizedBox(
-                width: 480,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Selecione o dia de origem para copiar os horários, veículos, motoristas e passageiros para o dia selecionado:',
-                      style: TextStyle(fontSize: 13, color: Color(0xFF475569)),
-                    ),
-                    const SizedBox(height: 12),
-                    ListTile(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        side: BorderSide(color: Colors.grey.shade300),
+              content: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 480),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Selecione o dia de origem para copiar os horários, veículos, motoristas e passageiros para o dia selecionado:',
+                        style: TextStyle(fontSize: 13, color: Color(0xFF475569)),
                       ),
-                      leading: const Icon(Icons.calendar_today, color: Color(0xFF0F172A)),
-                      title: Text(
-                        'Data de Origem: ${_formatarDataBrasileira(dataOrigem)}',
-                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      const SizedBox(height: 12),
+                      ListTile(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          side: BorderSide(color: Colors.grey.shade300),
+                        ),
+                        leading: const Icon(Icons.calendar_today, color: Color(0xFF0F172A)),
+                        title: Text(
+                          'Data de Origem: ${_formatarDataBrasileira(dataOrigem)}',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        subtitle: Text('${viagensOrigem.length} Horário(s) encontrados nesta data'),
+                        trailing: const Icon(Icons.edit_calendar),
+                        onTap: () async {
+                          final escolhida = await showDatePicker(
+                            context: context,
+                            initialDate: dataOrigem,
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime(2030),
+                          );
+                          if (escolhida != null) {
+                            setDupState(() {
+                              dataOrigem = DateTime(escolhida.year, escolhida.month, escolhida.day);
+                            });
+                          }
+                        },
                       ),
-                      subtitle: Text('${viagensOrigem.length} Horário(s) encontrados nesta data'),
-                      trailing: const Icon(Icons.edit_calendar),
-                      onTap: () async {
-                        final escolhida = await showDatePicker(
-                          context: context,
-                          initialDate: dataOrigem,
-                          firstDate: DateTime(2020),
-                          lastDate: DateTime(2030),
-                        );
-                        if (escolhida != null) {
-                          setDupState(() {
-                            dataOrigem = DateTime(escolhida.year, escolhida.month, escolhida.day);
-                          });
-                        }
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Destino da Cópia: ${_formatarDataBrasileira(_dataSelecionada)}',
-                      style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF059669)),
-                    ),
-                  ],
+                      const SizedBox(height: 12),
+                      Text(
+                        'Destino da Cópia: ${_formatarDataBrasileira(_dataSelecionada)}',
+                        style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF059669)),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               actions: [
@@ -1946,10 +1928,13 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
       context: context,
       builder: (ctx) {
         return AlertDialog(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
           title: const Text('Cancelar Horário de Saída?'),
-          content: Text(
-            'Tem certeza que deseja cancelar o Horário "${viagem.tituloHorario}" para ${viagem.cidadeDestino}?\n\n'
-            'Isso invalidará quaisquer códigos de acesso emitidos e atualizará a grade diária sem apagar o histórico de auditoria (exclusão lógica).',
+          content: SingleChildScrollView(
+            child: Text(
+              'Tem certeza que deseja cancelar o Horário "${viagem.tituloHorario}" para ${viagem.cidadeDestino}?\n\n'
+              'Isso invalidará quaisquer códigos de acesso emitidos e atualizará a grade diária sem apagar o histórico de auditoria (exclusão lógica).',
+            ),
           ),
           actions: [
             TextButton(

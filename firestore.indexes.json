@@ -4,6 +4,14 @@
       "collectionGroup": "usuarios",
       "queryScope": "COLLECTION",
       "fields": [
+        { "fieldPath": "role", "order": "ASCENDING" },
+        { "fieldPath": "ativo", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "usuarios",
+      "queryScope": "COLLECTION",
+      "fields": [
         { "fieldPath": "ativo", "order": "ASCENDING" },
         { "fieldPath": "role", "order": "ASCENDING" },
         { "fieldPath": "nome", "order": "ASCENDING" }
@@ -24,6 +32,22 @@
       "fields": [
         { "fieldPath": "role", "order": "ASCENDING" },
         { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "localizacoes_motoristas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "emViagem", "order": "ASCENDING" },
+        { "fieldPath": "atualizadoEm", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "viagens",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "dataViagem", "order": "ASCENDING" }
       ]
     },
     {

@@ -30,7 +30,9 @@
 // - copyWith() para clonagem imutável com parâmetros atualizados
 // ============================================================================
 
-// Modelo de dados que representa a Sessão de Veículo do Motorista.
+import 'firestore_parse_utils.dart';
+
+/// Modelo de dados que representa a Sessão de Veículo do Motorista.
 ///
 /// Estrutura a relação:
 /// 1 Motorista + 1 Veículo Declarado -> N Viagens Ativas na jornada.
@@ -103,41 +105,26 @@ class SessaoVeiculoModel {
     return {
       'id': id,
       'motoristaId': motoristaId,
-      'motoristaNome': motoristaNome,
+      if (motoristaNome.trim().isNotEmpty)
+        'motoristaNome': motoristaNome.trim(),
       'veiculoId': veiculoId,
-      'veiculoPlaca': veiculoPlaca,
-      'veiculoModelo': veiculoModelo,
+      if (veiculoPlaca.trim().isNotEmpty) 'veiculoPlaca': veiculoPlaca.trim(),
+      if (veiculoModelo.trim().isNotEmpty)
+        'veiculoModelo': veiculoModelo.trim(),
       'kmInicial': kmInicial,
       'dataHoraInicio': dataHoraInicio.toIso8601String(),
       'status': status,
-      'kmFinal': kmFinal,
-      'kmRodado': kmRodado,
-      'dataHoraFim': dataHoraFim?.toIso8601String(),
+      if (kmFinal != null) 'kmFinal': kmFinal,
+      if (kmRodado != null) 'kmRodado': kmRodado,
+      if (dataHoraFim != null) 'dataHoraFim': dataHoraFim!.toIso8601String(),
       'viagensIds': viagensIds,
-      'observacoes': observacoes,
+      if (observacoes != null && observacoes!.trim().isNotEmpty)
+        'observacoes': observacoes!.trim(),
     };
   }
 
   /// Reconstrói uma instância de [SessaoVeiculoModel] a partir de um [Map] NoSQL.
   factory SessaoVeiculoModel.fromMap(Map<String, dynamic> map, {String? docId}) {
-    DateTime parseData(dynamic val) {
-      if (val == null) return DateTime.now();
-      if (val is DateTime) return val;
-      try {
-        return (val as dynamic).toDate() as DateTime;
-      } catch (_) {}
-      return DateTime.tryParse(val.toString()) ?? DateTime.now();
-    }
-
-    DateTime? parseDataOpcional(dynamic val) {
-      if (val == null) return null;
-      if (val is DateTime) return val;
-      try {
-        return (val as dynamic).toDate() as DateTime;
-      } catch (_) {}
-      return DateTime.tryParse(val.toString());
-    }
-
     final rawViagens = map['viagensIds'];
     List<String> parsedViagens = [];
     if (rawViagens is List) {
@@ -154,11 +141,12 @@ class SessaoVeiculoModel {
       kmInicial: (map['kmInicial'] is num)
           ? (map['kmInicial'] as num).toInt()
           : (int.tryParse(map['kmInicial']?.toString() ?? '') ?? 0),
-      dataHoraInicio: parseData(map['dataHoraInicio']),
+      dataHoraInicio:
+          parsearDataFirestore(map['dataHoraInicio']) ?? DateTime.now(),
       status: (map['status'] ?? 'ativa').toString(),
       kmFinal: map['kmFinal'] != null ? (map['kmFinal'] as num).toInt() : null,
       kmRodado: map['kmRodado'] != null ? (map['kmRodado'] as num).toInt() : null,
-      dataHoraFim: parseDataOpcional(map['dataHoraFim']),
+      dataHoraFim: parsearDataFirestore(map['dataHoraFim']),
       viagensIds: parsedViagens,
       observacoes: map['observacoes']?.toString(),
     );

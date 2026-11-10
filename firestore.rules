@@ -2,120 +2,526 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // =========================================================================
-    // FUNÇÕES AUXILIARES DE SEGURANÇA E AUTORIZAÇÃO (RBAC)
-    // =========================================================================
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: usuarios
+    // Document ID: userId (UID do Firebase Auth ou ID auto-gerado)
+    // Fields:
+    //   - nome: string (required, 2..120 chars) - Nome civil completo do usuário
+    //   - cpf: string (required, exactly 11 digits) - CPF numérico sanitizado
+    //   - telefone: string (required, 8..30 chars) - Telefone para contato operacional
+    //   - role: string (required, ['admin', 'administrador', 'motorista', 'paciente']) - Papel RBAC
+    //   - ativo: bool (required) - Indicador de atividade (soft delete via ativo: false)
+    //   - email: string (optional, 3..120 chars) - E-mail institucional ou sintético
+    //   - cnh: string (optional, 1..30 chars) - Carteira Nacional de Habilitação (motoristas)
+    //   - rg: string (optional, 1..30 chars) - Registro Geral civil
+    //   - enderecoPaciente / endereco: string (optional, 1..250 chars) - Endereço residencial
+    //   - localConsulta: string (optional, 1..200 chars) - Destino médico/hospitalar
+    //   - localSaida: string (optional, 1..200 chars) - Ponto de embarque municipal
+    //   - horarioConsulta: string (optional, 1..30 chars) - Horário do agendamento
+    //   - status / statusViagem / situacao: string (optional, 1..50 chars) - Status do paciente
+    //   - nomeAcompanhante: string (optional, 1..120 chars) - Nome do acompanhante SUS
+    //   - telAcompanhante: string (optional, 1..30 chars) - Telefone do acompanhante
+    //   - cpfAcompanhante: string (optional, 1..15 chars) - CPF do acompanhante
+    //   - veiculoModelo: string (optional, 1..100 chars) - Modelo habitual atribuído
+    //   - veiculoPlaca: string (optional, 1..20 chars) - Placa habitual do condutor
+    //   - capacidadeVeiculo: number (optional, 0..100) - Lotação máxima do automóvel
+    //   - emViagem: bool (optional) - Status operacional em trânsito do condutor
+    //   - prontoRetorno: bool (optional) - Paciente pronto para volta
+    //   - janelaReversao: map (optional) - Janela de reversão de baixa
+    //   - ultimaIdempotencyKey: string (optional, 1..100 chars) - Chave anti-duplicação
+    //   - criadoEm / atualizadoEm / inativadoEm: timestamp or string (optional)
+    //
+    // Collection: veiculos
+    // Document ID: veiculoId
+    // Fields:
+    //   - placa: string (required, 7..10 chars, immutable) - Placa oficial de trânsito
+    //   - modelo: string (required, 1..100 chars) - Modelo comercial do veículo
+    //   - marca: string (optional, 0..100 chars) - Fabricante
+    //   - tipo: string (optional, ['carro', 'van', 'ambulancia', 'onibus']) - Tipo do veículo
+    //   - ano: number (optional, 1950..2100) - Ano do modelo
+    //   - qtdAssentos / capacidade: number (optional, 1..150) - Capacidade de passageiros
+    //   - status: string (optional, ['disponivel', 'emViagem', 'emManutencao', 'inativo', 'emUso'])
+    //   - quilometragem / quilometragemAtual: number (optional, >= 0) - Odômetro atual
+    //   - emUso: bool (optional) - Exclusividade de uso operacional
+    //   - motoristaAtualId: string or null (optional, <= 128 chars) - Condutor em posse
+    //   - motoristaResponsavelId / ultimoMotoristaId: string or null (optional)
+    //   - possuiAC / possuiPreferencial: bool (optional)
+    //   - observacoes: string (optional, <= 500 chars)
+    //   - ativo: bool (optional)
+    //   - criadoEm / atualizadoEm / atualizadoPor: timestamp or string (optional)
+    //
+    // Collection: viagens
+    // Document ID: viagemId
+    // Fields:
+    //   - status: string (required, ['aberta', 'em_andamento', 'ativa', 'encerrada', 'cancelada', 'planejada'])
+    //   - motoristaId: string (optional, <= 128 chars) - ID do condutor responsável
+    //   - motoristaNome: string (optional, 1..120 chars) - Nome do motorista
+    //   - veiculoId: string (optional, <= 128 chars) - ID do veículo
+    //   - veiculoPlaca: string (optional, 1..20 chars) - Placa do veículo
+    //   - veiculoModelo: string (optional, 1..100 chars) - Modelo do veículo
+    //   - kmInicial: number (optional, >= 0) - Hodômetro inicial
+    //   - kmFinal / kmRodado: number or null (optional, >= 0) - Hodômetro final
+    //   - cidadeDestino / destino: string (optional, 1..120 chars) - Cidade polo de saúde
+    //   - passageirosIds: list (optional, <= 200 items) - IDs dos pacientes agendados
+    //   - passageiros: list of maps (optional, <= 200 items) - Estrutura detalhada de embarque
+    //   - codigosAcesso / codigosHash: map (optional) - Códigos dinâmicos de acesso
+    //   - codigoAcesso: string (optional, <= 30 chars) - Código alfanumérico da viagem
+    //   - sessaoId: string or null (optional, <= 128 chars) - Sessão de trabalho do motorista
+    //   - dataHoraInicio / dataHoraFim / dataViagem / data / horario / nomeHorario: timestamp or string (optional)
+    //   - ultimaLatitude / ultimaLongitude / ultimaAtualizacaoLocalizacao: telemetria GPS (optional)
+    //   - criadoEm / atualizadoEm: timestamp or string (optional)
+    //
+    // Collection: localizacoes_motoristas
+    // Document ID: motoristaId (igual a request.auth.uid)
+    // Fields:
+    //   - motoristaId: string (required, matches document ID)
+    //   - latitude: number (required, -90.0 .. 90.0)
+    //   - longitude: number (required, -180.0 .. 180.0)
+    //   - emViagem: bool (required) - Indicador se o motorista está em trânsito
+    //   - motoristaNome: string (optional, 1..120 chars)
+    //   - veiculoPlaca: string (optional, 1..20 chars)
+    //   - veiculoModelo: string (optional, 1..100 chars)
+    //   - cidadeDestino: string (optional, 1..120 chars)
+    //   - viagemId: string (optional, 1..128 chars)
+    //   - atualizadoEm / expiraEm: timestamp or string (optional)
+    //
+    // Collection: sessoes_veiculo
+    // Document ID: sessaoId
+    // Fields:
+    //   - motoristaId: string (required, <= 128 chars) - ID do condutor autenticado
+    //   - veiculoId: string (required, <= 128 chars) - ID do veículo selecionado
+    //   - status: string (required, ['ativa', 'encerrada']) - Ciclo da sessão
+    //   - kmInicial / kmFinal / kmRodado: number (optional, >= 0)
+    //   - motoristaNome / veiculoPlaca / veiculoModelo / observacoes: string (optional)
+    //   - viagensIds: list (optional, <= 100 items) - IDs das viagens vinculadas
+    //   - dataHoraInicio / dataHoraFim / criadoEm / atualizadoEm: timestamp or string (optional)
+    //
+    // ===============================================================
 
-    /// Verifica se a requisição provém de um usuário autenticado
+    // ===============================================================
+    // Funções Auxiliares de Autenticação e RBAC
+    // ===============================================================
+
+    /// Verifica se a requisição provém de um usuário autenticado no Firebase Auth
     function isAuthenticated() {
       return request.auth != null && request.auth.uid != null;
     }
 
-    /// Retorna os dados do documento do usuário autenticado na coleção 'usuarios'
+    /// Verifica se o UID autenticado coincide com o proprietário do documento
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    /// Obtém o perfil de usuário registrado no Firestore de forma segura
     function currentUserData() {
       return isAuthenticated() && exists(/databases/$(database)/documents/usuarios/$(request.auth.uid))
         ? get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data
         : null;
     }
 
-    /// Retorna o papel (role) do usuário autenticado no sistema
-    function currentUserRole() {
-      return currentUserData() != null ? currentUserData().role : null;
-    }
-
-    /// Verifica se o usuário atual possui privilégios de administrador
+    /// Verifica se o usuário autenticado possui privilégios de Administrador
+    /// Avalia tanto Custom Claims do token quanto registro na coleção 'usuarios'
     function isAdmin() {
-      return currentUserRole() == 'admin' || currentUserRole() == 'administrador';
+      return isAuthenticated() && (
+        (request.auth.token != null && (
+          ('role' in request.auth.token && (request.auth.token.role == 'admin' || request.auth.token.role == 'administrador')) ||
+          ('admin' in request.auth.token && request.auth.token.admin == true)
+        )) ||
+        (
+          (request.auth.token == null || !('role' in request.auth.token)) &&
+          exists(/databases/$(database)/documents/usuarios/$(request.auth.uid)) &&
+          'role' in get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data &&
+          get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.role in ['admin', 'administrador']
+        )
+      );
     }
 
-    /// Verifica se o usuário atual é motorista credenciado
+    /// Verifica se o usuário autenticado é Motorista credenciado no sistema
     function isMotorista() {
-      return currentUserRole() == 'motorista';
+      return isAuthenticated() && (
+        (request.auth.token != null && 'role' in request.auth.token && request.auth.token.role == 'motorista') ||
+        (
+          (request.auth.token == null || !('role' in request.auth.token)) &&
+          exists(/databases/$(database)/documents/usuarios/$(request.auth.uid)) &&
+          'role' in get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data &&
+          get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.role == 'motorista'
+        )
+      );
     }
 
-    /// Verifica se o documento sob consulta/edição pertence ao próprio usuário logado
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
+    // ===============================================================
+    // Funções Auxiliares de Validação de Tipos e Limites (Anti-DoS)
+    // ===============================================================
+
+    function validOptionalString(mapData, key, minLen, maxLen) {
+      return !(key in mapData) || (mapData[key] is string && mapData[key].size() >= minLen && mapData[key].size() <= maxLen);
     }
 
-    // =========================================================================
-    // VALIDADORES DE ESQUEMA E DADOS (DEFESA EM PROFUNDIDADE)
-    // =========================================================================
-
-    /// Valida campos comuns para integridade de pessoas
-    function isValidPessoaBase(dados) {
-      return (!('nome' in dados) || (dados.nome is string && dados.nome.size() >= 2 && dados.nome.size() <= 120))
-          && (!('cpf' in dados) || dados.cpf is string)
-          && (!('telefone' in dados) || dados.telefone is string)
-          && (!('role' in dados) || dados.role in ['paciente', 'motorista', 'admin', 'administrador'])
-          && (!('ativo' in dados) || dados.ativo is bool);
+    function validOptionalNumber(mapData, key, minVal, maxVal) {
+      return !(key in mapData) || (mapData[key] is number && mapData[key] >= minVal && mapData[key] <= maxVal);
     }
 
-    /// Valida integridade na criação (Create)
-    function isValidPessoaCreate(dados) {
-      return isValidPessoaBase(dados);
+    function validOptionalBool(mapData, key) {
+      return !(key in mapData) || (mapData[key] is bool);
     }
 
-    /// Valida integridade na atualização (Update)
-    function isValidPessoaUpdate(novoDado, dadoAtual) {
-      return isValidPessoaBase(novoDado)
-          // Impede alteração de role por não-administradores quando autenticado
-          && (novoDado.role == dadoAtual.role || isAdmin() || !isAuthenticated());
+    function validOptionalList(mapData, key, maxSize) {
+      return !(key in mapData) || (mapData[key] is list && mapData[key].size() <= maxSize);
     }
 
-    // =========================================================================
-    // COLEÇÃO: USUARIOS (PESSOAS: PACIENTES, MOTORISTAS, ADMINS)
-    // =========================================================================
+    function validOptionalMap(mapData, key) {
+      return !(key in mapData) || (mapData[key] is map);
+    }
+
+    function validTimestampOrString(mapData, key) {
+      return !(key in mapData)
+        || (mapData[key] is timestamp)
+        || (mapData[key] is string && mapData[key].size() <= 60);
+    }
+
+    // ===============================================================
+    // Validadores de Domínio (Validator Function Pattern)
+    // Executados OBRIGATORIAMENTE em CREATE e UPDATE
+    // ===============================================================
+
+    /// Validador estrito para a coleção /usuarios
+    function isValidUsuario(dados) {
+      return dados.keys().hasOnly([
+        'nome', 'cpf', 'telefone', 'role', 'ativo', 'email', 'cnh', 'rg',
+        'enderecoPaciente', 'endereco', 'localConsulta', 'localSaida',
+        'horarioConsulta', 'status', 'statusViagem', 'situacao',
+        'nomeAcompanhante', 'telAcompanhante', 'cpfAcompanhante',
+        'veiculoModelo', 'veiculoPlaca', 'capacidadeVeiculo', 'emViagem',
+        'prontoRetorno', 'janelaReversao', 'ultimaIdempotencyKey',
+        'criadoEm', 'atualizadoEm', 'inativadoEm', 'senha', 'password'
+      ])
+      && dados.nome is string && dados.nome.size() >= 2 && dados.nome.size() <= 120
+      && dados.cpf is string && (dados.cpf.matches('^[0-9]{11}$') || dados.cpf.matches('^[0-9]{3}\\.[0-9]{3}\\.[0-9]{3}-[0-9]{2}$'))
+      && validOptionalString(dados, 'telefone', 8, 30)
+      && dados.role is string && dados.role in ['admin', 'administrador', 'motorista', 'paciente']
+      && dados.ativo is bool
+      && validOptionalString(dados, 'email', 3, 120)
+      && validOptionalString(dados, 'cnh', 1, 30)
+      && validOptionalString(dados, 'rg', 1, 30)
+      && validOptionalString(dados, 'enderecoPaciente', 1, 250)
+      && validOptionalString(dados, 'endereco', 1, 250)
+      && validOptionalString(dados, 'localConsulta', 1, 200)
+      && validOptionalString(dados, 'localSaida', 1, 200)
+      && validOptionalString(dados, 'horarioConsulta', 1, 30)
+      && validOptionalString(dados, 'status', 1, 50)
+      && validOptionalString(dados, 'statusViagem', 1, 50)
+      && validOptionalString(dados, 'situacao', 1, 50)
+      && validOptionalString(dados, 'nomeAcompanhante', 1, 120)
+      && validOptionalString(dados, 'telAcompanhante', 1, 30)
+      && validOptionalString(dados, 'cpfAcompanhante', 1, 15)
+      && validOptionalString(dados, 'veiculoModelo', 1, 100)
+      && validOptionalString(dados, 'veiculoPlaca', 1, 20)
+      && validOptionalNumber(dados, 'capacidadeVeiculo', 0, 100)
+      && validOptionalBool(dados, 'emViagem')
+      && validOptionalBool(dados, 'prontoRetorno')
+      && validOptionalMap(dados, 'janelaReversao')
+      && validOptionalString(dados, 'ultimaIdempotencyKey', 1, 100)
+      && validTimestampOrString(dados, 'criadoEm')
+      && validTimestampOrString(dados, 'atualizadoEm')
+      && validTimestampOrString(dados, 'inativadoEm')
+      && validOptionalString(dados, 'senha', 1, 150)
+      && validOptionalString(dados, 'password', 1, 150);
+    }
+
+    /// Validador estrito para a coleção /veiculos
+    function isValidVeiculo(dados) {
+      return dados.keys().hasOnly([
+        'placa', 'modelo', 'marca', 'tipo', 'ano', 'qtdAssentos', 'capacidade',
+        'status', 'quilometragem', 'quilometragemAtual', 'emUso', 'motoristaAtualId',
+        'motoristaResponsavelId', 'ultimoMotoristaId', 'possuiAC', 'possuiPreferencial',
+        'observacoes', 'ativo', 'criadoEm', 'atualizadoEm', 'atualizadoPor'
+      ])
+      && dados.placa is string && dados.placa.size() >= 7 && dados.placa.size() <= 10
+      && dados.modelo is string && dados.modelo.size() >= 1 && dados.modelo.size() <= 100
+      && (!('tipo' in dados) || (dados.tipo is string && dados.tipo.size() <= 30))
+      && (!('status' in dados) || (dados.status is string && dados.status in ['disponivel', 'emViagem', 'emManutencao', 'inativo', 'emUso']))
+      && (!('ano' in dados) || (dados.ano is number && dados.ano >= 1950 && dados.ano <= 2100))
+      && (!('qtdAssentos' in dados) || (dados.qtdAssentos is number && dados.qtdAssentos >= 1 && dados.qtdAssentos <= 150))
+      && (!('capacidade' in dados) || (dados.capacidade is number && dados.capacidade >= 1 && dados.capacidade <= 150))
+      && (!('quilometragem' in dados) || (dados.quilometragem is number && dados.quilometragem >= 0))
+      && (!('quilometragemAtual' in dados) || (dados.quilometragemAtual is number && dados.quilometragemAtual >= 0))
+      && (!('emUso' in dados) || (dados.emUso is bool))
+      && (!('ativo' in dados) || (dados.ativo is bool))
+      && (!('motoristaAtualId' in dados) || dados.motoristaAtualId == null || (dados.motoristaAtualId is string && dados.motoristaAtualId.size() <= 128))
+      && (!('motoristaResponsavelId' in dados) || dados.motoristaResponsavelId == null || (dados.motoristaResponsavelId is string && dados.motoristaResponsavelId.size() <= 128))
+      && (!('ultimoMotoristaId' in dados) || dados.ultimoMotoristaId == null || (dados.ultimoMotoristaId is string && dados.ultimoMotoristaId.size() <= 128))
+      && (!('observacoes' in dados) || (dados.observacoes is string && dados.observacoes.size() <= 500))
+      && (!('marca' in dados) || (dados.marca is string && dados.marca.size() <= 100))
+      && (!('possuiAC' in dados) || (dados.possuiAC is bool))
+      && (!('possuiPreferencial' in dados) || (dados.possuiPreferencial is bool))
+      && validTimestampOrString(dados, 'criadoEm')
+      && validTimestampOrString(dados, 'atualizadoEm')
+      && validOptionalString(dados, 'atualizadoPor', 1, 128);
+    }
+
+    /// Validador estrito para a coleção /viagens
+    function isValidViagem(dados) {
+      return dados.keys().hasOnly([
+        'id', 'motoristaId', 'motoristaNome', 'veiculoId', 'veiculoPlaca', 'veiculoModelo',
+        'kmInicial', 'cidadeDestino', 'dataHoraInicio', 'status', 'kmFinal', 'kmRodado',
+        'dataHoraFim', 'observacoes', 'passageirosIds', 'passageiros', 'sessaoId',
+        'codigosAcesso', 'codigosHash', 'codigoAcesso', 'destino', 'data', 'horario',
+        'nomeHorario', 'dataViagem', 'ultimaLatitude', 'ultimaLongitude',
+        'ultimaAtualizacaoLocalizacao', 'criadoEm', 'atualizadoEm'
+      ])
+      && dados.status is string && dados.status in ['aberta', 'em_andamento', 'ativa', 'encerrada', 'cancelada', 'planejada']
+      && (!('motoristaId' in dados) || (dados.motoristaId is string && dados.motoristaId.size() <= 128))
+      && (!('motoristaNome' in dados) || (dados.motoristaNome is string && dados.motoristaNome.size() <= 120))
+      && (!('veiculoId' in dados) || (dados.veiculoId is string && dados.veiculoId.size() <= 128))
+      && (!('veiculoPlaca' in dados) || (dados.veiculoPlaca is string && dados.veiculoPlaca.size() <= 20))
+      && (!('veiculoModelo' in dados) || (dados.veiculoModelo is string && dados.veiculoModelo.size() <= 100))
+      && (!('kmInicial' in dados) || (dados.kmInicial is number && dados.kmInicial >= 0))
+      && (!('kmFinal' in dados) || dados.kmFinal == null || (dados.kmFinal is number && dados.kmFinal >= 0))
+      && (!('kmRodado' in dados) || dados.kmRodado == null || (dados.kmRodado is number && dados.kmRodado >= 0))
+      && (!('cidadeDestino' in dados) || (dados.cidadeDestino is string && dados.cidadeDestino.size() <= 120))
+      && (!('destino' in dados) || (dados.destino is string && dados.destino.size() <= 120))
+      && (!('observacoes' in dados) || dados.observacoes == null || (dados.observacoes is string && dados.observacoes.size() <= 1000))
+      && (!('passageirosIds' in dados) || (dados.passageirosIds is list && dados.passageirosIds.size() <= 200))
+      && (!('passageiros' in dados) || (dados.passageiros is list && dados.passageiros.size() <= 200))
+      && (!('codigosAcesso' in dados) || (dados.codigosAcesso is map))
+      && (!('codigosHash' in dados) || (dados.codigosHash is map))
+      && (!('codigoAcesso' in dados) || (dados.codigoAcesso is string && dados.codigoAcesso.size() <= 30))
+      && (!('sessaoId' in dados) || dados.sessaoId == null || (dados.sessaoId is string && dados.sessaoId.size() <= 128))
+      && (!('nomeHorario' in dados) || (dados.nomeHorario is string && dados.nomeHorario.size() <= 120))
+      && (!('ultimaLatitude' in dados) || (dados.ultimaLatitude is number && dados.ultimaLatitude >= -90.0 && dados.ultimaLatitude <= 90.0))
+      && (!('ultimaLongitude' in dados) || (dados.ultimaLongitude is number && dados.ultimaLongitude >= -180.0 && dados.ultimaLongitude <= 180.0))
+      && validTimestampOrString(dados, 'dataHoraInicio')
+      && validTimestampOrString(dados, 'dataHoraFim')
+      && validTimestampOrString(dados, 'dataViagem')
+      && validTimestampOrString(dados, 'data')
+      && validTimestampOrString(dados, 'horario')
+      && validTimestampOrString(dados, 'ultimaAtualizacaoLocalizacao')
+      && validTimestampOrString(dados, 'criadoEm')
+      && validTimestampOrString(dados, 'atualizadoEm');
+    }
+
+    /// Validador estrito para a coleção /localizacoes_motoristas
+    function isValidLocalizacao(dados, motoristaId) {
+      return dados.keys().hasOnly([
+        'id', 'motoristaId', 'motoristaNome', 'latitude', 'longitude',
+        'emViagem', 'veiculoPlaca', 'veiculoModelo', 'cidadeDestino',
+        'viagemId', 'atualizadoEm', 'expiraEm'
+      ])
+      && dados.motoristaId == motoristaId
+      && dados.latitude is number && dados.latitude >= -90.0 && dados.latitude <= 90.0
+      && dados.longitude is number && dados.longitude >= -180.0 && dados.longitude <= 180.0
+      && dados.emViagem is bool
+      && validOptionalString(dados, 'motoristaNome', 1, 120)
+      && validOptionalString(dados, 'veiculoPlaca', 1, 20)
+      && validOptionalString(dados, 'veiculoModelo', 1, 100)
+      && validOptionalString(dados, 'cidadeDestino', 1, 120)
+      && validOptionalString(dados, 'viagemId', 1, 128)
+      && validTimestampOrString(dados, 'atualizadoEm')
+      && validTimestampOrString(dados, 'expiraEm');
+    }
+
+    /// Validador estrito para a coleção /sessoes_veiculo
+    function isValidSessaoVeiculo(dados) {
+      return dados.keys().hasOnly([
+        'id', 'motoristaId', 'motoristaNome', 'veiculoId', 'veiculoPlaca', 'veiculoModelo',
+        'kmInicial', 'kmFinal', 'kmRodado', 'dataHoraInicio', 'dataHoraFim', 'status',
+        'viagensIds', 'observacoes', 'criadoEm', 'atualizadoEm'
+      ])
+      && dados.status is string && dados.status in ['ativa', 'encerrada']
+      && dados.motoristaId is string && dados.motoristaId.size() <= 128
+      && dados.veiculoId is string && dados.veiculoId.size() <= 128
+      && (!('kmInicial' in dados) || (dados.kmInicial is number && dados.kmInicial >= 0))
+      && (!('kmFinal' in dados) || dados.kmFinal == null || (dados.kmFinal is number && dados.kmFinal >= 0))
+      && (!('kmRodado' in dados) || dados.kmRodado == null || (dados.kmRodado is number && dados.kmRodado >= 0))
+      && validOptionalString(dados, 'motoristaNome', 1, 120)
+      && validOptionalString(dados, 'veiculoPlaca', 1, 20)
+      && validOptionalString(dados, 'veiculoModelo', 1, 100)
+      && validOptionalString(dados, 'observacoes', 1, 1000)
+      && validOptionalList(dados, 'viagensIds', 100)
+      && validTimestampOrString(dados, 'dataHoraInicio')
+      && validTimestampOrString(dados, 'dataHoraFim')
+      && validTimestampOrString(dados, 'criadoEm')
+      && validTimestampOrString(dados, 'atualizadoEm');
+    }
+
+    // ===============================================================
+    // 1. COLEÇÃO: /usuarios/{userId}
+    // ===============================================================
     match /usuarios/{userId} {
       
       // LEITURA:
-      // Permite visualização em ambiente autenticado ou desenvolvimento/apresentação
-      allow read: if isAdmin()
-                  || (isMotorista() && (resource.data.role == 'paciente' || resource.data.role == 'motorista'))
-                  || isOwner(userId)
-                  || !isAuthenticated();
+      // - Admin: pode ler todos os usuários
+      // - Motorista: pode ler seu próprio documento e documentos de pacientes/motoristas
+      // - Dono (request.auth.uid == userId): pode ler o seu próprio perfil
+      // - Paciente / Anônimo: NÃO PODE listar a coleção nem ler dados de outros pacientes (LGPD)
+      allow read: if isAuthenticated() && (
+        isOwner(userId)
+        || isAdmin()
+        || (isMotorista() && resource.data.role == 'paciente')
+      );
 
-      // CRIAÇÃO:
-      // Permite criação por administradores ou durante desenvolvimento/testes
-      allow create: if (isAdmin() || !isAuthenticated())
-                    && isValidPessoaCreate(request.resource.data);
+      // CRIAÇÃO: Apenas Admin
+      allow create: if isAdmin()
+                    && isValidUsuario(request.resource.data)
+                    && ('nome' in request.resource.data)
+                    && ('cpf' in request.resource.data)
+                    && ('telefone' in request.resource.data)
+                    && ('role' in request.resource.data)
+                    && ('ativo' in request.resource.data);
 
-      // ATUALIZAÇÃO (inclusive Soft Delete com ativo: false e status: inativo):
-      allow update: if (isAdmin() || isOwner(userId) || !isAuthenticated())
-                    && isValidPessoaUpdate(request.resource.data, resource.data);
+      // ATUALIZAÇÃO:
+      // - Motorista dono: pode atualizar 'emViagem' (bool). Não pode mudar seu próprio role nem desativar conta
+      // - Admin: pode atualizar qualquer documento válido
+      // - Motorista em rota: pode atualizar status de paciente durante a viagem sem alterar PII
+      allow update: if (
+        (
+          isOwner(userId)
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.ativo == resource.data.ativo
+          && request.resource.data.cpf == resource.data.cpf
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['emViagem', 'atualizadoEm'])
+          && request.resource.data.emViagem is bool
+        )
+        || (isValidUsuario(request.resource.data) && (
+          isAdmin()
+          || (
+            isMotorista() && resource.data.role == 'paciente'
+            && request.resource.data.role == resource.data.role
+            && request.resource.data.ativo == resource.data.ativo
+            && request.resource.data.cpf == resource.data.cpf
+            && request.resource.data.nome == resource.data.nome
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'statusViagem', 'atualizadoEm'])
+          )
+        ))
+      );
 
-      // EXCLUSÃO FÍSICA: TERMINANTEMENTE PROIBIDA (LGPD & SOFT DELETE OBRIGATÓRIO)
-      // Todo desligamento de registro deve ser estritamente lógico através de `ativo: false`.
-      // Isso protege a integridade referencial de viagens realizadas e histórico SUS.
+      // EXCLUSÃO: TERMINANTEMENTE PROIBIDA (LGPD & Soft Delete Obrigatório via ativo: false)
       allow delete: if false;
     }
 
-    // =========================================================================
-    // COLEÇÃO: VIAGENS
-    // =========================================================================
-    match /viagens/{viagemId} {
-      allow read, write: if isAuthenticated() || !isAuthenticated();
-    }
-
-    // =========================================================================
-    // COLEÇÃO: VEÍCULOS
-    // =========================================================================
+    // ===============================================================
+    // 2. COLEÇÃO: /veiculos/{veiculoId}
+    // ===============================================================
     match /veiculos/{veiculoId} {
-      allow read, write: if isAuthenticated() || !isAuthenticated();
+
+      // LEITURA: Admin e Motoristas autenticados
+      allow read: if isAdmin() || isMotorista();
+
+      // CRIAÇÃO: Apenas Admin
+      allow create: if isAdmin()
+                    && isValidVeiculo(request.resource.data)
+                    && ('placa' in request.resource.data)
+                    && ('modelo' in request.resource.data);
+
+      // ATUALIZAÇÃO: Admin e Motoristas autenticados
+      // Motoristas atualizam emUso, motoristaAtualId e quilometragem na transação de ocupação/liberação
+      allow update: if isValidVeiculo(request.resource.data) && (
+        isAdmin()
+        || (
+          isMotorista()
+          && request.resource.data.placa == resource.data.placa
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'emUso', 'motoristaAtualId', 'status', 'quilometragem', 'quilometragemAtual',
+            'atualizadoEm', 'atualizadoPor', 'ultimoMotoristaId'
+          ])
+        )
+      );
+
+      // EXCLUSÃO: Apenas Admin
+      allow delete: if isAdmin();
     }
 
-    // =========================================================================
-    // COLEÇÃO: SESSÕES DE VEÍCULO
-    // =========================================================================
-    match /sessoes_veiculo/{sessaoId} {
-      allow read, write: if isAuthenticated() || !isAuthenticated();
+    // ===============================================================
+    // 3. COLEÇÃO: /viagens/{viagemId}
+    // ===============================================================
+    match /viagens/{viagemId} {
+
+      // LEITURA:
+      // - Admin: lê todas as viagens
+      // - Motorista: lê viagens ativas ou abertas (status != 'encerrada')
+      // - Paciente (autenticado anônimo ou paciente): lê SOMENTE SE status != 'encerrada'
+      // Ao encerrar a viagem (status == 'encerrada'), o acesso de leitura é bloqueado na fonte pelas Security Rules!
+      allow read: if isAdmin() || (
+        isAuthenticated() && resource.data.status != 'encerrada'
+      );
+
+      // CRIAÇÃO: Apenas Admin
+      allow create: if isAdmin()
+                    && isValidViagem(request.resource.data)
+                    && ('status' in request.resource.data);
+
+      // ATUALIZAÇÃO: Admin e Motoristas autenticados (status da viagem e passageiros)
+      allow update: if (isAdmin() || isMotorista())
+                    && isValidViagem(request.resource.data);
+
+      // EXCLUSÃO: Apenas Admin
+      allow delete: if isAdmin();
+
+      // Subcoleção eventual de passageiros/pacientes vinculados à viagem
+      match /pacientes/{pacienteId} {
+        allow read: if isAdmin() || (
+          isAuthenticated() && get(/databases/$(database)/documents/viagens/$(viagemId)).data.status != 'encerrada'
+        );
+        allow write: if isAdmin() || isMotorista();
+      }
     }
 
-    // =========================================================================
-    // COLEÇÃO: LOCALIZAÇÕES DE MOTORISTAS
-    // =========================================================================
+    // ===============================================================
+    // 4. COLEÇÃO: /localizacoes_motoristas/{motoristaId}
+    // ===============================================================
     match /localizacoes_motoristas/{motoristaId} {
-      allow read, write: if isAuthenticated() || !isAuthenticated();
+
+      // LEITURA: Usuários autenticados (inclusive pacientes e motoristas) apenas se emViagem == true
+      allow read: if isAdmin() || (
+        isAuthenticated() && resource.data.emViagem == true
+      );
+
+      // ESCRITA (Create / Update): Apenas o próprio motorista autenticado
+      allow create: if isOwner(motoristaId)
+                    && (isMotorista() || isAdmin())
+                    && isValidLocalizacao(request.resource.data, motoristaId);
+
+      allow update: if isOwner(motoristaId)
+                    && (isMotorista() || isAdmin())
+                    && isValidLocalizacao(request.resource.data, motoristaId);
+
+      // EXCLUSÃO: O próprio motorista ou Admin
+      allow delete: if isOwner(motoristaId) || isAdmin();
+    }
+
+    // ===============================================================
+    // 5. COLEÇÃO: /sessoes_veiculo/{sessaoId}
+    // ===============================================================
+    match /sessoes_veiculo/{sessaoId} {
+
+      // LEITURA E ESCRITA: Apenas Admin e Motoristas autenticados
+      allow read: if isAdmin() || isMotorista();
+
+      allow create: if (isAdmin() || isMotorista())
+                    && isValidSessaoVeiculo(request.resource.data);
+
+      allow update: if (isAdmin() || isMotorista())
+                    && isValidSessaoVeiculo(request.resource.data);
+
+      // EXCLUSÃO: Apenas Admin
+      allow delete: if isAdmin();
+    }
+
+    // ===============================================================
+    // COLEÇÃO DE AUDITORIA/HOMOLOGAÇÃO: /viagens_homologadas/{docId}
+    // ===============================================================
+    match /viagens_homologadas/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    // ===============================================================
+    // DEFAULT DENY: Bloqueio estrito de qualquer outro recurso
+    // ===============================================================
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

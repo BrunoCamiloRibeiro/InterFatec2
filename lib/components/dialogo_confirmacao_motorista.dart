@@ -39,12 +39,12 @@ Future<bool> exibirDialogoConfirmacaoMotorista({
       return Dialog(
         backgroundColor: Colors.white,
         elevation: 16,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
         ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 24),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -52,27 +52,31 @@ Future<bool> exibirDialogoConfirmacaoMotorista({
               // 1. Tag / Badge superior com ícone e cor da próxima etapa
               Row(
                 children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: proximoStatusCor.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(proximoStatusIcone, size: 16, color: proximoStatusCor),
-                        const SizedBox(width: 6),
-                        Text(
-                          'PRÓXIMA ETAPA',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.5,
-                            color: proximoStatusCor,
+                  Flexible(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: proximoStatusCor.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(proximoStatusIcone, size: 16, color: proximoStatusCor),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              'PRÓXIMA ETAPA',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.5,
+                                color: proximoStatusCor,
+                              ),
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ],
@@ -112,7 +116,7 @@ Future<bool> exibirDialogoConfirmacaoMotorista({
                     Expanded(
                       child: Text(
                         localDestino,
-                        maxLines: 1,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           fontSize: 13,
@@ -126,15 +130,16 @@ Future<bool> exibirDialogoConfirmacaoMotorista({
 
               const SizedBox(height: 24),
 
-              // 4. Botão Primário de Confirmação: Full-Width, Altura 56dp, Destaque total
-              SizedBox(
-                height: 56,
-                child: ElevatedButton.icon(
+              // 4. Botão Primário de Confirmação: Full-Width, Altura mínima 56dp, Destaque total
+              ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 56),
+                child: ElevatedButton(
                   key: const Key('botao_confirmar_dialogo_motorista'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF0F172A),
                     foregroundColor: Colors.white,
                     elevation: 2,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
                     ),
@@ -143,27 +148,38 @@ Future<bool> exibirDialogoConfirmacaoMotorista({
                     HapticFeedback.lightImpact();
                     Navigator.of(dialogContext).pop(true);
                   },
-                  icon: const Icon(Icons.check_circle, size: 22),
-                  label: const Text(
-                    'Confirmar',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 0.3,
-                    ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.check_circle, size: 22),
+                      SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          'Confirmar',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
 
               const SizedBox(height: 12),
 
-              // 5. Botão Secundário Cancelar: Largo, Altura 52dp, separado por gap seguro de 12dp
-              SizedBox(
-                height: 52,
+              // 5. Botão Secundário Cancelar: Largo, Altura mínima 52dp, separado por gap seguro de 12dp
+              ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 52),
                 child: OutlinedButton(
                   key: const Key('botao_cancelar_dialogo_motorista'),
                   style: OutlinedButton.styleFrom(
                     side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.5),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
                     ),
@@ -173,6 +189,7 @@ Future<bool> exibirDialogoConfirmacaoMotorista({
                   },
                   child: const Text(
                     'Cancelar',
+                    textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.bold,

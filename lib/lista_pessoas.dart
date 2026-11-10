@@ -466,21 +466,26 @@ class _ListaPessoasState extends State<ListaPessoas> {
     return showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: const [
+        title: const Row(
+          children: [
             Icon(Icons.warning_amber_rounded, color: Color(0xFFDC2626)),
             SizedBox(width: 8),
-            Text(
-              'Excluir Registro',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            Expanded(
+              child: Text(
+                'Excluir Registro',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
             ),
           ],
         ),
-        content: Text(
-          'Deseja excluir $nome?\n\n'
-          'Conforme as regras de governança e auditoria, o registro ficará indisponível para novos agendamentos.',
-          style: const TextStyle(fontSize: 14, color: Color(0xFF475569)),
+        content: SingleChildScrollView(
+          child: Text(
+            'Deseja excluir $nome?\n\n'
+            'Conforme as regras de governança e auditoria, o registro ficará indisponível para novos agendamentos.',
+            style: const TextStyle(fontSize: 14, color: Color(0xFF475569)),
+          ),
         ),
         actions: [
           TextButton(
@@ -809,7 +814,10 @@ class _ListaPessoasState extends State<ListaPessoas> {
             }
           },
         ),
-        title: const Text('Gestão de Pessoas'),
+        title: const Text(
+          'Gestão de Pessoas',
+          overflow: TextOverflow.ellipsis,
+        ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _salvando ? null : _abrirFormularioCadastro,

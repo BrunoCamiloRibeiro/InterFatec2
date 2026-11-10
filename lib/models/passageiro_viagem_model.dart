@@ -32,6 +32,8 @@
 
 import 'package:flutter/foundation.dart';
 
+import 'janela_reversao_model.dart';
+
 /// Modelo de dados representativo de um passageiro agendado em um Horário de viagem.
 @immutable
 class PassageiroViagemModel {
@@ -43,6 +45,9 @@ class PassageiroViagemModel {
 
   /// CPF do paciente titular (opcional/cache)
   final String? pacienteCpf;
+
+  /// Telefone de contato do paciente (opcional/cache operacional)
+  final String? pacienteTelefone;
 
   /// Identificador do acompanhante (se cadastrado) ou nulo caso não haja
   final String? acompanhanteId;
@@ -71,11 +76,18 @@ class PassageiroViagemModel {
   /// Status atual do ciclo de transporte (0=Aguardando, 1=Embarcou, etc.)
   final int statusEmbarque;
 
+  /// Indica se o paciente já sinalizou prontidão para o retorno nesta viagem.
+  final bool prontoRetorno;
+
+  /// Janela temporária de reversão vinculada especificamente a esta viagem.
+  final JanelaReversaoModel? janelaReversao;
+
   /// Construtor constante imutável
   const PassageiroViagemModel({
     required this.pacienteId,
     required this.pacienteNome,
     this.pacienteCpf,
+    this.pacienteTelefone,
     this.acompanhanteId,
     this.acompanhanteNome,
     this.acompanhanteTelefone,
@@ -85,6 +97,8 @@ class PassageiroViagemModel {
     this.ordemEmbarque = 1,
     this.observacoes,
     this.statusEmbarque = 0,
+    this.prontoRetorno = false,
+    this.janelaReversao,
   });
 
   /// Converte a instância para mapa compatível com persistência no Cloud Firestore
@@ -93,6 +107,7 @@ class PassageiroViagemModel {
       'pacienteId': pacienteId,
       'pacienteNome': pacienteNome,
       if (pacienteCpf != null) 'pacienteCpf': pacienteCpf,
+      if (pacienteTelefone != null) 'pacienteTelefone': pacienteTelefone,
       if (acompanhanteId != null) 'acompanhanteId': acompanhanteId,
       if (acompanhanteNome != null) 'acompanhanteNome': acompanhanteNome,
       if (acompanhanteTelefone != null)
@@ -103,15 +118,19 @@ class PassageiroViagemModel {
       'ordemEmbarque': ordemEmbarque,
       if (observacoes != null) 'observacoes': observacoes,
       'statusEmbarque': statusEmbarque,
+      if (prontoRetorno) 'prontoRetorno': prontoRetorno,
+      if (janelaReversao != null) 'janelaReversao': janelaReversao!.toMap(),
     };
   }
 
   /// Reconstrói uma instância de [PassageiroViagemModel] a partir de dados serializados
   factory PassageiroViagemModel.fromMap(Map<String, dynamic> map) {
+    final janelaRaw = map['janelaReversao'];
     return PassageiroViagemModel(
       pacienteId: map['pacienteId']?.toString() ?? '',
       pacienteNome: map['pacienteNome']?.toString() ?? 'Paciente sem nome',
       pacienteCpf: map['pacienteCpf']?.toString(),
+      pacienteTelefone: map['pacienteTelefone']?.toString(),
       acompanhanteId: map['acompanhanteId']?.toString(),
       acompanhanteNome: map['acompanhanteNome']?.toString(),
       acompanhanteTelefone: map['acompanhanteTelefone']?.toString(),
@@ -125,6 +144,10 @@ class PassageiroViagemModel {
       statusEmbarque: (map['statusEmbarque'] is num)
           ? (map['statusEmbarque'] as num).toInt()
           : 0,
+      prontoRetorno: map['prontoRetorno'] == true,
+      janelaReversao: janelaRaw is Map
+          ? JanelaReversaoModel.fromMap(Map<String, dynamic>.from(janelaRaw))
+          : null,
     );
   }
 
@@ -136,6 +159,7 @@ class PassageiroViagemModel {
     String? pacienteId,
     String? pacienteNome,
     String? pacienteCpf,
+    String? pacienteTelefone,
     String? acompanhanteId,
     String? acompanhanteNome,
     String? acompanhanteTelefone,
@@ -145,11 +169,15 @@ class PassageiroViagemModel {
     int? ordemEmbarque,
     String? observacoes,
     int? statusEmbarque,
+    bool? prontoRetorno,
+    JanelaReversaoModel? janelaReversao,
+    bool limparJanelaReversao = false,
   }) {
     return PassageiroViagemModel(
       pacienteId: pacienteId ?? this.pacienteId,
       pacienteNome: pacienteNome ?? this.pacienteNome,
       pacienteCpf: pacienteCpf ?? this.pacienteCpf,
+      pacienteTelefone: pacienteTelefone ?? this.pacienteTelefone,
       acompanhanteId: acompanhanteId ?? this.acompanhanteId,
       acompanhanteNome: acompanhanteNome ?? this.acompanhanteNome,
       acompanhanteTelefone: acompanhanteTelefone ?? this.acompanhanteTelefone,
@@ -159,6 +187,9 @@ class PassageiroViagemModel {
       ordemEmbarque: ordemEmbarque ?? this.ordemEmbarque,
       observacoes: observacoes ?? this.observacoes,
       statusEmbarque: statusEmbarque ?? this.statusEmbarque,
+      prontoRetorno: prontoRetorno ?? this.prontoRetorno,
+      janelaReversao:
+          limparJanelaReversao ? null : (janelaReversao ?? this.janelaReversao),
     );
   }
 
@@ -168,10 +199,14 @@ class PassageiroViagemModel {
     return other is PassageiroViagemModel &&
         other.pacienteId == pacienteId &&
         other.ordemEmbarque == ordemEmbarque &&
-        other.statusEmbarque == statusEmbarque;
+        other.statusEmbarque == statusEmbarque &&
+        other.prontoRetorno == prontoRetorno;
   }
 
   @override
   int get hashCode =>
-      pacienteId.hashCode ^ ordemEmbarque.hashCode ^ statusEmbarque.hashCode;
+      pacienteId.hashCode ^
+      ordemEmbarque.hashCode ^
+      statusEmbarque.hashCode ^
+      prontoRetorno.hashCode;
 }

@@ -1,285 +1,131 @@
-// ============================================================================
-// ARQUIVO: lib/motorista.dart
-// ----------------------------------------------------------------------------
-// O QUE FAZ:
-// Implementa a tela principal operacional de controle e acompanhamento de
-// viagens pelo motorista (widget Stateful "Motorista"). Exibe em tempo real
-// a lista de passageiros cadastrados na rota, a capacidade e ocupação do
-// veículo, e permite a alteração de status do passageiro (como embarcou,
-// desembarcou, consulta finalizada) através de gestos de deslize lateral (swipe/
-// Dismissible). Permite também iniciar ou encerrar a viagem através dos
-// formulários acoplados no rodapé (FooterPacientes).
-//
-// PAPEL NA ARQUITETURA (CAMADA):
-// Camada de Apresentação / View (Interface do Usuário com Flutter).
-//
-// ONDE É USADO (REFERÊNCIAS NO REPOSITÓRIO):
-// - lib/screens/auth_gate.dart: Renderizado quando o usuário autenticado possui role "motorista".
-// - lib/routes/route_guard.dart: Mapeado na rota protegida "/motorista".
-// - test/screens/auth_gate_test.dart: Verificação de redirecionamento do motorista.
-// - test/widget_test.dart: Testes instrumentados de renderização de interface.
-//
-// DE ONDE RECEBE DADOS:
-// - Cloud Firestore: coleção "usuarios" para ouvir pacientes (role == 'paciente')
-//   e motoristas (role == 'motorista').
-// - lib/services/viagem_service.dart: escuta o stream de viagem ativa (viagemAtivaStream).
-// - ModalRoute: argumentos de navegação contendo ViagemModel caso venha de redirecionamento.
-// - Parâmetros opcionais de injeção de dependência para testes: viagemInicial,
-//   viagemServiceOverride, pacientesStreamOverride.
-//
-// O QUE EXPORTA / EXPÕE:
-// - class Motorista extends StatefulWidget: Widget visual da tela do motorista.
-// - class _MotoristaState: Estado interno associado ao ciclo de vida do widget.
-//
-// ORIGEM HISTÓRICA:
-// Criado pela equipe do projeto TransSaúde (commits e34c23d, 4651c09 e refinado em
-// commits subsequentes como ccbbe0e, 588756d, 8d73cce, c0351c9).
-//
-// DEPENDÊNCIAS EXTERNAS E EFEITOS COLATERAIS:
-// - dart:async: StreamSubscription para assinaturas reativas.
-// - package:cloud_firestore: leitura e escrita assíncrona no banco NoSQL Firestore.
-// - package:firebase_core: checagem de inicialização de instâncias do Firebase.
-// - package:flutter/material.dart: componentes de UI Material Design.
-// - Efeitos colaterais: atualiza campos no banco remoto Firestore ao arrastar cards
-//   e assina ouvintes em tempo real que consomem tráfego de rede.
-//
-// INCONSISTÊNCIAS / OBSERVAÇÕES TÉCNICAS:
-// - A consulta do motorista em _ouvirDadosMotorista() busca com .limit(1) qualquer motorista
-//   cadastrado no banco, em vez de filtrar pelo id do motorista atualmente autenticado.
-// - O método confirmDismiss retorna sempre false para evitar que o Dismissible remova
-//   o widget da árvore localmente de forma abrupta, delegando o redesenho à Stream reativa.
-// ============================================================================
-// Importa utilitários assíncronos do Dart, incluindo StreamSubscription e Streams
 import 'dart:async';
 
-// Importa a biblioteca do Cloud Firestore para acesso ao banco de dados em tempo real
 import 'package:cloud_firestore/cloud_firestore.dart';
-// Importa o núcleo do Firebase para verificar se o aplicativo já foi inicializado
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
-// Importa o conjunto completo de componentes Material Design do Flutter
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-// Importa o modelo de dados que representa um motorista no sistema
 import 'package:trans_saude/models/motorista_model.dart';
-// Importa o modelo de dados que representa um paciente no sistema
 import 'package:trans_saude/models/paciente_model.dart';
-// Importa o modelo de dados que representa um veículo da frota no sistema
 import 'package:trans_saude/models/veiculo_model.dart';
-// Importa o modelo de dados que encapsula as informações de uma viagem
 import 'package:trans_saude/models/viagem_model.dart';
-// Importa o serviço responsável pela gestão de viagens e seus fluxos
-import 'package:trans_saude/services/viagem_service.dart';
 import 'package:trans_saude/services/auth_service.dart';
 import 'package:trans_saude/services/localizacao_motorista_service.dart';
 import 'package:trans_saude/services/paciente_sync_service.dart';
 import 'package:trans_saude/services/transicao_paciente_service.dart';
+import 'package:trans_saude/services/viagem_service.dart';
 
-// Importa o componente visual de card individual de paciente
 import 'components/card_paciente.dart';
 import 'components/dialogo_confirmacao_motorista.dart';
-// Importa o componente visual do rodapé da tela com informações de vagas e ações
 import 'components/footer_pacientes.dart';
-// Importa o componente visual do cabeçalho de viagem com título e paginação
-import 'components/motorista_header.dart';
-// Importa o formulário de início de viagem para declaração de veículo e KM inicial
 import 'components/formulario_inicio_viagem.dart';
+import 'components/motorista_header.dart';
 
-// Declaração do StatefulWidget Motorista, tela operacional acessível pelo perfil motorista
+/// Camada de Apresentação: tela operacional do motorista.
+/// Exibe o formulário de escolha de veículo quando `emViagem == false` e,
+/// quando `emViagem == true`, lista os passageiros da viagem ativa em foco.
 class Motorista extends StatefulWidget {
-  // Viagem inicial informada para exibição dos dados na tela
-  // Propriedade opcional para inicializar a tela com uma viagem já carregada
   final ViagemModel? viagemInicial;
-  // Instância customizada do serviço de viagens
-  // Permite injetar uma instância simulada ou customizada de ViagemService para testes
   final ViagemService? viagemServiceOverride;
-  // Stream de pacientes injetada externamente
-  // Permite injetar um fluxo simulado de pacientes para testes automatizados
   final Stream<List<PacienteModel>>? pacientesStreamOverride;
-  // Instância do serviço de sincronização e transições de status (injetável para testes)
   final PacienteSyncService? syncServiceOverride;
 
-  // Construtor constante da classe Motorista que aceita parâmetros de injeção opcionais
   const Motorista({
-    // Chave identificadora única do widget na árvore de elementos
     super.key,
-    // Parâmetro opcional com os dados da viagem inicial
     this.viagemInicial,
-    // Parâmetro opcional para injeção de dependência de ViagemService
     this.viagemServiceOverride,
-    // Parâmetro opcional para injeção de dependência da Stream de pacientes
     this.pacientesStreamOverride,
-    // Parâmetro opcional para injeção de dependência de PacienteSyncService
     this.syncServiceOverride,
-  // Fechamento da lista de parâmetros do construtor
   });
 
-  // Sobrescrita obrigatória que cria o estado mutável associado a este widget
   @override
-  // Instancia e retorna a classe de estado _MotoristaState
   State<Motorista> createState() => _MotoristaState();
-// Fechamento da classe Motorista
 }
 
-// Classe de estado privada que gerencia o ciclo de vida e renderização da tela do motorista
 class _MotoristaState extends State<Motorista> {
-  // Instância do serviço de viagens
-  // Referência ao serviço de gerenciamento do ciclo de vida das viagens
   late final ViagemService _viagemService;
-
-  // Inscrição para escutar mudanças no estado da viagem ativa
-  // Assinatura na stream para desinscrever adequadamente no método dispose
-  StreamSubscription<ViagemModel?>? _subViagemAtiva;
-
-  // Inscrição para escutar a lista com todas as N viagens ativas (Issue #65)
-  StreamSubscription<List<ViagemModel>>? _subViagensAtivas;
-
-  // Inscrições para escutar a frota de veículos e viagens diretamente do Firestore
-  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _subMotoristaFirestore;
-  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _subVeiculosFirestore;
-  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _subViagensFirestore;
-  StreamSubscription<PacienteModel>? _subSyncPacientes;
-  StreamSubscription<({String pacienteId, String mensagem, PacienteModel estadoRevertido})>? _subFalhasSync;
-  StreamSubscription<String>? _subErrosViagem;
-  Stream<QuerySnapshot<Map<String, dynamic>>>? _streamSnapshotsPacientesFirestore;
-  Stream<List<PacienteModel>>? _streamPacientesMapeadosFirestore;
-
-  // Cache local da frota de veículos carregada do Firebase para resolução de capacidade
-  List<VeiculoModel> _veiculosFrota = [];
-
-  // Capacidade e placa de fallback lidas do documento do motorista na coleção 'usuarios'
-  int _capacidadeMotoristaDoc = 0;
-  String _placaMotoristaDoc = '';
-
-  // Controle para evitar disparos simultâneos de geração de códigos na mesma viagem
-  final Set<String> _pacientesGerandoCodigo = {};
-
-  // Lista com as N viagens ativas sob a sessão do motorista (Issue #65)
-  List<ViagemModel> _viagensAtivas = [];
-
-  // Índice da viagem em exibição ativa na tela (0 a N-1)
-  int _indiceViagemAtual = 0;
-
-  // Viagem ativa associada à sessão do motorista
-  // Armazena a viagem em andamento para exibir na interface e controlar fluxos
-  ViagemModel? _viagemAtiva;
-
-  // Capacidade do veículo obtida dos dados do motorista
-  // Quantidade total de assentos disponíveis no veículo utilizado na viagem
-  int _capacidadeVeiculo = 0;
-
-  // Serviço central de sincronização atômica e máquina de estados de transição
   late final PacienteSyncService _syncService;
 
-  // Identificador e nome do motorista autenticado ou associado aos dados da viagem
+  StreamSubscription<ViagemModel?>? _subViagemAtiva;
+  StreamSubscription<List<ViagemModel>>? _subViagensAtivas;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _subMotorista;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _subVeiculosFirestore;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _subViagensFirestore;
+  StreamSubscription<({String? viagemId, PacienteModel paciente})>?
+      _subSyncPacientes;
+  StreamSubscription<
+          ({
+            String? viagemId,
+            String pacienteId,
+            String mensagem,
+            PacienteModel estadoRevertido,
+          })>?
+      _subFalhasSync;
+  StreamSubscription<String>? _subErrosViagem;
+
+  List<VeiculoModel> _veiculosFrota = [];
+  List<ViagemModel> _viagensAtivas = [];
+  ViagemModel? _viagemAtiva;
+  int _indiceViagemAtual = 0;
+
+  int _capacidadeMotoristaDoc = 0;
+  int _capacidadeVeiculo = 0;
+  String _placaMotoristaDoc = '';
+
   String? _motoristaId;
   String _motoristaNome = '';
+  bool? _emViagemFirestore;
 
-  // Estado emViagem do motorista persistido no Firestore
-  bool? _motoristaEmViagem;
-
-  // Timer defensivo de carregamento de viagem ativa para evitar bloqueio eterno da UI
+  final Set<String> _pacientesGerandoCodigo = {};
   Timer? _timeoutCarregamentoViagem;
-
-  void _resetarEstadoParaNovaViagem(String idMot) {
-    setState(() {
-      _motoristaEmViagem = false;
-      FirebaseAuthService.motoristaEmViagemStatic = false;
-      _viagemAtiva = null;
-      _viagensAtivas = [];
-      _indiceViagemAtual = 0;
-      for (int i = 0; i < _veiculosFrota.length; i++) {
-        final veic = _veiculosFrota[i];
-        if (veic.motoristaAtualId == idMot && veic.emUso) {
-          _veiculosFrota[i] = veic.copyWith(emUso: false, motoristaAtualId: null);
-        }
-      }
-      _streamPacientesMapeadosFirestore = null;
-    });
-    if (idMot.isNotEmpty && _isFirebaseDisponivel()) {
-      FirebaseFirestore.instance
-          .collection('usuarios')
-          .doc(idMot)
-          .update({'emViagem': false}).catchError((_) {});
-      for (final veic in _veiculosFrota) {
-        if (veic.motoristaAtualId == idMot) {
-          FirebaseFirestore.instance
-              .collection('veiculos')
-              .doc(veic.id)
-              .update({'emUso': false, 'motoristaAtualId': null}).catchError((_) {});
-        }
-      }
-    }
-  }
-
-  void _iniciarTimeoutCarregamentoViagem() {
-    _timeoutCarregamentoViagem?.cancel();
-    _timeoutCarregamentoViagem = Timer(const Duration(milliseconds: 2500), () {
-      if (!mounted) return;
-      if (!_temViagemAtiva && _motoristaEmViagem == true) {
-        final idMot = _motoristaId ??
-            FirebaseAuthService().currentDocId ??
-            FirebaseAuthService().currentUserId ??
-            '';
-        _resetarEstadoParaNovaViagem(idMot);
-      }
-    });
-  }
-
-  void _cancelarTimeoutCarregamentoViagem() {
-    _timeoutCarregamentoViagem?.cancel();
-    _timeoutCarregamentoViagem = null;
-  }
-
-  // Garante que argumentos da rota sejam lidos apenas na abertura inicial e não reativem viagem encerrada
+  DateTime? _inicioViagemOptimistaEm;
   bool _argumentosRotaProcessados = false;
 
-  // Verifica se existem instâncias ativas do Firebase inicializadas
-  // Método auxiliar que checa se o Firebase foi inicializado sem lançar exceções não tratadas
-  bool _isFirebaseDisponivel() {
-    // Bloco protegido para tentar verificar a lista de aplicativos Firebase inicializados
-    try {
-      // Retorna verdadeiro se houver ao menos um app Firebase registrado no ecossistema
-      return Firebase.apps.isNotEmpty;
-    // Captura qualquer erro de acesso ao Firebase (como em ambiente de testes unitários simples)
-    } catch (_) {
-      // Retorna falso indicando que o Firebase não está disponível neste contexto
-      return false;
-    // Fechamento do bloco catch
-    }
-  // Fechamento do método _isFirebaseDisponivel
-  }
+  // ===========================================================================
+  // SEÇÃO: Ciclo de Vida e Listeners Reativos
+  // ===========================================================================
 
-  // Sobrescrita do ciclo de vida chamada quando o widget é inserido na árvore
   @override
-  // Método de inicialização de estado interno e ouvintes
   void initState() {
-    // Chama a implementação da classe pai obrigatória no ciclo do StatefulWidget
     super.initState();
-    // Atribui o serviço injetado por parâmetro ou instancia um novo ViagemService padrão
     _viagemService = widget.viagemServiceOverride ?? ViagemService();
     _syncService = widget.syncServiceOverride ?? PacienteSyncService();
 
-    // Inicializa a variável com a viagem fornecida no construtor
-    // Atribui o valor de viagemInicial recebido via construtor à variável de estado
-    _viagemAtiva = widget.viagemInicial;
+    final idMotSessao = _obterIdMotoristaSessao();
+    final sessaoMem = _viagemService.sessaoAtiva;
+    final sessaoDeOutroMotorista = sessaoMem != null &&
+        sessaoMem.motoristaId.trim().isNotEmpty &&
+        idMotSessao.trim().isNotEmpty &&
+        sessaoMem.motoristaId.trim() != idMotSessao.trim();
+    if (sessaoDeOutroMotorista) {
+      _viagemService.limparSessaoLocal();
+    } else if (_isFirebaseDisponivel() &&
+        widget.viagemInicial == null &&
+        FirebaseAuthService.motoristaEmViagemStatic == false &&
+        _viagemService.viagemAtiva != null) {
+      _viagemService.limparSessaoLocal();
+    }
 
-    // Inicializa o cache local com as viagens ativas pré-existentes na sessão
+    _viagemAtiva = widget.viagemInicial;
     _viagensAtivas = _viagemService.viagensAtivas;
     if (_viagensAtivas.isNotEmpty && _viagemAtiva == null) {
       _viagemAtiva = _viagensAtivas.first;
     }
-    if (_viagemAtiva == null && _viagemService.viagemAtiva != null) {
-      _viagemAtiva = _viagemService.viagemAtiva;
+    _viagemAtiva ??= _viagemService.viagemAtiva;
+
+    if (widget.viagemInicial != null || widget.pacientesStreamOverride != null) {
+      _emViagemFirestore = true;
+    } else if (_viagemAtiva != null &&
+        (!_isFirebaseDisponivel() ||
+            FirebaseAuthService.motoristaEmViagemStatic != false)) {
+      _emViagemFirestore = true;
+    } else {
+      _emViagemFirestore = FirebaseAuthService.motoristaEmViagemStatic;
     }
-    _motoristaEmViagem = _viagemService.viagemAtiva != null
-        ? true
-        : FirebaseAuthService.motoristaEmViagemStatic;
     _veiculosFrota = List<VeiculoModel>.from(_viagemService.todosVeiculos);
-    if (_viagemAtiva == null) {
-      final idMotInicial = _motoristaId ??
-          FirebaseAuthService().currentDocId ??
-          FirebaseAuthService().currentUserId ??
-          '';
+
+    if (_viagemAtiva == null && _emViagemFirestore == true) {
+      final idMotInicial = _obterIdMotoristaSessao();
       if (idMotInicial.isNotEmpty) {
         _viagemService.restaurarSessaoMotoristaSeAtiva(
           motoristaId: idMotInicial,
@@ -289,431 +135,679 @@ class _MotoristaState extends State<Motorista> {
         if (_viagemService.viagemAtiva != null) {
           _viagemAtiva = _viagemService.viagemAtiva;
           _viagensAtivas = _viagemService.viagensAtivas;
-          _motoristaEmViagem = true;
+          _emViagemFirestore = true;
         }
       }
     }
-    if (_motoristaEmViagem == true && !_temViagemAtiva) {
+
+    if (_emViagemFirestore == true && !_temViagemAtiva) {
       _iniciarTimeoutCarregamentoViagem();
     }
     _capacidadeVeiculo = _resolverCapacidadeVeiculo();
     _atualizarTransmissaoGpsMotorista();
 
-    // Assina a stream de atualização da viagem ativa
-    // Ouve reativamente qualquer alteração na viagem ativa transmitida pelo serviço
-    _subViagemAtiva = _viagemService.viagemAtivaStream.listen((viagem) {
-      // Garante que o widget ainda está montado na árvore antes de atualizar o estado
-      if (mounted) {
-        if (viagem != null && viagem.isAtiva) {
-          _cancelarTimeoutCarregamentoViagem();
-        }
-        // Notifica a árvore do Flutter que o estado interno mudou e requer redesenho
-        setState(() {
-          // Atualiza a viagem ativa com o novo objeto emitido pela stream
-          _viagemAtiva = viagem;
-          _capacidadeVeiculo = _resolverCapacidadeVeiculo();
-          _streamPacientesMapeadosFirestore = null;
-        // Fechamento da função de callback de setState
-        });
-        _atualizarTransmissaoGpsMotorista();
-      // Fechamento da verificação if mounted
-      }
-    // Fechamento do listener da stream
-    });
-
-    // Assina a stream de N viagens ativas (Issue #65)
-    _subViagensAtivas = _viagemService.viagensAtivasStream.listen((viagens) {
-      if (mounted) {
-        final ativas = viagens
-            .where(
-              (v) =>
-                  v.id.startsWith('sessao_ativa_') ||
-                  (!v.isCancelada &&
-                      !v.isConcluida &&
-                      !_viagemService.todosPacientesVoltaram(v)),
-            )
-            .toList();
-        if (ativas.any((v) => v.isAtiva)) {
-          _cancelarTimeoutCarregamentoViagem();
-        }
-        setState(() {
-          _viagensAtivas = ativas;
-          if (_viagensAtivas.isNotEmpty) {
-            if (_indiceViagemAtual >= _viagensAtivas.length) {
-              _indiceViagemAtual = _viagensAtivas.length - 1;
-            }
-            _viagemAtiva = _viagensAtivas[_indiceViagemAtual];
-          } else {
-            _viagemAtiva = _viagemService.viagemAtiva;
-          }
-          _capacidadeVeiculo = _resolverCapacidadeVeiculo();
-          _streamPacientesMapeadosFirestore = null;
-        });
-        _atualizarTransmissaoGpsMotorista();
-      }
-    });
-
-    // Inicia a escuta dos dados do motorista caso o Firebase esteja disponível
-    // Inicia o stream Firestore para carregar a capacidade do veículo se o Firebase estiver ativo
+    _registrarListenersServico();
     if (_isFirebaseDisponivel()) {
-      // Dispara a consulta contínua aos dados do motorista e da frota no Firestore
+      _viagemService.garantirEscutaFirestore();
+      LocalizacaoMotoristaService().garantirEscutasFirestore();
       _ouvirDadosMotorista();
       _ouvirVeiculosEViagensFirestore();
-    // Fechamento da condicional de verificação do Firebase
     }
+  }
 
-    _subSyncPacientes = _syncService.alteracoesGlobaisStream.listen((_) {
-      if (mounted) {
-        setState(() {});
+  void _registrarListenersServico() {
+    _subViagemAtiva = _viagemService.viagemAtivaStream.listen((viagem) {
+      if (!mounted) return;
+      if (viagem != null && viagem.isEmOperacao) {
+        _cancelarTimeoutCarregamentoViagem();
       }
+      setState(() {
+        if (viagem == null) {
+          _viagemAtiva = null;
+        } else if (_viagensAtivas.length <= 1 ||
+            _viagemAtiva == null ||
+            _viagemAtiva!.id == viagem.id ||
+            !_viagensAtivas.any((v) => v.id == _viagemAtiva!.id)) {
+          // Mantém o índice selecionado quando o motorista navega entre viagens.
+          _viagemAtiva = viagem;
+        } else {
+          _viagensAtivas = _viagensAtivas
+              .map((v) => v.id == viagem.id ? viagem : v)
+              .toList();
+        }
+        _capacidadeVeiculo = _resolverCapacidadeVeiculo();
+      });
+      _atualizarTransmissaoGpsMotorista();
     });
 
-    _subFalhasSync = _syncService.falhasSincronizacaoStream.listen((falha) {
-      final idViagemAlvo = _viagemAtiva?.id;
+    _subViagensAtivas = _viagemService.viagensAtivasStream.listen((viagens) {
+      if (!mounted) return;
+      final ativas = viagens
+          .where(
+            (v) =>
+                v.id.startsWith('sessao_ativa_') ||
+                (!v.isCancelada &&
+                    !v.isConcluida &&
+                    !_viagemService.todosPacientesVoltaram(v)),
+          )
+          .toList();
+      if (ativas.any((v) => v.isEmOperacao)) {
+        _cancelarTimeoutCarregamentoViagem();
+      }
+      setState(() {
+        _selecionarViagemPreservandoId(ativas);
+        _capacidadeVeiculo = _resolverCapacidadeVeiculo();
+      });
+      _atualizarTransmissaoGpsMotorista();
+    });
+
+    _subSyncPacientes = _syncService.alteracoesPorViagemStream.listen((evento) {
+      final idViagemEvento = evento.viagemId?.trim();
+      if (idViagemEvento != null &&
+          idViagemEvento.isNotEmpty &&
+          _viagemAtiva != null &&
+          _viagemAtiva!.id != idViagemEvento) {
+        return;
+      }
+      if (mounted) setState(() {});
+    });
+
+    _subFalhasSync = _syncService.falhasPorViagemStream.listen((falha) {
+      final idViagemAlvo = falha.viagemId ?? _viagemAtiva?.id;
       if (idViagemAlvo != null && !idViagemAlvo.startsWith('sessao_ativa_')) {
         _viagemService.atualizarStatusPassageiroNaViagem(
           viagemId: idViagemAlvo,
           pacienteId: falha.pacienteId,
           novoStatus: falha.estadoRevertido.status,
+          prontoRetorno: falha.estadoRevertido.prontoRetorno,
+          janelaReversao: falha.estadoRevertido.janelaReversao,
+          limparJanelaReversao: falha.estadoRevertido.janelaReversao == null,
           persistirRemoto: false,
         );
       }
       unawaited(HapticFeedback.heavyImpact());
       unawaited(SystemSound.play(SystemSoundType.alert));
-      if (mounted) {
-        setState(() {
-          _viagensAtivas = _viagemService.viagensAtivas;
-          if (_viagensAtivas.isNotEmpty) {
-            if (_indiceViagemAtual >= _viagensAtivas.length) {
-              _indiceViagemAtual = _viagensAtivas.length - 1;
-            }
-            _viagemAtiva = _viagensAtivas[_indiceViagemAtual];
-          } else {
-            _viagemAtiva = _viagemService.viagemAtiva;
-          }
-        });
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(
-            SnackBar(
-              backgroundColor: const Color(0xFFB83227),
-              content: Text(
-                falha.mensagem,
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-      }
+      if (!mounted) return;
+      setState(() {
+        _selecionarViagemPreservandoId(_viagemService.viagensAtivas);
+      });
+      _exibirSnackBar(falha.mensagem, const Color(0xFFB83227));
     });
 
-    _subErrosViagem = _viagemService.errosSincronizacaoStream.listen((mensagemErro) {
+    _subErrosViagem =
+        _viagemService.errosSincronizacaoStream.listen((mensagemErro) {
       unawaited(HapticFeedback.heavyImpact());
       unawaited(SystemSound.play(SystemSoundType.alert));
-      if (mounted) {
-        setState(() {
-          _viagensAtivas = _viagemService.viagensAtivas;
-          if (_viagensAtivas.isNotEmpty) {
-            if (_indiceViagemAtual >= _viagensAtivas.length) {
-              _indiceViagemAtual = _viagensAtivas.length - 1;
-            }
-            _viagemAtiva = _viagensAtivas[_indiceViagemAtual];
-          } else {
-            _viagemAtiva = _viagemService.viagemAtiva;
-          }
-          _capacidadeVeiculo = _resolverCapacidadeVeiculo();
-        });
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(
-            SnackBar(
-              backgroundColor: const Color(0xFFB83227),
-              content: Text(
-                mensagemErro,
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              behavior: SnackBarBehavior.floating,
-            ),
+      if (!mounted) return;
+      setState(() {
+        _selecionarViagemPreservandoId(_viagemService.viagensAtivas);
+        _capacidadeVeiculo = _resolverCapacidadeVeiculo();
+      });
+      final ativa = _viagemAtiva;
+      if (ativa != null && !ativa.id.startsWith('sessao_ativa_')) {
+        for (final pv in ativa.passageiros) {
+          _syncService.sincronizarPassageiroDeViagemEmMemoria(
+            ativa.id,
+            _viagemService.construirPacienteDaViagem(pv),
           );
+        }
       }
+      _exibirSnackBar(mensagemErro, const Color(0xFFB83227));
     });
-  // Fechamento do método initState
   }
 
-  // Sobrescrita do ciclo de vida chamada quando dependências herdadas mudam ou após initState
   @override
-  // Método para obter argumentos transmitidos por rotas de navegação com segurança
   void didChangeDependencies() {
-    // Chama a implementação herdada da classe pai State
     super.didChangeDependencies();
-    // Obtém os argumentos de rota contendo a viagem iniciada apenas uma única vez
-    if (!_argumentosRotaProcessados) {
-      _argumentosRotaProcessados = true;
-      if (_viagemAtiva == null) {
-        // Lê as configurações e argumentos passados na rota atual
-        final args = ModalRoute.of(context)?.settings.arguments;
-        // Valida se o argumento recebido é de fato uma instância de ViagemModel
-        if (args is ViagemModel && !args.isConcluida && !args.isCancelada) {
-          _cancelarTimeoutCarregamentoViagem();
-          // Atribui a viagem recebida via rota à variável de estado
-          _viagemAtiva = args;
-          _motoristaEmViagem = true;
-          FirebaseAuthService.motoristaEmViagemStatic = true;
-          if (_viagensAtivas.isEmpty) {
-            _viagensAtivas = [args];
-          }
-          _capacidadeVeiculo = _resolverCapacidadeVeiculo();
-          _streamPacientesMapeadosFirestore = null;
-        // Fechamento do if de verificação de tipo de argumento
+    if (_argumentosRotaProcessados) return;
+    _argumentosRotaProcessados = true;
+
+    if (_viagemAtiva == null) {
+      final args = ModalRoute.of(context)?.settings.arguments;
+      if (args is ViagemModel && !args.isConcluida && !args.isCancelada) {
+        _cancelarTimeoutCarregamentoViagem();
+        _viagemAtiva = args;
+        _emViagemFirestore = true;
+        FirebaseAuthService.motoristaEmViagemStatic = true;
+        if (_viagensAtivas.isEmpty) {
+          _viagensAtivas = [args];
         }
-      // Fechamento da verificação se _viagemAtiva é nula
+        _capacidadeVeiculo = _resolverCapacidadeVeiculo();
       }
     }
-  // Fechamento do método didChangeDependencies
+  }
+
+  @override
+  void dispose() {
+    _cancelarTimeoutCarregamentoViagem();
+    LocalizacaoMotoristaService().pararTransmissaoGpsMotorista();
+    _subViagemAtiva?.cancel();
+    _subViagensAtivas?.cancel();
+    _subMotorista?.cancel();
+    _subVeiculosFirestore?.cancel();
+    _subViagensFirestore?.cancel();
+    _subSyncPacientes?.cancel();
+    _subFalhasSync?.cancel();
+    _subErrosViagem?.cancel();
+    super.dispose();
+  }
+
+  // ===========================================================================
+  // SEÇÃO: Controle de Sessão do Veículo, GPS e Listeners Firestore
+  // ===========================================================================
+
+  String _obterIdMotoristaSessao() =>
+      _motoristaId ??
+      FirebaseAuthService().currentDocId ??
+      FirebaseAuthService().currentUserId ??
+      '';
+
+  bool _isFirebaseDisponivel() {
+    try {
+      return Firebase.apps.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  bool get _temViagemAtiva {
+    if (widget.pacientesStreamOverride != null) return true;
+    if (_viagemAtiva != null && _viagemAtiva!.isEmOperacao) return true;
+    if (_viagensAtivas.isNotEmpty &&
+        _viagensAtivas.any((v) => v.isEmOperacao)) {
+      return true;
+    }
+    if (_viagemService.viagemAtiva != null &&
+        _viagemService.viagemAtiva!.isEmOperacao) {
+      return true;
+    }
+    return false;
+  }
+
+  void _selecionarViagemPreservandoId(
+    List<ViagemModel> ativas, {
+    String? idPreferido,
+  }) {
+    _viagensAtivas = ativas;
+    if (ativas.isEmpty) {
+      _indiceViagemAtual = 0;
+      _viagemAtiva = _viagemService.viagemAtiva;
+      return;
+    }
+    final alvoId = idPreferido ?? _viagemAtiva?.id;
+    if (alvoId != null && alvoId.isNotEmpty) {
+      final idx = ativas.indexWhere((v) => v.id == alvoId);
+      if (idx != -1) {
+        _indiceViagemAtual = idx;
+        _viagemAtiva = ativas[idx];
+        return;
+      }
+    }
+    if (_indiceViagemAtual >= ativas.length || _indiceViagemAtual < 0) {
+      _indiceViagemAtual = ativas.length - 1;
+    }
+    _viagemAtiva = ativas[_indiceViagemAtual];
+  }
+
+  void _resetarEstadoParaNovaViagem(String idMot) {
+    _inicioViagemOptimistaEm = null;
+    final idsVeiculosParaLiberar = _veiculosFrota
+        .where((veic) => veic.motoristaAtualId == idMot && veic.emUso)
+        .map((veic) => veic.id)
+        .toList();
+    setState(() {
+      _emViagemFirestore = false;
+      FirebaseAuthService.motoristaEmViagemStatic = false;
+      _viagemAtiva = null;
+      _viagensAtivas = [];
+      _indiceViagemAtual = 0;
+      for (int i = 0; i < _veiculosFrota.length; i++) {
+        final veic = _veiculosFrota[i];
+        if (veic.motoristaAtualId == idMot && veic.emUso) {
+          _veiculosFrota[i] = veic.copyWith(
+            emUso: false,
+            limparMotorista: true,
+          );
+        }
+      }
+    });
+    if (idMot.isNotEmpty && _isFirebaseDisponivel()) {
+      FirebaseFirestore.instance
+          .collection('usuarios')
+          .doc(idMot)
+          .update({'emViagem': false}).catchError((_) {});
+      for (final vid in idsVeiculosParaLiberar) {
+        FirebaseFirestore.instance
+            .collection('veiculos')
+            .doc(vid)
+            .update({'emUso': false, 'motoristaAtualId': null})
+            .catchError((_) {});
+      }
+    }
+  }
+
+  void _iniciarTimeoutCarregamentoViagem() {
+    _timeoutCarregamentoViagem?.cancel();
+    _timeoutCarregamentoViagem = Timer(const Duration(milliseconds: 2500), () {
+      if (!mounted) return;
+      if (!_temViagemAtiva && _emViagemFirestore == true) {
+        _resetarEstadoParaNovaViagem(_obterIdMotoristaSessao());
+      }
+    });
+  }
+
+  void _cancelarTimeoutCarregamentoViagem() {
+    _timeoutCarregamentoViagem?.cancel();
+    _timeoutCarregamentoViagem = null;
   }
 
   void _aoEncerrarViagemMotorista() {
     if (!mounted) return;
     _cancelarTimeoutCarregamentoViagem();
+    _inicioViagemOptimistaEm = null;
     setState(() {
-      _motoristaEmViagem = false;
+      _emViagemFirestore = false;
       FirebaseAuthService.motoristaEmViagemStatic = false;
       _viagemAtiva = null;
       _viagensAtivas = [];
       _indiceViagemAtual = 0;
       _capacidadeVeiculo = _resolverCapacidadeVeiculo();
-      _streamPacientesMapeadosFirestore = null;
     });
     _atualizarTransmissaoGpsMotorista();
   }
 
   void _atualizarTransmissaoGpsMotorista() {
     final v = _viagemAtiva;
-    if (v != null && (v.isAtiva || v.isPlanejada) && !v.isCancelada && !v.isConcluida) {
-      final idMot = (v.motoristaId.isNotEmpty && v.motoristaId != 'motorista_atual')
-          ? v.motoristaId
-          : (_motoristaId ?? FirebaseAuthService().currentUserId ?? 'motorista_atual');
-      final nomeMot = (v.motoristaNome.isNotEmpty && v.motoristaNome != 'Motorista da Saúde')
-          ? v.motoristaNome
-          : (_motoristaNome.isNotEmpty ? _motoristaNome : 'Motorista Municipal');
+    final sessao = _viagemService.sessaoAtiva;
+    final emTransito = (v != null && v.isEmOperacao) ||
+        (sessao != null && sessao.status == 'ativa');
+    if (emTransito) {
+      String? authUid;
+      try {
+        authUid = FirebaseAuth.instance.currentUser?.uid;
+      } catch (_) {}
+      final docLogado = _motoristaId ??
+          FirebaseAuthService().currentDocId ??
+          FirebaseAuthService().currentUserId;
+      final idMot = (authUid != null && authUid.trim().isNotEmpty)
+          ? authUid.trim()
+          : ((docLogado != null && docLogado.trim().isNotEmpty)
+                ? docLogado.trim()
+                : ((v != null &&
+                          v.motoristaId.isNotEmpty &&
+                          v.motoristaId != 'motorista_atual')
+                      ? v.motoristaId
+                      : 'motorista_atual'));
+      final nomeMot = _motoristaNome.trim().isNotEmpty
+          ? _motoristaNome.trim()
+          : ((sessao != null && sessao.motoristaNome.trim().isNotEmpty)
+                ? sessao.motoristaNome.trim()
+                : ((v != null &&
+                          v.motoristaNome.trim().isNotEmpty &&
+                          v.motoristaNome != 'Motorista da Saúde')
+                      ? v.motoristaNome.trim()
+                      : 'Motorista Municipal'));
+      final veiculoSessao = _resolverVeiculoSessaoAtual();
+      final placaSessao = _resolverPlacaVeiculoSessao();
+      final modeloSessao = (veiculoSessao != null &&
+              veiculoSessao.modelo.trim().isNotEmpty)
+          ? veiculoSessao.modelo.trim()
+          : ((sessao != null && sessao.veiculoModelo.trim().isNotEmpty)
+                ? sessao.veiculoModelo.trim()
+                : (v?.veiculoModelo ?? ''));
       LocalizacaoMotoristaService().iniciarTransmissaoGpsMotorista(
         motoristaId: idMot,
         motoristaNome: nomeMot,
-        veiculoPlaca: v.veiculoPlaca,
-        veiculoModelo: v.veiculoModelo,
-        cidadeDestino: v.cidadeDestino,
-        viagemId: v.id,
+        veiculoPlaca: placaSessao,
+        veiculoModelo: modeloSessao,
+        cidadeDestino: v?.cidadeDestino ?? '',
+        viagemId: v?.id ?? sessao?.id ?? '',
       );
     } else {
       LocalizacaoMotoristaService().pararTransmissaoGpsMotorista();
     }
   }
 
-  // Sobrescrita do ciclo de vida chamada quando o widget é descartado permanentemente
-  @override
-  // Método de liberação de recursos, cancelamento de assinaturas e timers
-  void dispose() {
-    _cancelarTimeoutCarregamentoViagem();
-    LocalizacaoMotoristaService().pararTransmissaoGpsMotorista();
-    // Cancela as inscrições nas streams de viagem ativa, N viagens e Firestore
-    _subViagemAtiva?.cancel();
-    _subViagensAtivas?.cancel();
-    _subMotoristaFirestore?.cancel();
+  void _ouvirVeiculosEViagensFirestore() {
     _subVeiculosFirestore?.cancel();
+    _subVeiculosFirestore = FirebaseFirestore.instance
+        .collection('veiculos')
+        .snapshots()
+        .listen(
+      (snapshot) {
+        if (!mounted) return;
+        final frota = snapshot.docs
+            .map((d) => VeiculoModel.fromMap(d.data(), docId: d.id))
+            .toList();
+        final idMot = _obterIdMotoristaSessao();
+        final precisaRestaurar = _viagemAtiva == null ||
+            _viagemAtiva!.id.startsWith('sessao_ativa_');
+        if (_emViagemFirestore == true && precisaRestaurar && idMot.isNotEmpty) {
+          _viagemService.restaurarSessaoMotoristaSeAtiva(
+            motoristaId: idMot,
+            motoristaNome: _motoristaNome,
+            frota: frota,
+          );
+        }
+        setState(() {
+          _veiculosFrota = frota;
+          if (_emViagemFirestore == true &&
+              (_viagemAtiva == null ||
+                  _viagemAtiva!.id.startsWith('sessao_ativa_')) &&
+              _viagemService.viagemAtiva != null) {
+            _selecionarViagemPreservandoId(_viagemService.viagensAtivas);
+            _cancelarTimeoutCarregamentoViagem();
+          }
+          _capacidadeVeiculo = _resolverCapacidadeVeiculo();
+        });
+      },
+      onError: (_) {},
+    );
+
     _subViagensFirestore?.cancel();
-    _subSyncPacientes?.cancel();
-    _subFalhasSync?.cancel();
-    _subErrosViagem?.cancel();
-    // Invoca o descarte da classe pai
-    super.dispose();
-  // Fechamento do método dispose
+    _subViagensFirestore = FirebaseFirestore.instance
+        .collection('viagens')
+        .where('status', isNotEqualTo: 'encerrada')
+        .snapshots()
+        .listen(
+      (snapshot) {
+        if (!mounted) return;
+        final todas = snapshot.docs
+            .map((d) => ViagemModel.fromMap(d.data(), docId: d.id))
+            .toList();
+
+        _viagemService.sincronizarViagensRemotas(todas);
+
+        final idMot = _obterIdMotoristaSessao();
+        final precisaRestaurar = _viagemAtiva == null ||
+            _viagemAtiva!.id.startsWith('sessao_ativa_');
+        if (_emViagemFirestore == true && precisaRestaurar && idMot.isNotEmpty) {
+          _viagemService.restaurarSessaoMotoristaSeAtiva(
+            motoristaId: idMot,
+            motoristaNome: _motoristaNome,
+            frota: _veiculosFrota,
+          );
+        }
+
+        if (_emViagemFirestore == true &&
+            (_viagemAtiva != null || _viagemService.viagemAtiva != null)) {
+          _cancelarTimeoutCarregamentoViagem();
+          setState(() {
+            _selecionarViagemPreservandoId(_viagemService.viagensAtivas);
+            _capacidadeVeiculo = _resolverCapacidadeVeiculo();
+          });
+          _atualizarTransmissaoGpsMotorista();
+        }
+      },
+      onError: (_) {},
+    );
   }
 
-  // Normaliza placa removendo hífen/espaços para comparação consistente
-  String _normalizarPlaca(String placa) {
-    return placa.replaceAll(RegExp(r'[^A-Za-z0-9]'), '').toUpperCase();
-  }
+  void _ouvirDadosMotorista() {
+    String? authUid;
+    try {
+      authUid = FirebaseAuth.instance.currentUser?.uid;
+    } catch (_) {}
+    final docIdLogado = FirebaseAuthService().currentDocId;
+    final idOperacional = FirebaseAuthService().currentUserId;
+    final candidatos = <String>[
+      if (docIdLogado != null && docIdLogado.trim().isNotEmpty)
+        docIdLogado.trim(),
+      if (authUid != null && authUid.trim().isNotEmpty) authUid.trim(),
+      if (idOperacional != null && idOperacional.trim().isNotEmpty)
+        idOperacional.trim(),
+    ];
+    if (candidatos.isEmpty) return;
 
-  // Resolve a capacidade total de lugares puxando prioritariamente do veículo na coleção 'veiculos' do Firebase
-  int _resolverCapacidadeVeiculo() {
+    void escutarDocumento(String docIdAlvo, {String? fallbackUid}) {
+      _subMotorista?.cancel();
+      _subMotorista = FirebaseFirestore.instance
+          .collection('usuarios')
+          .doc(docIdAlvo)
+          .snapshots()
+          .listen(
+        (docSelecionado) {
+          if (!mounted) return;
+          if (!docSelecionado.exists || docSelecionado.data() == null) {
+            if (fallbackUid != null &&
+                fallbackUid.isNotEmpty &&
+                fallbackUid != docIdAlvo) {
+              escutarDocumento(fallbackUid);
+            }
+            return;
+          }
+
+          final motorista = MotoristaModel.fromMap(
+            docSelecionado.data()!,
+            docId: docSelecionado.id,
+          );
+          final idResolvido =
+              motorista.id.isNotEmpty ? motorista.id : docSelecionado.id;
+
+          final sessaoMem = _viagemService.sessaoAtiva;
+          if (sessaoMem != null &&
+              sessaoMem.motoristaId.trim().isNotEmpty &&
+              sessaoMem.motoristaId.trim() != idResolvido) {
+            _viagemService.limparSessaoLocal();
+            _viagemAtiva = null;
+            _viagensAtivas = [];
+          }
+
+          setState(() {
+            _capacidadeMotoristaDoc = motorista.capacidadeVeiculo;
+            _placaMotoristaDoc = motorista.veiculoPlaca;
+            _motoristaId = idResolvido;
+            if (motorista.nome.trim().isNotEmpty) {
+              _motoristaNome = motorista.nome.trim();
+            }
+
+            final emJanelaOptimista = _inicioViagemOptimistaEm != null &&
+                DateTime.now().difference(_inicioViagemOptimistaEm!) <
+                    const Duration(seconds: 6);
+            if (motorista.emViagem) {
+              _inicioViagemOptimistaEm = null;
+              _emViagemFirestore = true;
+              FirebaseAuthService.motoristaEmViagemStatic = true;
+              _viagemService.garantirEscutaFirestore();
+            } else if (!emJanelaOptimista) {
+              _inicioViagemOptimistaEm = null;
+              _emViagemFirestore = false;
+              FirebaseAuthService.motoristaEmViagemStatic = false;
+              _cancelarTimeoutCarregamentoViagem();
+              if (_viagemAtiva != null || _viagemService.sessaoAtiva != null) {
+                _viagemService.limparSessaoLocal();
+                _viagemAtiva = null;
+                _viagensAtivas = [];
+                _indiceViagemAtual = 0;
+              }
+            }
+
+            if (_emViagemFirestore == true &&
+                (_viagemAtiva == null ||
+                    _viagemAtiva!.id.startsWith('sessao_ativa_')) &&
+                _motoristaId != null &&
+                _motoristaId!.isNotEmpty) {
+              _viagemService.restaurarSessaoMotoristaSeAtiva(
+                motoristaId: _motoristaId!,
+                motoristaNome: _motoristaNome,
+                frota: _veiculosFrota,
+              );
+              if (_viagemService.viagemAtiva != null) {
+                _selecionarViagemPreservandoId(_viagemService.viagensAtivas);
+                _cancelarTimeoutCarregamentoViagem();
+              }
+            }
+            if (_emViagemFirestore == true && !_temViagemAtiva) {
+              _iniciarTimeoutCarregamentoViagem();
+            } else if (_emViagemFirestore == false) {
+              _cancelarTimeoutCarregamentoViagem();
+            }
+            _capacidadeVeiculo = _resolverCapacidadeVeiculo();
+          });
+          _atualizarTransmissaoGpsMotorista();
+        },
+        onError: (_) {
+          if (!mounted) return;
+          if (fallbackUid != null &&
+              fallbackUid.isNotEmpty &&
+              fallbackUid != docIdAlvo) {
+            escutarDocumento(fallbackUid);
+          }
+        },
+      );
+    }
+
+    final fallback = (authUid != null &&
+            authUid.trim().isNotEmpty &&
+            authUid.trim() != candidatos.first)
+        ? authUid.trim()
+        : null;
+    escutarDocumento(candidatos.first, fallbackUid: fallback);
+  }
+  // Fechamento do método _ouvirDadosMotorista
+
+  // ===========================================================================
+  // SEÇÃO: Resolução de Capacidade, Códigos e Passageiros da Viagem em Foco
+  // ===========================================================================
+
+  String _normalizarPlaca(String placa) =>
+      placa.replaceAll(RegExp(r'[^A-Za-z0-9]'), '').toUpperCase();
+
+  VeiculoModel? _resolverVeiculoSessaoAtual() {
     final listaVeiculos = _veiculosFrota.isNotEmpty
         ? _veiculosFrota
         : _viagemService.todosVeiculos;
+    final sessao = _viagemService.sessaoAtiva;
 
-    // 1. Busca pelo veículo vinculado à viagem ativa (por ID ou por placa)
-    if (_viagemAtiva != null && listaVeiculos.isNotEmpty) {
-      final vid = _viagemAtiva!.veiculoId.trim();
-      final vplaca = _normalizarPlaca(_viagemAtiva!.veiculoPlaca);
+    // 1. Prioriza o veículo da sessão ativa declarada pelo motorista logado.
+    if (sessao != null) {
+      final vidSessao = sessao.veiculoId.trim();
+      final placaSessao = _normalizarPlaca(sessao.veiculoPlaca);
+      for (final v in listaVeiculos) {
+        if ((vidSessao.isNotEmpty && v.id == vidSessao) ||
+            (placaSessao.isNotEmpty && _normalizarPlaca(v.placa) == placaSessao)) {
+          return v;
+        }
+      }
+    }
+
+    // 2. Procura na frota o veículo atualmente ocupado por este motorista.
+    final idsCondutor = <String>{
+      if (_motoristaId != null && _motoristaId!.trim().isNotEmpty)
+        _motoristaId!.trim(),
+      if (FirebaseAuthService().currentDocId?.trim().isNotEmpty == true)
+        FirebaseAuthService().currentDocId!.trim(),
+      if (FirebaseAuthService().currentUserId?.trim().isNotEmpty == true)
+        FirebaseAuthService().currentUserId!.trim(),
+    };
+    if (idsCondutor.isNotEmpty) {
+      for (final v in listaVeiculos) {
+        final motVeic = v.motoristaAtualId?.trim() ?? '';
+        if (v.emUso && motVeic.isNotEmpty && idsCondutor.contains(motVeic)) {
+          return v;
+        }
+      }
+    }
+
+    // 3. Fallback para viagem inicial/em foco quando não há sessão explícita.
+    final viagemRef = widget.viagemInicial ?? _viagemAtiva;
+    if (viagemRef != null) {
+      final vid = viagemRef.veiculoId.trim();
+      final vplaca = _normalizarPlaca(viagemRef.veiculoPlaca);
       for (final v in listaVeiculos) {
         if ((vid.isNotEmpty && v.id == vid) ||
             (vplaca.isNotEmpty && _normalizarPlaca(v.placa) == vplaca)) {
-          if (v.capacidade > 0) return v.capacidade;
+          return v;
         }
       }
     }
 
-    // 2. Busca pelo veículo atualmente em uso pelo motorista autenticado
-    final uidAtual = _motoristaId ?? FirebaseAuthService().currentUserId;
-    if (uidAtual != null && uidAtual.isNotEmpty && listaVeiculos.isNotEmpty) {
-      for (final v in listaVeiculos) {
-        if (v.motoristaAtualId == uidAtual && v.capacidade > 0) {
-          return v.capacidade;
-        }
-      }
-    }
-
-    // 3. Busca pela placa associada ao cadastro do motorista na coleção 'usuarios'
-    if (_placaMotoristaDoc.isNotEmpty && listaVeiculos.isNotEmpty) {
+    // 4. Fallback pela placa habitual do cadastro do motorista.
+    if (_placaMotoristaDoc.trim().isNotEmpty) {
       final placaDoc = _normalizarPlaca(_placaMotoristaDoc);
       for (final v in listaVeiculos) {
-        if (_normalizarPlaca(v.placa) == placaDoc && v.capacidade > 0) {
-          return v.capacidade;
+        if (_normalizarPlaca(v.placa) == placaDoc) {
+          return v;
         }
       }
     }
+    return null;
+  }
 
-    // 4. Fallback para o campo capacidadeVeiculo do documento do motorista, ou primeiro veículo ativo da frota
-    if (_capacidadeMotoristaDoc > 0) {
-      return _capacidadeMotoristaDoc;
+  String _resolverPlacaVeiculoSessao() {
+    final placaSessao = _viagemService.sessaoAtiva?.veiculoPlaca.trim() ?? '';
+    if (placaSessao.isNotEmpty) return placaSessao;
+    final veicAtual = _resolverVeiculoSessaoAtual();
+    if (veicAtual != null && veicAtual.placa.trim().isNotEmpty) {
+      return veicAtual.placa.trim();
     }
+    if (widget.viagemInicial?.veiculoPlaca.trim().isNotEmpty == true) {
+      return widget.viagemInicial!.veiculoPlaca.trim();
+    }
+    if (_placaMotoristaDoc.trim().isNotEmpty) {
+      return _placaMotoristaDoc.trim();
+    }
+    return _viagemAtiva?.veiculoPlaca.trim() ?? '';
+  }
+
+  int _resolverCapacidadeVeiculo() {
+    final veicAtual = _resolverVeiculoSessaoAtual();
+    if (veicAtual != null && veicAtual.capacidade > 0) {
+      return veicAtual.capacidade;
+    }
+    if (_capacidadeMotoristaDoc > 0) return _capacidadeMotoristaDoc;
+    final listaVeiculos = _veiculosFrota.isNotEmpty
+        ? _veiculosFrota
+        : _viagemService.todosVeiculos;
     if (listaVeiculos.isNotEmpty) {
-      final emUso = listaVeiculos.where((v) => v.emUso && v.capacidade > 0).firstOrNull;
+      final emUso =
+          listaVeiculos.where((v) => v.emUso && v.capacidade > 0).firstOrNull;
       if (emUso != null) return emUso.capacidade;
       if (listaVeiculos.first.capacidade > 0) return listaVeiculos.first.capacidade;
     }
     return 7;
   }
 
-  // Escuta em tempo real as coleções 'veiculos' e 'viagens' do Firestore
-  void _ouvirVeiculosEViagensFirestore() {
-    _subVeiculosFirestore = FirebaseFirestore.instance
-        .collection('veiculos')
-        .snapshots()
-        .listen((snapshot) {
-          if (!mounted) return;
-          final frota = snapshot.docs
-              .map((d) => VeiculoModel.fromMap(d.data(), docId: d.id))
-              .toList();
-          final idMot = _motoristaId ??
-              FirebaseAuthService().currentDocId ??
-              FirebaseAuthService().currentUserId ??
-              '';
-          if (_viagemAtiva == null && idMot.isNotEmpty) {
-            _viagemService.restaurarSessaoMotoristaSeAtiva(
-              motoristaId: idMot,
-              motoristaNome: _motoristaNome,
-              frota: frota,
-            );
-          }
-          setState(() {
-            _veiculosFrota = frota;
-            if (_viagemAtiva == null && _viagemService.viagemAtiva != null) {
-              _viagensAtivas = _viagemService.viagensAtivas;
-              _viagemAtiva = _viagemService.viagemAtiva;
-              _cancelarTimeoutCarregamentoViagem();
-              _streamPacientesMapeadosFirestore = null;
-            }
-            _capacidadeVeiculo = _resolverCapacidadeVeiculo();
-          });
-        });
-
-    _subViagensFirestore?.cancel();
-    _subViagensFirestore = FirebaseFirestore.instance
-        .collection('viagens')
-        .snapshots()
-        .listen((snapshot) {
-          if (!mounted) return;
-          final todas = snapshot.docs
-              .map((d) => ViagemModel.fromMap(d.data(), docId: d.id))
-              .toList();
-
-          _viagemService.sincronizarViagensRemotas(todas);
-
-          final idMot = _motoristaId ??
-              FirebaseAuthService().currentDocId ??
-              FirebaseAuthService().currentUserId ??
-              '';
-          if (_viagemAtiva == null && idMot.isNotEmpty) {
-            _viagemService.restaurarSessaoMotoristaSeAtiva(
-              motoristaId: idMot,
-              motoristaNome: _motoristaNome,
-              frota: _veiculosFrota,
-            );
-          }
-
-          // Se a viagem ativa atual foi encerrada/cancelada no Firestore por terceiros:
-          final idAtual = _viagemAtiva?.id;
-          if (idAtual != null && !idAtual.startsWith('sessao_ativa_')) {
-            final remota = todas.where((v) => v.id == idAtual).firstOrNull;
-            if (remota != null && (remota.isConcluida || remota.isCancelada)) {
-              _aoEncerrarViagemMotorista();
-              return;
-            }
-          }
-
-          // Sincroniza quando o motorista possui sessão/viagem ativa iniciada ou restaurada
-          if (_viagemAtiva != null || _viagemService.viagemAtiva != null) {
-            _cancelarTimeoutCarregamentoViagem();
-            setState(() {
-              _viagensAtivas = _viagemService.viagensAtivas;
-              if (_viagensAtivas.isNotEmpty) {
-                if (_indiceViagemAtual >= _viagensAtivas.length) {
-                  _indiceViagemAtual = _viagensAtivas.length - 1;
-                }
-                _viagemAtiva = _viagensAtivas[_indiceViagemAtual];
-              } else if (_viagemService.viagemAtiva != null) {
-                _viagemAtiva = _viagemService.viagemAtiva;
-              }
-              _capacidadeVeiculo = _resolverCapacidadeVeiculo();
-              _streamPacientesMapeadosFirestore = null;
-            });
-            _atualizarTransmissaoGpsMotorista();
-          } else {
-            // Nenhuma viagem ativa encontrada no banco para esse condutor:
-            // libera o estado emViagem para permitir que o motorista inicie uma viagem normalmente
-            if (_motoristaEmViagem == true) {
-              _cancelarTimeoutCarregamentoViagem();
-              _resetarEstadoParaNovaViagem(idMot);
-            }
-          }
-        });
-  }
-
-  // Garante que todos os pacientes listados na viagem ativa possuam código de acesso gerado e salvo no Firebase
   void _garantirCodigosPacientesNaViagemAtiva(List<PacienteModel> pacientes) {
     final viagem = _viagemAtiva;
-    if (viagem == null || viagem.id.isEmpty || pacientes.isEmpty) return;
+    if (viagem == null ||
+        viagem.id.isEmpty ||
+        viagem.id.startsWith('sessao_ativa_') ||
+        !viagem.isEmOperacao ||
+        pacientes.isEmpty) {
+      return;
+    }
 
     final faltantes = <PacienteModel>[];
     for (final p in pacientes) {
       if (p.id.isEmpty) continue;
       final codigoExistente = viagem.codigosAcesso[p.id]?.trim() ?? '';
       final chaveControle = '${viagem.id}_${p.id}';
-      if (codigoExistente.isEmpty && !_pacientesGerandoCodigo.contains(chaveControle)) {
+      if (codigoExistente.isEmpty &&
+          !_pacientesGerandoCodigo.contains(chaveControle)) {
         _pacientesGerandoCodigo.add(chaveControle);
         faltantes.add(p);
       }
     }
-
     if (faltantes.isEmpty) return;
 
     Future.microtask(() async {
       final gerados = <String, String>{};
       try {
         for (final p in faltantes) {
-          final codigo = await _viagemService.gerarOuObterCodigoAcesso(
+          gerados[p.id] = await _viagemService.gerarOuObterCodigoAcesso(
             viagemId: viagem.id,
             pacienteId: p.id,
           );
-          gerados[p.id] = codigo;
         }
         if (mounted &&
             gerados.isNotEmpty &&
             _viagemAtiva != null &&
             _viagemAtiva!.id == viagem.id) {
           setState(() {
-            final novosCodigos = Map<String, String>.from(_viagemAtiva!.codigosAcesso)
-              ..addAll(gerados);
+            final novosCodigos =
+                Map<String, String>.from(_viagemAtiva!.codigosAcesso)
+                  ..addAll(gerados);
             _viagemAtiva = _viagemAtiva!.copyWith(codigosAcesso: novosCodigos);
           });
         }
@@ -725,895 +819,539 @@ class _MotoristaState extends State<Motorista> {
     });
   }
 
-  // Consulta os dados do motorista na coleção 'usuarios' do Firestore
-  // Inicia um ouvinte em tempo real no Firestore para obter a capacidade do veículo do motorista
-  void _ouvirDadosMotorista() {
-    _subMotoristaFirestore?.cancel();
-    // Acessa a instância global do Firestore
-    _subMotoristaFirestore = FirebaseFirestore.instance
-        // Navega até a coleção raiz 'usuarios'
-        .collection('usuarios')
-        // Filtra os usuários com papel funcional de motorista
-        .where('role', isEqualTo: 'motorista')
-        // Obtém a stream contínua de fotos instantâneas (snapshots) da coleção
-        .snapshots()
-        // Registra o ouvinte para processar as emissões de snapshots
-        .listen((snapshot) {
-          // Verifica se existem documentos retornados e se o widget ainda está montado
-          if (snapshot.docs.isNotEmpty && mounted) {
-            final uidLogado = FirebaseAuthService().currentUserId;
-            final docIdLogado = FirebaseAuthService().currentDocId;
-            final docSelecionado = (uidLogado != null && uidLogado.isNotEmpty)
-                ? snapshot.docs
-                    .where((d) =>
-                        d.id == uidLogado ||
-                        (docIdLogado != null && d.id == docIdLogado) ||
-                        d.data()['authUid'] == uidLogado)
-                    .firstOrNull ?? snapshot.docs.first
-                : snapshot.docs.first;
-            // Converte os dados brutos do documento em um modelo fortemente tipado MotoristaModel
-            final motorista = MotoristaModel.fromMap(
-              // Mapa de atributos do documento selecionado
-              docSelecionado.data(),
-              // Identificador do documento do Firestore
-              docId: docSelecionado.id,
-            // Fechamento da chamada de instanciação MotoristaModel.fromMap
-            );
-            // Atualiza o estado da interface com a capacidade do veículo obtida
-            setState(() {
-              _capacidadeMotoristaDoc = motorista.capacidadeVeiculo;
-              _placaMotoristaDoc = motorista.veiculoPlaca;
-              _motoristaId = motorista.id.isNotEmpty ? motorista.id : docSelecionado.id;
-              _motoristaEmViagem = motorista.emViagem;
-              FirebaseAuthService.motoristaEmViagemStatic = motorista.emViagem;
-              if (motorista.nome.trim().isNotEmpty) {
-                _motoristaNome = motorista.nome.trim();
-              }
-              if (_viagemAtiva == null && _motoristaId != null && _motoristaId!.isNotEmpty) {
-                _viagemService.restaurarSessaoMotoristaSeAtiva(
-                  motoristaId: _motoristaId!,
-                  motoristaNome: _motoristaNome,
-                  frota: _veiculosFrota,
-                );
-                if (_viagemService.viagemAtiva != null) {
-                  _viagensAtivas = _viagemService.viagensAtivas;
-                  _viagemAtiva = _viagemService.viagemAtiva;
-                  _motoristaEmViagem = true;
-                  _cancelarTimeoutCarregamentoViagem();
-                  _streamPacientesMapeadosFirestore = null;
-                }
-              }
-              if (_motoristaEmViagem == true && !_temViagemAtiva) {
-                _iniciarTimeoutCarregamentoViagem();
-              } else if (_motoristaEmViagem == false) {
-                _cancelarTimeoutCarregamentoViagem();
-              }
-              // Atribui a capacidade numérica de assentos do veículo resolvida da frota
-              _capacidadeVeiculo = _resolverCapacidadeVeiculo();
-            // Fechamento da função de callback de setState
-            });
-            _atualizarTransmissaoGpsMotorista();
-          // Fechamento do bloco if
-          }
-        // Fechamento da função ouvinte listen
-        });
-  // Fechamento do método _ouvirDadosMotorista
-  }
-
-  // Retorna a stream de pacientes cadastrados
-  // Retorna a stream reativa de lista de pacientes, respeitando mocks ou conectando ao Firestore
+  /// Stream de passageiros exibidos para a viagem ativa (sem misturar dados de outros agendamentos).
   Stream<List<PacienteModel>> carregarPacientes() {
-    // Se foi injetada uma stream simulada para testes, retorna-a diretamente
     if (widget.pacientesStreamOverride != null) {
-      // Retorna o fluxo mockado injetado no construtor
       return widget.pacientesStreamOverride!;
-    // Fechamento da condicional de stream injetada
     }
-
-    // Se o serviço do Firebase estiver ativo e inicializado no app
-    if (_isFirebaseDisponivel()) {
-      // Reutiliza o mesmo stream de snapshots do Firestore para evitar recriação de listener a cada setState
-      _streamSnapshotsPacientesFirestore ??= FirebaseFirestore.instance
-          // Coleção onde os perfis estão armazenados
-          .collection('usuarios')
-          // Filtra apenas os usuários com papel de paciente
-          .where('role', isEqualTo: 'paciente')
-          // Ouve as emissões em tempo real de documentos
-          .snapshots();
-      _streamPacientesMapeadosFirestore ??= _streamSnapshotsPacientesFirestore!
-          // Mapeia o snapshot de documentos para uma lista tipada de PacienteModel
-          .map((snapshot) {
-            // Filtra documentos ativos e desconsidera registros excluídos logicamente (Issue #34)
-            final pacientesNoBanco = snapshot.docs.where((d) {
-              final dados = d.data();
-              final ativo = dados['ativo'];
-              final status = dados['status']?.toString().toLowerCase().trim();
-              final situacao = dados['situacao']?.toString().toLowerCase().trim();
-              return ativo != false &&
-                  ativo != 'false' &&
-                  status != 'inativo' &&
-                  situacao != 'inativo' &&
-                  status != 'excluido' &&
-                  situacao != 'excluido';
-            }).map((doc) {
-              return PacienteModel.fromMap(doc.data(), docId: doc.id);
-            }).toList();
-
-            for (final p in pacientesNoBanco) {
-              final emMem = _syncService.obterPacienteMemoria(p.id);
-              // Não sobrescreve transição otimista mais recente em memória com snapshot antigo do banco
-              if (emMem == null || p.status >= emMem.status || p.status == 0) {
-                _syncService.atualizarPacienteEmMemoria(p);
-              }
-            }
-
-            // Se a viagem ativa já foi concluída, cancelada ou todos os passageiros já voltaram,
-            // não exibe mais passageiros para o motorista.
-            if (_viagemAtiva == null ||
-                _viagemAtiva!.isConcluida ||
-                _viagemAtiva!.isCancelada ||
-                _viagemService.todosPacientesVoltaram(_viagemAtiva!)) {
-              return const <PacienteModel>[];
-            }
-
-            // Se a viagem ativa possuir passageiros específicos do Horário, mescla com o estado em tempo real do banco
-            if (_viagemAtiva!.passageiros.isNotEmpty) {
-              final mapaBanco = {for (final p in pacientesNoBanco) p.id: p};
-              final listaMapeada = _viagemAtiva!.passageiros.map<PacienteModel>((pv) {
-                final pRemoto = mapaBanco[pv.pacienteId];
-                final pMem = _syncService.obterPacienteMemoria(pv.pacienteId);
-                int statusEfetivo = pv.statusEmbarque;
-                if (pMem != null &&
-                    pMem.status > statusEfetivo &&
-                    !(statusEfetivo == 0 && pMem.status == 4)) {
-                  statusEfetivo = pMem.status;
-                }
-                if (pRemoto != null &&
-                    pRemoto.status > statusEfetivo &&
-                    !(statusEfetivo == 0 && pRemoto.status == 4)) {
-                  statusEfetivo = pRemoto.status;
-                }
-                final modelo = PacienteModel(
-                  id: pv.pacienteId,
-                  nome: pv.pacienteNome.isNotEmpty ? pv.pacienteNome : (pRemoto?.nome ?? ''),
-                  cpf: (pv.pacienteCpf != null && pv.pacienteCpf!.isNotEmpty)
-                      ? pv.pacienteCpf!
-                      : (pRemoto?.cpf ?? ''),
-                  telefone: (pRemoto != null && pRemoto.telefone.isNotEmpty)
-                      ? pRemoto.telefone
-                      : (pv.acompanhanteTelefone ?? ''),
-                  enderecoPaciente: pv.localOrigem.isNotEmpty
-                      ? pv.localOrigem
-                      : (pRemoto?.enderecoPaciente ?? ''),
-                  localSaida: pv.localOrigem.isNotEmpty
-                      ? pv.localOrigem
-                      : (pRemoto?.localSaida ?? ''),
-                  localConsulta: pv.localDestino.isNotEmpty
-                      ? pv.localDestino
-                      : (pRemoto?.localConsulta ?? ''),
-                  horarioConsulta: pv.horarioAtendimento.isNotEmpty
-                      ? pv.horarioAtendimento
-                      : (pRemoto?.horarioConsulta ?? ''),
-                  nomeAcompanhante: (pv.acompanhanteNome != null && pv.acompanhanteNome!.isNotEmpty)
-                      ? pv.acompanhanteNome
-                      : pRemoto?.nomeAcompanhante,
-                  cpfAcompanhante: pRemoto?.cpfAcompanhante,
-                  telAcompanhante: (pv.acompanhanteTelefone != null && pv.acompanhanteTelefone!.isNotEmpty)
-                      ? pv.acompanhanteTelefone
-                      : pRemoto?.telAcompanhante,
-                  rg: pRemoto?.rg,
-                  cnh: pRemoto?.cnh,
-                  status: statusEfetivo,
-                  prontoRetorno: pMem?.prontoRetorno ?? pRemoto?.prontoRetorno ?? false,
-                  janelaReversao: pMem?.janelaReversao ?? pRemoto?.janelaReversao,
-                );
-                _syncService.atualizarPacienteEmMemoria(modelo);
-                return modelo;
-              }).toList();
-
-              final validos = listaMapeada.where((p) => p.status != 5).toList();
-              if (validos.isNotEmpty && validos.every((p) => p.status == 4)) {
-                final idViagemConcluida = _viagemAtiva!.id;
-                final idUltimoPac = validos.last.id;
-                Future.microtask(() {
-                  _viagemService.atualizarStatusPassageiroNaViagem(
-                    viagemId: idViagemConcluida,
-                    pacienteId: idUltimoPac,
-                    novoStatus: 4,
-                  );
-                });
-                return const <PacienteModel>[];
-              }
-
-              return listaMapeada;
-            }
-
-            // Fallback para pacientes da base quando a viagem ativa não possui passageiros embutidos
-            final destinoViagem = _viagemAtiva?.cidadeDestino.trim().toLowerCase() ?? '';
-            final pacientesDaRota = destinoViagem.isNotEmpty
-                ? pacientesNoBanco.where((p) {
-                    final lc = p.localConsulta.toLowerCase();
-                    return lc.contains(destinoViagem) || destinoViagem.contains(lc);
-                  }).toList()
-                : <PacienteModel>[];
-
-            final listaBase = pacientesDaRota.isNotEmpty
-                ? pacientesDaRota
-                : (pacientesNoBanco.isNotEmpty
-                    ? pacientesNoBanco
-                    : _mapearPassageirosLocaisDaViagemAtiva());
-
-            return listaBase.map((p) {
-              final pMem = _syncService.obterPacienteMemoria(p.id);
-              if (pMem != null && pMem.status != p.status) {
-                return p.copyWith(
-                  status: pMem.status,
-                  prontoRetorno: pMem.prontoRetorno,
-                  janelaReversao: pMem.janelaReversao,
-                );
-              }
-              return p;
-            }).toList();
-          // Fechamento do mapeamento
-          });
-      return _streamPacientesMapeadosFirestore!;
-    // Fechamento da condicional de verificação do Firebase
-    }
-
-    // Se a viagem ativa possuir passageiros cadastrados em ambiente sem Firebase (testes unitários)
-    if (_viagemAtiva != null &&
-        !_viagemAtiva!.isConcluida &&
-        !_viagemAtiva!.isCancelada &&
-        !_viagemService.todosPacientesVoltaram(_viagemAtiva!) &&
-        _viagemAtiva!.passageiros.isNotEmpty) {
-      return Stream.value(_mapearPassageirosLocaisDaViagemAtiva());
-    }
-
-    // Retorna lista vazia quando o Firebase não está inicializado e não há streamOverride
-    return Stream.value(const <PacienteModel>[]);
-  // Fechamento do método carregarPacientes
+    return Stream.value(_mapearPassageirosLocaisDaViagemAtiva());
   }
 
   List<PacienteModel> _mapearPassageirosLocaisDaViagemAtiva() {
-    if (_viagemAtiva == null ||
-        _viagemAtiva!.isConcluida ||
-        _viagemAtiva!.isCancelada ||
-        _viagemService.todosPacientesVoltaram(_viagemAtiva!) ||
-        _viagemAtiva!.passageiros.isEmpty) {
+    final viagem = _viagemAtiva;
+    if (viagem == null ||
+        viagem.isConcluida ||
+        viagem.isCancelada ||
+        _viagemService.todosPacientesVoltaram(viagem) ||
+        viagem.passageiros.isEmpty) {
       return const <PacienteModel>[];
     }
-    return _viagemAtiva!.passageiros.map<PacienteModel>((pv) {
-      final pMem = _syncService.obterPacienteMemoria(pv.pacienteId);
-      final modelo = PacienteModel(
-        id: pv.pacienteId,
-        nome: pv.pacienteNome,
-        cpf: pv.pacienteCpf ?? '',
-        telefone: pv.acompanhanteTelefone ?? '',
-        enderecoPaciente: pv.localOrigem,
-        localSaida: pv.localOrigem,
-        localConsulta: pv.localDestino,
-        horarioConsulta: pv.horarioAtendimento,
-        nomeAcompanhante: pv.acompanhanteNome,
-        telAcompanhante: pv.acompanhanteTelefone,
-        status: pMem?.status ?? pv.statusEmbarque,
-        prontoRetorno: pMem?.prontoRetorno ?? false,
-        janelaReversao: pMem?.janelaReversao,
+    return viagem.passageiros.map<PacienteModel>((pv) {
+      final pMem = _syncService.obterPacienteMemoria(
+        pv.pacienteId,
+        viagemId: viagem.id,
       );
-      _syncService.registrarPacienteEmMemoriaSeAusente(modelo);
+      final perfil = _viagemService.obterPerfilCadastralPaciente(pv.pacienteId);
+      final modelo = _viagemService.construirPacienteDaViagem(
+        pv,
+        fallbackCadastro: perfil,
+        statusOverride: pMem?.status ?? pv.statusEmbarque,
+        prontoRetornoOverride: pMem?.prontoRetorno ?? pv.prontoRetorno,
+        janelaReversaoOverride: pMem?.janelaReversao ?? pv.janelaReversao,
+      );
+      _syncService.registrarPacienteEmMemoriaSeAusente(
+        modelo,
+        viagemId: viagem.id,
+      );
       return modelo;
     }).toList();
   }
 
-  // Verifica se o condutor possui viagem ativa em andamento no momento
-  bool get _temViagemAtiva {
-    if (widget.pacientesStreamOverride != null) return true;
-    if (_viagemAtiva != null && _viagemAtiva!.isAtiva) return true;
-    if (_viagensAtivas.isNotEmpty && _viagensAtivas.any((v) => v.isAtiva)) return true;
-    if (_viagemService.viagemAtiva != null && _viagemService.viagemAtiva!.isAtiva) return true;
+  int _contarAssentosOcupados(List<PacienteModel> pacientes) {
+    int preenchidos = 0;
+    for (final p in pacientes.where((p) => p.status == 1 || p.status == 3)) {
+      preenchidos += (p.nomeAcompanhante?.isNotEmpty == true) ? 2 : 1;
+    }
+    return preenchidos;
+  }
+
+  // ===========================================================================
+  // SEÇÃO: Ações Operacionais (Deslize de Status e Logout)
+  // ===========================================================================
+
+  void _exibirSnackBar(String mensagem, Color cor) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          backgroundColor: cor,
+          content: Text(
+            mensagem,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+  }
+
+  Future<void> _efetuarLogout() async {
+    await FirebaseAuthService().logout();
+    if (mounted) {
+      Navigator.of(context).pushReplacementNamed('/');
+    }
+  }
+
+  Future<bool> _tratarDeslizeCardPaciente(
+    DismissDirection direction,
+    PacienteModel paciente,
+  ) async {
+    if (direction != DismissDirection.endToStart || paciente.status >= 4) {
+      return false;
+    }
+
+    // Regra de domínio: reembarque da volta (2 -> 3) exige que o paciente esteja pronto.
+    if (paciente.status == 2 && !paciente.prontoRetorno) {
+      _exibirSnackBar(
+        'O paciente ainda está em atendimento médico.',
+        const Color(0xFFD97706),
+      );
+      return false;
+    }
+
+    final (int proximoStatus, AcaoTransicao acao) = switch (paciente.status) {
+      0 => (1, AcaoTransicao.motoristaEmbarcarIda),
+      1 => (2, AcaoTransicao.motoristaDesembarcarConsulta),
+      2 => (3, AcaoTransicao.motoristaReembarcarVolta),
+      3 => (4, AcaoTransicao.motoristaConcluirViagem),
+      _ => (-1, AcaoTransicao.motoristaEmbarcarIda),
+    };
+    if (proximoStatus == -1) return false;
+
+    final (proximoStatusNome, proximoStatusCor, proximoStatusIcone) =
+        PacienteModel.dadosStatus(proximoStatus);
+
+    final confirmou = await exibirDialogoConfirmacaoMotorista(
+      context: context,
+      nomePaciente: paciente.nome,
+      proximoStatusNome: proximoStatusNome,
+      proximoStatusCor: proximoStatusCor,
+      proximoStatusIcone: proximoStatusIcone,
+      localDestino: (proximoStatus == 1 || proximoStatus == 2)
+          ? paciente.localConsulta
+          : paciente.enderecoPaciente,
+    );
+    if (!confirmou) return false;
+
+    final idViagemAlvo = _viagemAtiva?.id;
+    _syncService.registrarPacienteEmMemoriaSeAusente(
+      paciente,
+      viagemId: idViagemAlvo,
+    );
+    final resultado = await _syncService.avancarEtapaMotorista(
+      pacienteId: paciente.id,
+      motoristaId: _motoristaId ?? 'motorista',
+      acao: acao,
+      viagemId: idViagemAlvo,
+    );
+    if (!mounted) return false;
+
+    if (resultado.sucesso) {
+      if (idViagemAlvo != null && !idViagemAlvo.startsWith('sessao_ativa_')) {
+        unawaited(
+          _viagemService.atualizarStatusPassageiroNaViagem(
+            viagemId: idViagemAlvo,
+            pacienteId: paciente.id,
+            novoStatus: proximoStatus,
+            prontoRetorno: resultado.paciente?.prontoRetorno,
+            janelaReversao: resultado.paciente?.janelaReversao,
+            limparJanelaReversao: resultado.paciente?.janelaReversao == null,
+          ),
+        );
+      }
+      if (widget.pacientesStreamOverride == null) {
+        setState(() {
+          _selecionarViagemPreservandoId(
+            _viagemService.viagensAtivas,
+            idPreferido: idViagemAlvo,
+          );
+          _capacidadeVeiculo = _resolverCapacidadeVeiculo();
+        });
+      }
+      if (proximoStatus >= 1 &&
+          proximoStatus < 4 &&
+          _viagemAtiva != null &&
+          _viagemAtiva!.id == idViagemAlvo &&
+          !_viagemAtiva!.id.startsWith('sessao_ativa_') &&
+          !_viagemAtiva!.isConcluida) {
+        final idViagemCodigo = _viagemAtiva!.id;
+        unawaited(
+          _viagemService
+              .gerarOuObterCodigoAcesso(
+                viagemId: idViagemCodigo,
+                pacienteId: paciente.id,
+              )
+              .then((codigo) {
+            if (!mounted ||
+                _viagemAtiva == null ||
+                _viagemAtiva!.id != idViagemCodigo ||
+                _viagemAtiva!.id.startsWith('sessao_ativa_') ||
+                _viagemAtiva!.isConcluida) {
+              return;
+            }
+            setState(() {
+              final novosCodigos = Map<String, String>.from(
+                _viagemAtiva!.codigosAcesso,
+              )..[paciente.id] = codigo;
+              final novosPassageiros = _viagemAtiva!.passageiros
+                  .map(
+                    (pv) => pv.pacienteId == paciente.id
+                        ? pv.copyWith(statusEmbarque: proximoStatus)
+                        : pv,
+                  )
+                  .toList();
+              _viagemAtiva = _viagemAtiva!.copyWith(
+                codigosAcesso: novosCodigos,
+                passageiros: novosPassageiros,
+              );
+            });
+          }),
+        );
+      }
+      _exibirSnackBar(
+        "Avanço para '$proximoStatusNome' confirmado com sucesso.",
+        const Color(0xFF16A34A),
+      );
+    } else {
+      _exibirSnackBar(resultado.mensagem, const Color(0xFFB83227));
+    }
+
+    // Sempre retorna false para o Dismissible não remover o card da árvore;
+    // a atualização visual vem da Stream/estado da viagem.
     return false;
   }
 
-  // Método que constrói a árvore de widgets da interface do motorista
+  // ===========================================================================
+  // SEÇÃO: Construção da Interface (Widgets)
+  // ===========================================================================
+
   @override
-  // Recebe o contexto de montagem do widget
   Widget build(BuildContext context) {
-    // Se o motorista possui comprovadamente emViagem == true mas a viagem ativa ainda está sendo restaurada:
-    // Exibe tela de carregamento para evitar flash da tela 'Iniciar Viagem'
-    if (!_temViagemAtiva && _motoristaEmViagem == true) {
-      return Scaffold(
-        backgroundColor: const Color(0xFF0F172A),
-        body: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF38BDF8)),
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'Carregando viagem ativa...',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 16,
-                ),
-              ),
-              const SizedBox(height: 24),
-              TextButton(
-                key: const Key('botaoCancelarCarregandoViagem'),
-                onPressed: () {
-                  _cancelarTimeoutCarregamentoViagem();
-                  final idMot = _motoristaId ??
-                      FirebaseAuthService().currentDocId ??
-                      FirebaseAuthService().currentUserId ??
-                      '';
-                  _resetarEstadoParaNovaViagem(idMot);
-                },
-                child: const Text(
-                  'Iniciar nova viagem',
-                  style: TextStyle(
-                    color: Color(0xFF94A3B8),
-                    fontSize: 14,
-                    decoration: TextDecoration.underline,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
+    if (_emViagemFirestore == false &&
+        widget.viagemInicial == null &&
+        widget.pacientesStreamOverride == null) {
+      return _construirTelaFormularioInicio();
     }
-
-    // Caso o motorista não possua viagem ativa (primeira vez do dia que entrar ou
-    // após finalizar a viagem gerando o relatório final), exibe o formulário de
-    // início de viagem para escolher o veículo e registrar a quilometragem inicial.
+    if (!_temViagemAtiva && _emViagemFirestore == true) {
+      return _construirTelaCarregamentoViagem();
+    }
     if (!_temViagemAtiva) {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text('Início da Viagem'),
-          backgroundColor: const Color(0xFF0F172A),
-          foregroundColor: Colors.white,
-          elevation: 2,
-          actions: [
-            IconButton(
-              key: const Key('botaoLogoutMotorista'),
-              icon: const Icon(Icons.logout),
-              tooltip: 'Sair da conta',
-              onPressed: () async {
-                await FirebaseAuthService().logout();
-                if (context.mounted) {
-                  Navigator.of(context).pushReplacementNamed('/');
-                }
-              },
-            ),
-          ],
-        ),
-        backgroundColor: const Color(0xFFF7F8FA),
-        body: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-              child: FormularioInicioViagem(
-                motoristaId: _motoristaId ?? FirebaseAuthService().currentUserId ?? 'motorista_atual',
-                motoristaNome: _motoristaNome.isNotEmpty ? _motoristaNome : 'Motorista da Saúde',
-                onViagemIniciada: (novaViagem) {
-                  _cancelarTimeoutCarregamentoViagem();
-                  setState(() {
-                    _motoristaEmViagem = true;
-                    FirebaseAuthService.motoristaEmViagemStatic = true;
-                    _viagemAtiva = novaViagem;
-                    _viagensAtivas = _viagemService.viagensAtivas.isNotEmpty
-                        ? _viagemService.viagensAtivas
-                        : [novaViagem];
-                    _indiceViagemAtual = 0;
-                    _capacidadeVeiculo = _resolverCapacidadeVeiculo();
-                    _streamPacientesMapeadosFirestore = null;
-                  });
-                  _atualizarTransmissaoGpsMotorista();
-                },
-              ),
-            ),
-          ),
-        ),
-      );
+      return _construirTelaFormularioInicio();
     }
 
-    // Constrói a UI de forma reativa a partir da Stream de pacientes
     return StreamBuilder<List<PacienteModel>>(
+      key: widget.pacientesStreamOverride == null
+          ? ValueKey('stream_viagem_${_viagemAtiva?.id ?? "vazio"}')
+          : null,
       initialData: widget.pacientesStreamOverride != null
           ? null
           : _mapearPassageirosLocaisDaViagemAtiva(),
-      // Stream de onde os dados de pacientes são continuamente consumidos
       stream: carregarPacientes(),
-      // Construtor reativo chamado a cada nova emissão da Stream
       builder: (context, snapshot) {
-        // Se a Stream estiver aguardando conexão e não tiver nenhum dado prévio
         if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
-          // Exibe uma tela simples com indicador de carregamento giratório centralizado
           return const Scaffold(
-            // Corpo com círculo de progresso
             body: Center(child: CircularProgressIndicator()),
-          // Fechamento do Scaffold de carregamento
           );
-        // Fechamento do bloco if de espera
         }
-
-        // Se ocorreu algum erro durante a leitura da Stream
         if (snapshot.hasError) {
-          // Exibe uma tela de erro informando a falha no carregamento
           return const Scaffold(
-            // Corpo com texto explicativo do erro
             body: Center(child: Text('Erro ao carregar os pacientes.')),
-          // Fechamento do Scaffold de erro
           );
-        // Fechamento do bloco if de erro
         }
 
-        // Obtém os pacientes emitidos pela Stream, aplicando imediatamente o estado otimista em memória
-        List<PacienteModel> pacientes;
-        if (widget.pacientesStreamOverride != null) {
-          pacientes = snapshot.data ?? [];
-        } else if (_viagemAtiva == null ||
-            _viagemAtiva!.isConcluida ||
-            _viagemAtiva!.isCancelada ||
-            _viagemService.todosPacientesVoltaram(_viagemAtiva!)) {
-          pacientes = const <PacienteModel>[];
-        } else {
-          final passageirosLocais = _mapearPassageirosLocaisDaViagemAtiva();
-          final base = (snapshot.data != null && snapshot.data!.isNotEmpty)
-              ? snapshot.data!
-              : passageirosLocais;
-          pacientes = base.map((p) {
-            final pMem = _syncService.obterPacienteMemoria(p.id);
-            final pv = _viagemAtiva!.passageiros
-                .where((x) => x.pacienteId == p.id)
-                .firstOrNull;
-            int st = p.status;
-            if (pv != null && pv.statusEmbarque != st) {
-              st = pv.statusEmbarque;
-            }
-            if (pMem != null && !(st == 0 && pMem.status == 4)) {
-              st = pMem.status;
-            }
-            if (st != p.status || (pMem != null && pMem.prontoRetorno != p.prontoRetorno)) {
-              return p.copyWith(
-                status: st,
-                prontoRetorno: pMem?.prontoRetorno ?? p.prontoRetorno,
-                janelaReversao: pMem?.janelaReversao ?? p.janelaReversao,
-              );
-            }
-            return p;
-          }).toList();
-        }
-        // Garante emissão de códigos de acesso para todos os pacientes presentes na viagem ativa
+        final List<PacienteModel> pacientes =
+            widget.pacientesStreamOverride != null
+                ? (snapshot.data ?? [])
+                : _mapearPassageirosLocaisDaViagemAtiva();
+
         _garantirCodigosPacientesNaViagemAtiva(pacientes);
-        // Calcula os lugares ocupados (pacientes com status == 1 "Embarcou")
-        // Variável acumuladora de assentos ocupados por pacientes e acompanhantes
-        int preenchidos = 0;
-        // Passageiros a bordo: status 1 (Ida) ou status 3 (Volta). Se houver acompanhante, ocupa 2 vagas
-        // Itera sobre os pacientes que estão atualmente a bordo do veículo
-        for (var p in pacientes.where((p) => p.status == 1 || p.status == 3)) {
-          // Se o paciente tiver acompanhante com nome preenchido, soma 2 vagas; senão, soma 1 vaga
-          preenchidos += (p.nomeAcompanhante?.isNotEmpty == true) ? 2 : 1;
-        // Fechamento do loop for de contagem de vagas
-        }
+        final preenchidos = _contarAssentosOcupados(pacientes);
 
-        // Retorna a estrutura visual completa da página com Scaffold
+        final placaSessao = _resolverPlacaVeiculoSessao();
+        final placaViagem = _viagemAtiva?.veiculoPlaca.trim() ?? '';
+        final veiculoViagemHeader = placaViagem.isNotEmpty &&
+                _normalizarPlaca(placaViagem) != _normalizarPlaca(placaSessao)
+            ? placaViagem
+            : null;
+        final motViagemHeader = _viagemAtiva?.motoristaNome.trim() ?? '';
+        final motoristaHeader = (motViagemHeader.isNotEmpty &&
+                motViagemHeader != 'motorista_atual')
+            ? motViagemHeader
+            : null;
+        final destinoHeader = (_viagensAtivas.length <= 1 &&
+                (_viagemAtiva?.cidadeDestino.trim().isNotEmpty == true))
+            ? _viagemAtiva!.cidadeDestino.trim()
+            : null;
+        final saidaRaw = _viagemAtiva?.nomeHorario?.trim() ?? '';
+        final saidaHeader = saidaRaw.isNotEmpty ? saidaRaw : null;
+
         return Scaffold(
-          // Barra de navegação superior da aplicação com identidade visual consistente
-          appBar: AppBar(
-            backgroundColor: const Color(0xFF0F172A),
-            foregroundColor: Colors.white,
-            elevation: 2,
-            // Botão de retorno na extremidade esquerda da barra superior
-            leading: IconButton(
-              // Ícone com seta apontando para a esquerda
-              icon: const Icon(Icons.arrow_back),
-              color: Colors.white,
-              // Ação executada ao tocar no botão de voltar
-              onPressed: () {
-                // Retorna à tela anterior ou redireciona para a rota inicial
-                // Verifica se há tela anterior na pilha de navegação para retroceder
-                if (Navigator.of(context).canPop()) {
-                  // Desempilha e volta à tela imediatamente anterior
-                  Navigator.of(context).pop();
-                // Caso não haja tela anterior na pilha
-                } else {
-                  // Substitui a rota atual pela rota raiz do sistema
-                  Navigator.of(context).pushReplacementNamed('/');
-                // Fechamento da condicional if/else
-                }
-              // Fechamento do callback onPressed
-              },
-            // Fechamento do IconButton leading
-            ),
-            // Título central da barra de navegação superior
-            title: const Text(
-              'Lista de Passageiros',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
-            // Ações e widgets auxiliares na extremidade direita da barra superior
-            actions: [
-              // Exibe a placa do veículo associado à viagem ativa
-              // Se houver uma viagem ativa em andamento, exibe a etiqueta com a placa do carro
-              if (_viagemAtiva != null)
-                // Espaçamento horizontal externo da etiqueta de placa
-                Padding(
-                  // Aplica recuo de 12 pixels nas laterais
-                  padding: const EdgeInsets.symmetric(horizontal: 10.0),
-                  // Centraliza verticalmente o widget indicador
-                  child: Center(
-                    // Contêiner estilizado como uma badge/pílula verde
-                    child: Container(
-                      // Espaçamento interno da badge
-                      padding: const EdgeInsets.symmetric(
-                        // Recuo horizontal interno
-                        horizontal: 10,
-                        // Recuo vertical interno
-                        vertical: 5,
-                      // Fechamento do EdgeInsets
-                      ),
-                      // Decoração visual da badge com cor de fundo verde e cantos arredondados
-                      decoration: BoxDecoration(
-                        // Cor verde destacada para viagem em andamento
-                        color: Colors.green.shade700,
-                        // Borda arredondada suave
-                        borderRadius: BorderRadius.circular(12),
-                      // Fechamento do BoxDecoration
-                      ),
-                      // Texto informando a placa do veículo ativo
-                      child: Text(
-                        // Concatena o texto com a placa do veículo da viagem ativa
-                        'Em Viagem: ${_viagemAtiva!.veiculoPlaca}',
-                        // Estilização tipográfica do texto da placa
-                        style: const TextStyle(
-                          // Cor branca para alto contraste
-                          color: Colors.white,
-                          // Tamanho compacto de fonte
-                          fontSize: 11,
-                          // Peso em negrito para boa legibilidade
-                          fontWeight: FontWeight.bold,
-                        // Fechamento do TextStyle
-                        ),
-                      // Fechamento do Text
-                      ),
-                    // Fechamento do Container
-                    ),
-                  // Fechamento do Center
-                  ),
-                // Fechamento do Padding
-                ),
-              // Botão de logout do motorista
-              IconButton(
-                key: const Key('botaoLogoutMotorista'),
-                icon: const Icon(Icons.logout),
-                color: Colors.white,
-                tooltip: 'Sair da conta',
-                onPressed: () async {
-                  await FirebaseAuthService().logout();
-                  if (context.mounted) {
-                    Navigator.of(context).pushReplacementNamed('/');
-                  }
-                },
-              ),
-            // Fechamento da lista actions
-            ],
-          // Fechamento do AppBar
-          ),
-          // Cor de fundo padronizada para toda a página
+          appBar: _construirAppBarEmViagem(),
           backgroundColor: const Color(0xFFF8FAFC),
-          // Área protegida contra entalhes de tela (notches) e barras do sistema operacional
           body: SafeArea(
-            // Lista rolável vertical contendo os cabeçalhos e os cartões de pacientes
             child: ListView(
-              // Espaçamento interno ao redor de todo o conteúdo da lista
               padding: const EdgeInsets.all(16),
-              // Filhos organizados sequencialmente na rolagem
               children: [
-                // Componente de cabeçalho da viagem mostrando o título da viagem e controles de navegação
                 MotoristaHeader(
-                  // Título dinâmico da viagem baseado no ID da viagem ativa ou fallback
                   tituloViagem: _viagensAtivas.length > 1
                       ? 'Viagem ${_indiceViagemAtual + 1} de ${_viagensAtivas.length} (${_viagemAtiva?.cidadeDestino ?? ""})'
                       : (_viagemAtiva != null && _viagemAtiva!.id.isNotEmpty
-                          ? 'Viagem ${_viagemAtiva!.id}'
-                          : 'Viagem 1'),
-                  // Callback para retroceder viagem na sessão ativa (Issue #65)
+                            ? 'Viagem ${_viagemAtiva!.id}'
+                            : 'Viagem 1'),
+                  motoristaNome: motoristaHeader,
+                  destino: destinoHeader,
+                  veiculo: veiculoViagemHeader,
+                  saida: saidaHeader,
                   onAnterior: _viagensAtivas.length > 1 && _indiceViagemAtual > 0
-                      ? () {
-                          setState(() {
-                            _indiceViagemAtual--;
-                            _viagemAtiva = _viagensAtivas[_indiceViagemAtual];
-                            _capacidadeVeiculo = _resolverCapacidadeVeiculo();
-                          });
-                        }
+                      ? () => setState(() {
+                          _indiceViagemAtual--;
+                          _viagemAtiva = _viagensAtivas[_indiceViagemAtual];
+                          _capacidadeVeiculo = _resolverCapacidadeVeiculo();
+                        })
                       : null,
-                  // Callback para avançar viagem na sessão ativa (Issue #65)
                   onProxima: _viagensAtivas.length > 1 &&
                           _indiceViagemAtual < _viagensAtivas.length - 1
-                      ? () {
-                          setState(() {
-                            _indiceViagemAtual++;
-                            _viagemAtiva = _viagensAtivas[_indiceViagemAtual];
-                            _capacidadeVeiculo = _resolverCapacidadeVeiculo();
-                          });
-                        }
+                      ? () => setState(() {
+                          _indiceViagemAtual++;
+                          _viagemAtiva = _viagensAtivas[_indiceViagemAtual];
+                          _capacidadeVeiculo = _resolverCapacidadeVeiculo();
+                        })
                       : null,
-                // Fechamento do MotoristaHeader
                 ),
-                // Espaçador vertical entre o cabeçalho e os cards de passageiros
                 const SizedBox(height: 12),
-                // Itera sobre todos os pacientes emitidos para renderizar os cards interativos
                 for (final paciente in pacientes)
-                  // Espaçamento inferior entre cada card de paciente
-                  Padding(
-                    // Recuo de 10 pixels na parte inferior de cada card
-                    padding: const EdgeInsets.only(bottom: 10),
-                    // Widget interativo que detecta gestos de deslize lateral (swipe)
-                    child: Dismissible(
-                      // Chave única para o Flutter rastrear a identidade deste item na lista
-                      key: ValueKey(
-                        // Utiliza o ID do paciente se disponível, ou o nome como fallback
-                        paciente.id.isNotEmpty ? paciente.id : paciente.nome,
-                      // Fechamento do ValueKey
-                      ),
-                      // Direção permitida: bloqueia permanentemente o retrocesso startToEnd.
-                      // Permite apenas endToStart para pacientes com etapas ativas pendentes (status < 4).
-                      direction: (paciente.status < 4)
-                          ? DismissDirection.endToStart
-                          : DismissDirection.none,
-                      // Em conformidade com a asserção do Flutter Dismissible (secondaryBackground != null exige background != null):
-                      background: Container(),
-                      // Fundo exibido ao arrastar o card da direita para a esquerda (avançar)
-                      secondaryBackground: Container(
-                        padding: const EdgeInsets.only(right: 16),
-                        alignment: Alignment.centerRight,
-                        decoration: BoxDecoration(
-                          color: Colors.green.withValues(alpha: 0.4),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: const Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.arrow_forward, color: Colors.white, size: 50),
-                            Text('Avançar', style: TextStyle(color: Colors.white)),
-                          ],
-                        ),
-                      ),
-                      // Callback confirmDismiss com diálogo de confirmação defensivo e validação de regras de negócio
-                      confirmDismiss: (direction) async {
-                        // Bloqueia qualquer direção diferente do avanço oficial
-                        if (direction != DismissDirection.endToStart) {
-                          return false;
-                        }
-
-                        final int statusAtual = paciente.status;
-
-                        // Se a viagem já foi concluída ou cancelada, impede qualquer transição
-                        if (statusAtual >= 4) {
-                          return false;
-                        }
-
-                        // BLOQUEIO DE REGRA (Status 2 -> 3):
-                        // Se estiver no hospital (Status 2) e o paciente ainda não sinalizou estar pronto
-                        // (prontoRetorno == false), bloqueia a tentativa e alerta o motorista.
-                        if (statusAtual == 2 && !paciente.prontoRetorno) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              backgroundColor: Color(0xFFD97706),
-                              content: Text(
-                                'O paciente ainda está em atendimento médico.',
-                                style: TextStyle(fontWeight: FontWeight.bold),
-                              ),
-                              behavior: SnackBarBehavior.floating,
-                            ),
-                          );
-                          return false;
-                        }
-
-                        // Determina o próximo status e a ação correspondente pela sequência obrigatória
-                        // (0 -> 1 -> 2 -> 3 -> 4)
-                        final (int proximoStatus, AcaoTransicao acao) = switch (statusAtual) {
-                          0 => (1, AcaoTransicao.motoristaEmbarcarIda),
-                          1 => (2, AcaoTransicao.motoristaDesembarcarConsulta),
-                          2 => (3, AcaoTransicao.motoristaReembarcarVolta),
-                          3 => (4, AcaoTransicao.motoristaConcluirViagem),
-                          _ => (-1, AcaoTransicao.motoristaEmbarcarIda),
-                        };
-
-                        if (proximoStatus == -1) {
-                          return false;
-                        }
-
-                        final (proximoStatusNome, proximoStatusCor, proximoStatusIcone) =
-                            PacienteModel.dadosStatus(proximoStatus);
-
-                        // Diálogo modal ergonômico com botões full-width largos, tipografia escaneável e haptics
-                        final bool confirmou = await exibirDialogoConfirmacaoMotorista(
-                          context: context,
-                          nomePaciente: paciente.nome,
-                          proximoStatusNome: proximoStatusNome,
-                          proximoStatusCor: proximoStatusCor,
-                          proximoStatusIcone: proximoStatusIcone,
-                          localDestino: (proximoStatus == 1 || proximoStatus == 2)
-                              ? paciente.localConsulta
-                              : paciente.enderecoPaciente,
-                        );
-
-                        // Se cancelado ou fechado fora, o card desliza de volta para a posição original
-                        if (!confirmou) {
-                          return false;
-                        }
-
-                        // Centraliza o disparo da mutação otimista no serviço oficial (< 16 ms, persistência remota em background)
-                        _syncService.registrarPacienteEmMemoriaSeAusente(paciente);
-                        final resultado = await _syncService.avancarEtapaMotorista(
-                          pacienteId: paciente.id,
-                          motoristaId: _motoristaId ?? 'motorista',
-                          acao: acao,
-                        );
-
-                        if (!context.mounted) return false;
-
-                        if (resultado.sucesso) {
-                          final idViagemAlvo = _viagemAtiva?.id;
-                          if (idViagemAlvo != null &&
-                              !idViagemAlvo.startsWith('sessao_ativa_')) {
-                            unawaited(
-                              _viagemService.atualizarStatusPassageiroNaViagem(
-                                viagemId: idViagemAlvo,
-                                pacienteId: paciente.id,
-                                novoStatus: proximoStatus,
-                              ),
-                            );
-                          }
-                          if (mounted) {
-                            setState(() {
-                              _viagensAtivas = _viagemService.viagensAtivas;
-                              if (_viagensAtivas.isNotEmpty) {
-                                if (_indiceViagemAtual >= _viagensAtivas.length) {
-                                  _indiceViagemAtual = _viagensAtivas.length - 1;
-                                }
-                                _viagemAtiva = _viagensAtivas[_indiceViagemAtual];
-                              } else {
-                                _viagemAtiva = _viagemService.viagemAtiva;
-                              }
-                            });
-                          }
-                          // Se o paciente avançou para embarque/viagem (status >= 1 e < 4) e a viagem continua ativa, gera ou obtém código de acesso (Issue #65)
-                          if (proximoStatus >= 1 &&
-                              proximoStatus < 4 &&
-                              _viagemAtiva != null &&
-                              !_viagemAtiva!.id.startsWith('sessao_ativa_') &&
-                              !_viagemAtiva!.isConcluida) {
-                            final idViagemCodigo = _viagemAtiva!.id;
-                            unawaited(
-                              _viagemService
-                                  .gerarOuObterCodigoAcesso(
-                                    viagemId: idViagemCodigo,
-                                    pacienteId: paciente.id,
-                                  )
-                                  .then((codigo) {
-                                    if (mounted &&
-                                        _viagemAtiva != null &&
-                                        !_viagemAtiva!.id.startsWith('sessao_ativa_') &&
-                                        !_viagemAtiva!.isConcluida) {
-                                      setState(() {
-                                        final novosCodigos = Map<String, String>.from(
-                                          _viagemAtiva!.codigosAcesso,
-                                        );
-                                        novosCodigos[paciente.id] = codigo;
-                                        final novosPassageiros = _viagemAtiva!.passageiros
-                                            .map(
-                                              (pv) => pv.pacienteId == paciente.id
-                                                  ? pv.copyWith(statusEmbarque: proximoStatus)
-                                                  : pv,
-                                            )
-                                            .toList();
-                                        _viagemAtiva = _viagemAtiva!.copyWith(
-                                          codigosAcesso: novosCodigos,
-                                          passageiros: novosPassageiros,
-                                        );
-                                      });
-                                    }
-                                  }),
-                            );
-                          }
-
-                          if (!context.mounted) return false;
-
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              backgroundColor: const Color(0xFF16A34A),
-                              content: Text(
-                                "Avanço para '$proximoStatusNome' confirmado com sucesso.",
-                                style: const TextStyle(fontWeight: FontWeight.bold),
-                              ),
-                              behavior: SnackBarBehavior.floating,
-                            ),
-                          );
-                        } else {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              backgroundColor: const Color(0xFFB83227),
-                              content: Text(
-                                resultado.mensagem,
-                                style: const TextStyle(fontWeight: FontWeight.bold),
-                              ),
-                              behavior: SnackBarBehavior.floating,
-                            ),
-                          );
-                        }
-
-                        // Retorna false para que o Dismissible reposicione o card suavemente no centro,
-                        // permitindo que o StreamBuilder re-renderize o widget com o novo status e cor
-                        // sem removê-lo da lista operacional do dia.
-                        return false;
-                      },
-                      // Widget filho apresentado como conteúdo visual do item arrastável
-                      child: CardPaciente(
-                        // Nome do paciente para exibição no cabeçalho do card
-                        nomePaciente: paciente.nome,
-                        // Endereço de residência para busca ou desembarque
-                        enderecoPaciente: paciente.enderecoPaciente,
-                        // Telefone de contato do paciente
-                        telPaciente: paciente.telefone,
-                        // Local hospitalar ou clínico da consulta
-                        localConsulta: paciente.localConsulta,
-                        // Local ou laboratório de saída
-                        localSaida: paciente.localSaida,
-                        // Status numérico atual para estilização do indicador visual
-                        status: paciente.status,
-                        // Repassa os dados do acompanhante para o card
-                        // Nome do acompanhante, se houver
-                        nomeAcompanhante: paciente.nomeAcompanhante,
-                        // Telefone do acompanhante, se houver
-                        telAcompanhante: paciente.telAcompanhante,
-                        prontoRetorno: paciente.prontoRetorno,
-                        janelaReversao: paciente.janelaReversao,
-                        // Código de acesso temporário gerado no embarque (Issue #65)
-                        codigoAcesso:
-                            _viagemAtiva?.codigosAcesso[paciente.id],
-                      // Fechamento do CardPaciente
-                      ),
-                    // Fechamento do Dismissible
-                    ),
-                  // Fechamento do Padding
-                  ),
-              // Fechamento da lista children do ListView
+                  _construirCardPassageiro(paciente),
               ],
-            // Fechamento do ListView
             ),
-          // Fechamento do SafeArea
           ),
-          // Barra de navegação inferior contendo o resumo de assentos e formulários de início/fim de viagem
           bottomNavigationBar: FooterPacientes(
-            // Quantidade de assentos ocupados no momento
             lugaresPreenchidos: preenchidos,
-            // Capacidade máxima total de assentos do veículo
             lugaresTotais: _capacidadeVeiculo > 0 ? _capacidadeVeiculo : 7,
-            // Viagem ativa em andamento para controlar se o botão exibe Iniciar ou Finalizar
             viagem: _viagemAtiva,
-            // Todas as viagens ativas da sessão do motorista
             viagens: _viagensAtivas,
-            // Lista completa de pacientes para validação de encerramento
             pacientes: pacientes,
-            // Callback para limpar estado e redirecionar imediatamente para o FormularioInicioViagem
+            motoristaId: _obterIdMotoristaSessao(),
             onViagemEncerrada: _aoEncerrarViagemMotorista,
-          // Fechamento do FooterPacientes
           ),
-        // Fechamento do Scaffold
         );
-      // Fechamento do builder do StreamBuilder
       },
-    // Fechamento do StreamBuilder
     );
-  // Fechamento do método build
   }
-// Fechamento da classe _MotoristaState
+
+  Widget _construirTelaCarregamentoViagem() {
+    return Scaffold(
+      backgroundColor: const Color(0xFF0F172A),
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF38BDF8)),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Carregando viagem ativa...',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                TextButton(
+                  key: const Key('botaoCancelarCarregandoViagem'),
+                  onPressed: () {
+                    _cancelarTimeoutCarregamentoViagem();
+                    _resetarEstadoParaNovaViagem(_obterIdMotoristaSessao());
+                  },
+                  child: const Text(
+                    'Iniciar nova viagem',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Color(0xFF94A3B8),
+                      fontSize: 14,
+                      decoration: TextDecoration.underline,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _construirTelaFormularioInicio() {
+    final idMotoristaSessao = _obterIdMotoristaSessao();
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          'Início da Viagem',
+          overflow: TextOverflow.ellipsis,
+        ),
+        backgroundColor: const Color(0xFF0F172A),
+        foregroundColor: Colors.white,
+        elevation: 2,
+        actions: [
+          IconButton(
+            key: const Key('botaoLogoutMotorista'),
+            icon: const Icon(Icons.logout),
+            tooltip: 'Sair da conta',
+            onPressed: _efetuarLogout,
+          ),
+        ],
+      ),
+      backgroundColor: const Color(0xFFF7F8FA),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 18),
+            child: FormularioInicioViagem(
+              motoristaId: idMotoristaSessao.isNotEmpty
+                  ? idMotoristaSessao
+                  : 'motorista_atual',
+              motoristaNome: _motoristaNome.isNotEmpty
+                  ? _motoristaNome
+                  : 'Motorista da Saúde',
+              onViagemIniciada: (novaViagem) {
+                _cancelarTimeoutCarregamentoViagem();
+                _inicioViagemOptimistaEm = DateTime.now();
+                setState(() {
+                  _emViagemFirestore = true;
+                  FirebaseAuthService.motoristaEmViagemStatic = true;
+                  _viagemAtiva = novaViagem;
+                  _viagensAtivas = _viagemService.viagensAtivas.isNotEmpty
+                      ? _viagemService.viagensAtivas
+                      : [novaViagem];
+                  _indiceViagemAtual = 0;
+                  _capacidadeVeiculo = _resolverCapacidadeVeiculo();
+                });
+                _atualizarTransmissaoGpsMotorista();
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  AppBar _construirAppBarEmViagem() {
+    return AppBar(
+      backgroundColor: const Color(0xFF0F172A),
+      foregroundColor: Colors.white,
+      elevation: 2,
+      titleSpacing: 4,
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back),
+        color: Colors.white,
+        onPressed: () {
+          if (Navigator.of(context).canPop()) {
+            Navigator.of(context).pop();
+          } else {
+            Navigator.of(context).pushReplacementNamed('/');
+          }
+        },
+      ),
+      title: const Text(
+        'Lista de Passageiros',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: 17,
+          fontWeight: FontWeight.bold,
+          color: Colors.white,
+        ),
+      ),
+      actions: [
+        if (_viagemAtiva != null)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6.0),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.sizeOf(context).width < 360 ? 115 : 150,
+                ),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 9,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade700,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      'Em Viagem: ${_resolverPlacaVeiculoSessao()}',
+                      maxLines: 1,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        IconButton(
+          key: const Key('botaoLogoutMotorista'),
+          icon: const Icon(Icons.logout),
+          color: Colors.white,
+          tooltip: 'Sair da conta',
+          onPressed: _efetuarLogout,
+        ),
+      ],
+    );
+  }
+
+  Widget _construirCardPassageiro(PacienteModel paciente) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Dismissible(
+        key: ValueKey(paciente.id.isNotEmpty ? paciente.id : paciente.nome),
+        // Permite apenas deslize da direita para a esquerda para avançar status.
+        direction:
+            (paciente.status < 4) ? DismissDirection.endToStart : DismissDirection.none,
+        background: Container(),
+        secondaryBackground: Container(
+          padding: const EdgeInsets.only(right: 16),
+          alignment: Alignment.centerRight,
+          decoration: BoxDecoration(
+            color: Colors.green.withValues(alpha: 0.4),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: const Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.arrow_forward, color: Colors.white, size: 50),
+              Text('Avançar', style: TextStyle(color: Colors.white)),
+            ],
+          ),
+        ),
+        confirmDismiss: (direction) =>
+            _tratarDeslizeCardPaciente(direction, paciente),
+        child: CardPaciente(
+          nomePaciente: paciente.nome,
+          enderecoPaciente: paciente.enderecoPaciente,
+          telPaciente: paciente.telefone,
+          localConsulta: paciente.localConsulta,
+          localSaida: paciente.localSaida,
+          status: paciente.status,
+          nomeAcompanhante: paciente.nomeAcompanhante,
+          telAcompanhante: paciente.telAcompanhante,
+          prontoRetorno: paciente.prontoRetorno,
+          janelaReversao: paciente.janelaReversao,
+          codigoAcesso: _viagemAtiva?.codigosAcesso[paciente.id],
+        ),
+      ),
+    );
+  }
 }

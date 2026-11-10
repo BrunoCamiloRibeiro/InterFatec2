@@ -113,10 +113,15 @@ void main() {
       await tester.tap(find.byKey(const Key('botaoModoPaciente')));
       await tester.pumpAndSettle();
 
-      // Preenche os dados
-      await tester.enterText(find.byKey(const Key('campoDocumentoPaciente')), '529.982.247-25');
+      // Preenche apenas dígitos e valida aplicação automática da máscara
+      await tester.enterText(find.byKey(const Key('campoDocumentoPaciente')), '52998224725');
       await tester.enterText(find.byKey(const Key('campoCodigoAcesso')), '4821');
       await tester.pumpAndSettle();
+
+      final campoPac = tester.widget<TextFormField>(
+        find.byKey(const Key('campoDocumentoPaciente')),
+      );
+      expect(campoPac.controller?.text, equals('529.982.247-25'));
 
       // Clica em acessar viagem
       await tester.tap(find.byKey(const Key('botaoAcessarViagem')));

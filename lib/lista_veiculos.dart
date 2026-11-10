@@ -197,7 +197,10 @@ class _VeiculosState extends State<Veiculos> {
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text('Lista de Veículos'),
+        title: const Text(
+          'Lista de Veículos',
+          overflow: TextOverflow.ellipsis,
+        ),
       ),
       backgroundColor: Colors.white,
       body: SafeArea(
@@ -353,60 +356,77 @@ class _VeiculosState extends State<Veiculos> {
                 const SizedBox(height: 12),
 
                 // LINHA COM O BOTÃO NOVO VEÍCULO (Estilo original 100% preservado)
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    // Indicador de filtros ativos caso existam
-                    if (_filtro.temFiltrosAtivos || query.isNotEmpty)
-                      Row(
-                        children: [
-                          Text(
-                            '${veiculosFiltrados.length} resultado(s)',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.grey[700],
+                SizedBox(
+                  width: double.infinity,
+                  child: Wrap(
+                    alignment: (_filtro.temFiltrosAtivos || query.isNotEmpty)
+                        ? WrapAlignment.spaceBetween
+                        : WrapAlignment.end,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      // Indicador de filtros ativos caso existam
+                      if (_filtro.temFiltrosAtivos || query.isNotEmpty)
+                        Wrap(
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          spacing: 4,
+                          runSpacing: 4,
+                          children: [
+                            Text(
+                              '${veiculosFiltrados.length} resultado(s)',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey[700],
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 4),
-                          TextButton(
-                            style: TextButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                            TextButton(
+                              style: TextButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 8),
+                              ),
+                              onPressed: () {
+                                _buscaController.clear();
+                                setState(() {
+                                  _filtro.limpar();
+                                });
+                              },
+                              child: const Text('Limpar'),
                             ),
-                            onPressed: () {
-                              _buscaController.clear();
-                              setState(() {
-                                _filtro.limpar();
-                              });
-                            },
-                            child: const Text('Limpar'),
-                          ),
-                        ],
-                      )
-                    else
-                      const SizedBox.shrink(),
+                          ],
+                        ),
 
-                    // BOTÃO NOVO VEÍCULO (Preservado exatamente com padding vertical 20)
-                    ElevatedButton.icon(
-                      onPressed: _abrirFormularioVeiculo,
-                      icon: const Icon(Icons.add_outlined),
-                      label: const Text(
-                        'Novo Veículo',
-                        style: TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green[700], // Fundo verde
-                        foregroundColor: Colors.white, // Texto e ícone brancos
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 20, // Padding vertical 20 original
+                      // BOTÃO NOVO VEÍCULO (Preservado exatamente com padding vertical 20)
+                      ElevatedButton(
+                        onPressed: _abrirFormularioVeiculo,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green[700], // Fundo verde
+                          foregroundColor: Colors.white, // Texto e ícone brancos
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 20, // Padding vertical 20 original
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
                         ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.add_outlined),
+                            SizedBox(width: 8),
+                            Flexible(
+                              child: Text(
+                                'Novo Veículo',
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 10),
 
@@ -453,6 +473,7 @@ class _VeiculosState extends State<Veiculos> {
                             const SizedBox(height: 12),
                             Text(
                               'Nenhum veículo encontrado para os filtros selecionados.',
+                              textAlign: TextAlign.center,
                               style: TextStyle(
                                 fontSize: 14,
                                 color: Colors.grey[600],

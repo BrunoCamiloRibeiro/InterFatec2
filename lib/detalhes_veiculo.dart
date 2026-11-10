@@ -67,7 +67,10 @@ class _DetalhesVeiculoState extends State<DetalhesVeiculo> {
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: Text('Veículo $placa'),
+        title: Text(
+          'Veículo $placa',
+          overflow: TextOverflow.ellipsis,
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.edit_outlined),
@@ -118,72 +121,85 @@ class _DetalhesVeiculoState extends State<DetalhesVeiculo> {
               children: [
                 Padding(
                   padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final escala = MediaQuery.textScalerOf(context).scale(13);
+                      final empilhar = constraints.maxWidth < 310 || escala > 19;
+
+                      final cardCadastro = Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          Icon(Icons.calendar_today_outlined, color: Colors.grey[700], size: 20),
+                          const SizedBox(width: 8),
                           Expanded(
-                            child: Row(
+                            child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Icon(Icons.calendar_today_outlined, color: Colors.grey[700], size: 20),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Data de Cadastro',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: Color.lerp(Colors.grey, Colors.black, 0.5),
-                                        ),
-                                      ),
-                                      Text(
-                                        criadoEm,
-                                        style: const TextStyle(fontSize: 13),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ],
+                                Text(
+                                  'Data de Cadastro',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Color.lerp(Colors.grey, Colors.black, 0.5),
                                   ),
                                 ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Icon(Icons.update_outlined, color: Colors.grey[700], size: 20),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Última Atualização',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: Color.lerp(Colors.grey, Colors.black, 0.5),
-                                        ),
-                                      ),
-                                      Text(
-                                        atualizadoEm,
-                                        style: const TextStyle(fontSize: 13),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ],
-                                  ),
+                                Text(
+                                  criadoEm,
+                                  style: const TextStyle(fontSize: 13),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ],
                             ),
                           ),
                         ],
-                      ),
-                    ],
+                      );
+
+                      final cardAtualizacao = Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.update_outlined, color: Colors.grey[700], size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Última Atualização',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Color.lerp(Colors.grey, Colors.black, 0.5),
+                                  ),
+                                ),
+                                Text(
+                                  atualizadoEm,
+                                  style: const TextStyle(fontSize: 13),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      );
+
+                      if (empilhar) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            cardCadastro,
+                            const SizedBox(height: 12),
+                            cardAtualizacao,
+                          ],
+                        );
+                      }
+
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(child: cardCadastro),
+                          const SizedBox(width: 12),
+                          Expanded(child: cardAtualizacao),
+                        ],
+                      );
+                    },
                   ),
                 ),
               ],
@@ -192,46 +208,84 @@ class _DetalhesVeiculoState extends State<DetalhesVeiculo> {
             const SizedBox(height: 24),
 
             // BOTÕES DE AÇÃO NA BASE
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.red[700],
-                      side: BorderSide(color: Colors.red.shade300),
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final escala = MediaQuery.textScalerOf(context).scale(14);
+                final empilhar = constraints.maxWidth < 330 || escala > 19;
+
+                final botaoExcluir = OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.red[700],
+                    side: BorderSide(color: Colors.red.shade300),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                    icon: const Icon(Icons.delete_outline),
-                    label: const Text(
-                      'Excluir Veículo',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    onPressed: () => _confirmarExclusao(context),
                   ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green[700],
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
+                  onPressed: () => _confirmarExclusao(context),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.delete_outline),
+                      SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          'Excluir Veículo',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                          textAlign: TextAlign.center,
+                        ),
                       ),
-                    ),
-                    icon: const Icon(Icons.edit_outlined),
-                    label: const Text(
-                      'Editar Veículo',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    onPressed: () => _abrirEdicao(context),
+                    ],
                   ),
-                ),
-              ],
+                );
+
+                final botaoEditar = ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green[700],
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  onPressed: () => _abrirEdicao(context),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.edit_outlined),
+                      SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          'Editar Veículo',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+
+                if (empilhar) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      botaoExcluir,
+                      const SizedBox(height: 12),
+                      botaoEditar,
+                    ],
+                  );
+                }
+
+                return Row(
+                  children: [
+                    Expanded(child: botaoExcluir),
+                    const SizedBox(width: 14),
+                    Expanded(child: botaoEditar),
+                  ],
+                );
+              },
             ),
           ],
         ),

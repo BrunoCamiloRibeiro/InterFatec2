@@ -153,6 +153,8 @@ Widget buildTestableWidget({
           const Scaffold(body: Center(child: Text('Rota Motorista'))),
       '/administrativo': (context) =>
           const Scaffold(body: Center(child: Text('Rota Administrativo'))),
+      '/paciente': (context) =>
+          const Scaffold(body: Center(child: Text('Rota Paciente'))),
     },
     home: MediaQuery(
       data: MediaQueryData(textScaler: TextScaler.linear(textScaleFactor)),
@@ -434,6 +436,78 @@ void main() {
       await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
 
       handle.dispose();
+    },
+  );
+
+  // Teste 12: Login de paciente com máscara de CPF e bloqueio de RG/CNH
+  testWidgets(
+    '12. Acesso do Paciente aplica máscara de CPF e bloqueia RG/CNH ou CPF inválido',
+    (WidgetTester tester) async {
+      configureViewport(tester);
+      final authService = FakeAuthService(roleToReturn: UserRole.paciente);
+
+      await tester.pumpWidget(buildTestableWidget(authService: authService));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('botaoModoPaciente')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Informe seu CPF e o código temporário'), findsOneWidget);
+
+      // Tentativa com RG alfanumérico: letras são ignoradas e dígitos não fecham CPF
+      await tester.enterText(
+        find.byKey(const Key('campoDocumentoPaciente')),
+        'MG-12.345.678',
+      );
+      await tester.enterText(find.byKey(const Key('campoCodigoAcesso')), '4821');
+      await tester.pumpAndSettle();
+
+      final campoPac = tester.widget<TextFormField>(
+        find.byKey(const Key('campoDocumentoPaciente')),
+      );
+      expect(campoPac.controller?.text, equals('123.456.78'));
+
+      await tester.tap(find.byKey(const Key('botaoAcessarViagem')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Informe um CPF válido com 11 dígitos.'),
+        findsOneWidget,
+      );
+      expect(authService.loginCalls, equals(0));
+
+      // Tentativa com CPF de dígitos verificadores inválidos
+      await tester.enterText(
+        find.byKey(const Key('campoDocumentoPaciente')),
+        '12345678900',
+      );
+      await tester.pumpAndSettle();
+      expect(campoPac.controller?.text, equals('123.456.789-00'));
+
+      await tester.tap(find.byKey(const Key('botaoAcessarViagem')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('CPF inválido. Verifique os dígitos digitados.'),
+        findsOneWidget,
+      );
+      expect(authService.loginCalls, equals(0));
+
+      // CPF válido formatado automaticamente pela máscara e envio bem-sucedido
+      await tester.enterText(
+        find.byKey(const Key('campoDocumentoPaciente')),
+        '52998224725',
+      );
+      await tester.pumpAndSettle();
+      expect(campoPac.controller?.text, equals('529.982.247-25'));
+
+      await tester.tap(find.byKey(const Key('botaoAcessarViagem')));
+      await tester.pumpAndSettle();
+
+      expect(authService.loginCalls, equals(1));
+      expect(authService.lastCpf, equals('529.982.247-25'));
+      expect(authService.lastPassword, equals('4821'));
+      expect(find.text('Rota Paciente'), findsOneWidget);
     },
   );
 }

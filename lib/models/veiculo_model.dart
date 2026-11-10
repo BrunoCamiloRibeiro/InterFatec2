@@ -146,7 +146,7 @@ class VeiculoModel {
     bool? emUso,
     this.quilometragemAtual = 0,
     this.motoristaResponsavelId,
-    this.ultimoMotoristaId,
+    String? ultimoMotoristaId,
     String? motoristaAtualId,
     this.possuiAC = false,
     this.possuiPreferencial = false,
@@ -156,6 +156,7 @@ class VeiculoModel {
     this.atualizadoPor,
   })  : ano = ano ?? 2024,
         qtdAssentos = qtdAssentos ?? capacidade ?? 4,
+        ultimoMotoristaId = ultimoMotoristaId ?? motoristaAtualId,
         status = status ??
             (emUso == true
                 ? StatusVeiculo.emViagem
@@ -188,6 +189,7 @@ class VeiculoModel {
     String? motoristaResponsavelId,
     String? ultimoMotoristaId,
     String? motoristaAtualId,
+    bool limparMotorista = false,
     bool? possuiAC,
     bool? possuiPreferencial,
     String? observacoes,
@@ -208,10 +210,12 @@ class VeiculoModel {
               ? (emUso ? StatusVeiculo.emViagem : StatusVeiculo.disponivel)
               : this.status),
       quilometragemAtual: quilometragemAtual ?? this.quilometragemAtual,
-      motoristaResponsavelId:
-          motoristaResponsavelId ?? this.motoristaResponsavelId,
-      ultimoMotoristaId:
-          ultimoMotoristaId ?? motoristaAtualId ?? this.ultimoMotoristaId,
+      motoristaResponsavelId: limparMotorista
+          ? null
+          : (motoristaResponsavelId ?? this.motoristaResponsavelId),
+      ultimoMotoristaId: limparMotorista
+          ? null
+          : (ultimoMotoristaId ?? motoristaAtualId ?? this.ultimoMotoristaId),
       possuiAC: possuiAC ?? this.possuiAC,
       possuiPreferencial: possuiPreferencial ?? this.possuiPreferencial,
       observacoes: observacoes ?? this.observacoes,

@@ -87,54 +87,50 @@ class CardVeiculo extends StatelessWidget {
           spacing: 14, // Estilo original mantido exatamente
           children: [
             // IDENTIFICAÇÃO E STATUS
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // IDENTIFICAÇÃO
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        placa,
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        descricaoVeiculo,
-                        style: const TextStyle(fontSize: 14, color: Colors.black),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Icon(iconeTipo, size: 18, color: Colors.grey[700]),
-                          const SizedBox(width: 5),
-                          Flexible(
-                            child: Text(
-                              labelTipo,
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: Colors.grey[700],
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final escala = MediaQuery.textScalerOf(context).scale(13);
+                final empilhar = constraints.maxWidth < 270 || escala > 18;
 
-                // STATUS INDICATOR COM ÁREA INTEIRA CLICÁVEL
-                Container(
+                final identificacao = Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      placa,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      descricaoVeiculo,
+                      style: const TextStyle(fontSize: 14, color: Colors.black),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(iconeTipo, size: 18, color: Colors.grey[700]),
+                        const SizedBox(width: 5),
+                        Flexible(
+                          child: Text(
+                            labelTipo,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey[700],
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                );
+
+                final statusBadgeRaw = Container(
                   decoration: BoxDecoration(
                     color: corBase.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(30),
@@ -157,6 +153,8 @@ class CardVeiculo extends StatelessWidget {
                       ),
                       selectedItemBuilder: (BuildContext context) {
                         return statusOpcoes.map((op) {
+                          final Color corOp = op['cor'] as Color;
+                          final String labelOp = op['label'] as String;
                           return Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
@@ -164,17 +162,17 @@ class CardVeiculo extends StatelessWidget {
                                 Icons.circle,
                                 size: 9,
                                 color: Color.lerp(
-                                  corBase,
+                                  corOp,
                                   Colors.black,
                                   0.5,
                                 ),
                               ),
                               const SizedBox(width: 6),
                               Text(
-                                textoStatus,
+                                labelOp,
                                 style: TextStyle(
                                   color: Color.lerp(
-                                    corBase,
+                                    corOp,
                                     Colors.black,
                                     0.5,
                                   ),
@@ -199,12 +197,15 @@ class CardVeiculo extends StatelessWidget {
                                 color: Color.lerp(cor, Colors.black, 0.5),
                               ),
                               const SizedBox(width: 8),
-                              Text(
-                                op['label'] as String,
-                                style: TextStyle(
-                                  color: Color.lerp(cor, Colors.black, 0.5),
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
+                              Flexible(
+                                child: Text(
+                                  op['label'] as String,
+                                  style: TextStyle(
+                                    color: Color.lerp(cor, Colors.black, 0.5),
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
                             ],
@@ -218,8 +219,47 @@ class CardVeiculo extends StatelessWidget {
                       },
                     ),
                   ),
-                ),
-              ],
+                );
+
+                final statusBadge = ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: empilhar
+                        ? constraints.maxWidth
+                        : constraints.maxWidth * 0.48,
+                  ),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: empilhar
+                        ? Alignment.centerLeft
+                        : Alignment.centerRight,
+                    child: statusBadgeRaw,
+                  ),
+                );
+
+                if (empilhar) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      identificacao,
+                      const SizedBox(height: 10),
+                      statusBadge,
+                    ],
+                  );
+                }
+
+                return Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // IDENTIFICAÇÃO
+                    Expanded(child: identificacao),
+                    const SizedBox(width: 8),
+
+                    // STATUS INDICATOR COM ÁREA INTEIRA CLICÁVEL
+                    statusBadge,
+                  ],
+                );
+              },
             ),
 
             // INFORMAÇÕES OPERACIONAIS
@@ -353,17 +393,12 @@ class CardVeiculo extends StatelessWidget {
               runSpacing: 4,
               children: [
                 if (possuiAC)
-                  TextButton.icon(
+                  TextButton(
                     onPressed: () {
                       if (onTagSelecionada != null) {
                         onTagSelecionada!('ac');
                       }
                     },
-                    icon: const Icon(Icons.ac_unit_outlined, size: 16),
-                    label: const Text(
-                      'Ar-condicionado',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
                     style: TextButton.styleFrom(
                       backgroundColor: Colors.blue.withValues(alpha: 0.1),
                       foregroundColor: Color.lerp(
@@ -376,23 +411,31 @@ class CardVeiculo extends StatelessWidget {
                         vertical: 6,
                       ),
                     ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.ac_unit_outlined, size: 16),
+                        SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            'Ar-condicionado',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 if (possuiPreferencial)
-                  TextButton.icon(
+                  TextButton(
                     onPressed: () {
                       if (onTagSelecionada != null) {
                         onTagSelecionada!('preferencial');
                       }
                     },
-                    icon: const Icon(Icons.accessible_outlined, size: 16),
-                    label: const Text(
-                      'Acesso Preferencial',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
                     style: TextButton.styleFrom(
-                      backgroundColor: Color(0xFF2D2F8D).withValues(alpha: 1),
+                      backgroundColor: const Color(0xFF2D2F8D).withValues(alpha: 1),
                       foregroundColor: Color.lerp(
-                        Color(0xFF2D2F8D),
+                        const Color(0xFF2D2F8D),
                         Colors.white,
                         0.8,
                       ),
@@ -400,6 +443,19 @@ class CardVeiculo extends StatelessWidget {
                         horizontal: 10,
                         vertical: 6,
                       ),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.accessible_outlined, size: 16),
+                        SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            'Acesso Preferencial',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
               ],
@@ -434,15 +490,17 @@ class CardVeiculo extends StatelessWidget {
                                 ),
                               ),
                               const SizedBox(width: 5),
-                              Text(
-                                'Observação',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                  color: Color.lerp(
-                                    Colors.orange,
-                                    Colors.brown,
-                                    0.5,
+                              Flexible(
+                                child: Text(
+                                  'Observação',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color.lerp(
+                                      Colors.orange,
+                                      Colors.brown,
+                                      0.5,
+                                    ),
                                   ),
                                 ),
                               ),

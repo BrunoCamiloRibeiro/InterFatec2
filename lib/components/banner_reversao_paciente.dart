@@ -204,39 +204,54 @@ class _BannerReversaoPacienteState extends State<BannerReversaoPaciente> {
             ),
           ),
           const SizedBox(height: 12),
-          SizedBox(
-            height: 42,
-            child: ElevatedButton.icon(
+          ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 44),
+            child: ElevatedButton(
               key: const Key('botao_desfazer_reversao'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: expirou ? Colors.grey : corTema,
                 foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
                 elevation: 1,
               ),
               onPressed: (expirou || widget.carregando) ? null : widget.onDesfazer,
-              icon: widget.carregando
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  widget.carregando
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                      : const Icon(Icons.undo_rounded, size: 18),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      widget.carregando
+                          ? 'Revertendo...'
+                          : (isCancelamento
+                              ? 'Desfazer Cancelamento'
+                              : 'Desfazer Aviso de Pronto'),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
                       ),
-                    )
-                  : const Icon(Icons.undo_rounded, size: 18),
-              label: Text(
-                widget.carregando
-                    ? 'Revertendo...'
-                    : (isCancelamento
-                        ? 'Desfazer Cancelamento'
-                        : 'Desfazer Aviso de Pronto'),
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
-                ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),

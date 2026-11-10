@@ -11,7 +11,7 @@
 // 3. Cálculo de hash HMAC/SHA-256 para persistência segura e validação de autenticação;
 // 4. Rate limiting e proteção contra ataques de força bruta com bloqueio temporário;
 // 5. Validação algorítmica de dígitos verificadores do CPF (módulo 11) e normalização;
-// 6. Resolução hierárquica do identificador civil (CPF paciente -> acompanhante -> RG/CNH);
+// 6. Resolução hierárquica do CPF civil (CPF do paciente -> CPF do acompanhante);
 // 7. Mascaramento LGPD de dados sensíveis para logs e visualizações (CPF e código).
 //
 // PARA QUE SERVE NO PROJETO:
@@ -38,7 +38,7 @@ import '../models/paciente_model.dart';
 
 /// Resultado da resolução de identidade para login de paciente.
 class ResolucaoIdentificador {
-  /// Tipo de documento resolvido ('cpf_paciente', 'cpf_acompanhante', 'outro_documento', 'ignorado').
+  /// Tipo de documento resolvido ('cpf_paciente', 'cpf_acompanhante', 'ignorado').
   final String tipo;
 
   /// Documento normalizado (somente dígitos ou caracteres válidos).
@@ -297,18 +297,19 @@ class CodigoAcessoService {
   /// Resolve o identificador de login de acordo com a ordem de precedência:
   /// (a) CPF do paciente cadastrado;
   /// (b) se vazio, CPF do acompanhante (caso típico: crianças e idosos);
-  /// (c) se sem acompanhante, outro documento informado (RG, CNH);
-  /// (d) se não houver nada, ignora com log interno sem dados sensíveis.
+  /// (c) se não houver CPF válido, ignora com log interno sem dados sensíveis.
+  ///
+  /// O parâmetro [outroDocumento] é mantido apenas por compatibilidade de assinatura
+  /// e não é mais aceito para login de pacientes (somente CPF).
   static ResolucaoIdentificador resolverIdentificador({
     required String? cpfPaciente,
     required String? cpfAcompanhante,
-    required String? outroDocumento,
+    String? outroDocumento,
     String? pacienteId,
     String? pacienteNome,
   }) {
     final cleanCpfPaciente = normalizarDigitos(cpfPaciente ?? '');
     final cleanCpfAcompanhante = normalizarDigitos(cpfAcompanhante ?? '');
-    final cleanOutroDoc = (outroDocumento ?? '').trim();
 
     // (a) CPF do paciente válido e presente (permite credencial de teste 12345678900)
     if (cleanCpfPaciente.isNotEmpty &&
@@ -336,19 +337,7 @@ class CodigoAcessoService {
       );
     }
 
-    // (c) Outro documento (RG, CNH) informado
-    if (cleanOutroDoc.isNotEmpty) {
-      return ResolucaoIdentificador(
-        tipo: 'outro_documento',
-        documentoNormalizado: cleanOutroDoc,
-        pacienteId: pacienteId,
-        titularNome: pacienteNome,
-        isAcompanhante: false,
-        logAnonimizado: 'Identificador resolvido via documento alternativo cadastrado',
-      );
-    }
-
-    // (d) Nenhum documento válido disponível: ignora registrando log anônimo
+    // (c) Nenhum CPF válido disponível: ignora registrando log anônimo
     return const ResolucaoIdentificador(
       tipo: 'ignorado',
       documentoNormalizado: null,
@@ -356,17 +345,16 @@ class CodigoAcessoService {
       titularNome: null,
       isAcompanhante: false,
       logAnonimizado:
-          'Aviso de auditoria: paciente agendado sem documento cadastrado válido',
+          'Aviso de auditoria: paciente agendado sem CPF cadastrado válido',
     );
   }
 
-  /// Resolve o identificador civil de login diretamente a partir de um [PacienteModel]
+  /// Resolve o CPF de login diretamente a partir de um [PacienteModel].
   static ResolucaoIdentificador resolverIdentificadorLogin(
       PacienteModel paciente) {
     return resolverIdentificador(
       cpfPaciente: paciente.cpf,
       cpfAcompanhante: paciente.cpfAcompanhante,
-      outroDocumento: paciente.rg ?? paciente.cnh,
       pacienteId: paciente.id,
       pacienteNome: paciente.nome,
     );
