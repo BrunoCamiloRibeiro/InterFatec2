@@ -61,7 +61,7 @@ class MotoristaHeader extends StatelessWidget {
                 child: Text(
                   tituloViagem,
                   textAlign: TextAlign.center,
-                  maxLines: 1,
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 16,

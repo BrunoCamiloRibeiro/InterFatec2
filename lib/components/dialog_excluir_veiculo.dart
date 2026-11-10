@@ -36,9 +36,12 @@ class DialogExcluirVeiculo extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       title: const Text('Confirmação'),
-      content: Text(
-        'Deseja confirmar a exclusão do veículo ${placa.toUpperCase()} ($modelo)?',
+      content: SingleChildScrollView(
+        child: Text(
+          'Deseja confirmar a exclusão do veículo ${placa.toUpperCase()} ($modelo)?',
+        ),
       ),
       actions: [
         TextButton(

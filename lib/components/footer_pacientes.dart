@@ -38,60 +38,62 @@ class FooterPacientes extends StatelessWidget {
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.event_seat_outlined,
-                      size: 20,
-                      color: Colors.blueGrey[900],
-                    ),
-                    const SizedBox(width: 8),
-                    Flexible(
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: Alignment.centerLeft,
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Lugares: $lugaresPreenchidos / $lugaresTotais',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.blueGrey[900],
-                              ),
+          padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 10.0),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final escalaTexto = MediaQuery.textScalerOf(context).scale(13);
+              final empilhar = constraints.maxWidth < 310 ||
+                  (constraints.maxWidth < 380 && escalaTexto > 17);
+
+              final contadorLugares = Row(
+                mainAxisSize: empilhar ? MainAxisSize.min : MainAxisSize.max,
+                children: [
+                  Icon(
+                    Icons.event_seat_outlined,
+                    size: 20,
+                    color: Colors.blueGrey[900],
+                  ),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Lugares: $lugaresPreenchidos / $lugaresTotais',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blueGrey[900],
                             ),
-                            Text(
-                              'Disponíveis: $disponiveis',
-                              key: const Key('textoLugaresDisponiveisFooter'),
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: (lugaresTotais - lugaresPreenchidos) > 0
-                                    ? const Color(0xFF059669)
-                                    : const Color(0xFFE11D48),
-                              ),
+                          ),
+                          Text(
+                            'Disponíveis: $disponiveis',
+                            key: const Key('textoLugaresDisponiveisFooter'),
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: (lugaresTotais - lugaresPreenchidos) > 0
+                                  ? const Color(0xFF059669)
+                                  : const Color(0xFFE11D48),
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                     ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              ElevatedButton.icon(
+                  ),
+                ],
+              );
+
+              final botaoRelatorio = ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blueGrey[900],
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
+                    horizontal: 12,
                     vertical: 10,
                   ),
                   shape: RoundedRectangleBorder(
@@ -99,14 +101,53 @@ class FooterPacientes extends StatelessWidget {
                   ),
                   elevation: 2,
                 ),
-                icon: const Icon(Icons.assignment_outlined, size: 18),
-                label: const Text(
-                  'Gerar Relatório',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-                ),
                 onPressed: () => _confirmarEAbrirEncerramento(context),
-              ),
-            ],
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.assignment_outlined, size: 18),
+                    SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        'Gerar Relatório',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+
+              if (empilhar) {
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    contadorLugares,
+                    const SizedBox(height: 8),
+                    botaoRelatorio,
+                  ],
+                );
+              }
+
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(child: contadorLugares),
+                  const SizedBox(width: 8),
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: constraints.maxWidth * 0.55,
+                    ),
+                    child: botaoRelatorio,
+                  ),
+                ],
+              );
+            },
           ),
         ),
       ),
@@ -119,6 +160,7 @@ class FooterPacientes extends StatelessWidget {
       builder: (BuildContext dialogContext) {
         return AlertDialog(
           key: const Key('dialogConfirmarFinalizacaoViagem'),
+          insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
           backgroundColor: Colors.white,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
@@ -131,12 +173,14 @@ class FooterPacientes extends StatelessWidget {
                 size: 24,
               ),
               const SizedBox(width: 8),
-              Text(
-                'Finalizar Viagem',
-                style: TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.blueGrey[900],
+              Expanded(
+                child: Text(
+                  'Finalizar Viagem',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blueGrey[900],
+                  ),
                 ),
               ),
             ],

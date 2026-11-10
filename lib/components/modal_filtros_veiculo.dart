@@ -119,12 +119,14 @@ class _ModalFiltrosVeiculoState extends State<ModalFiltrosVeiculo> {
               ),
               const SizedBox(width: 6),
             ],
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: selecionado ? Colors.white : Colors.grey[800],
+            Flexible(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: selecionado ? Colors.white : Colors.grey[800],
+                ),
               ),
             ),
           ],
@@ -135,7 +137,10 @@ class _ModalFiltrosVeiculoState extends State<ModalFiltrosVeiculo> {
 
   @override
   Widget build(BuildContext context) {
+    final alturaMax = MediaQuery.sizeOf(context).height * 0.88;
+
     return Container(
+      constraints: BoxConstraints(maxHeight: alturaMax),
       decoration: const BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -144,9 +149,10 @@ class _ModalFiltrosVeiculoState extends State<ModalFiltrosVeiculo> {
         left: 20,
         right: 20,
         top: 12,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
       ),
-      child: SingleChildScrollView(
+      child: SafeArea(
+        top: false,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -168,18 +174,23 @@ class _ModalFiltrosVeiculoState extends State<ModalFiltrosVeiculo> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    Icon(Icons.tune_outlined, color: Colors.blueGrey[900], size: 22),
-                    const SizedBox(width: 8),
-                    const Text(
-                      'Filtros de Veículos',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
+                Expanded(
+                  child: Row(
+                    children: [
+                      Icon(Icons.tune_outlined, color: Colors.blueGrey[900], size: 22),
+                      const SizedBox(width: 8),
+                      const Flexible(
+                        child: Text(
+                          'Filtros de Veículos',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
                 TextButton(
                   onPressed: () {
@@ -193,153 +204,166 @@ class _ModalFiltrosVeiculoState extends State<ModalFiltrosVeiculo> {
             ),
             const Divider(height: 1),
 
-            // 1. FILTRO POR STATUS
-            _secaoTitulo('Status Operacional'),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _chipOpcao(
-                  label: 'Todos',
-                  selecionado: _filtroTemp.status == 'todos',
-                  onTap: () => setState(() => _filtroTemp.status = 'todos'),
+            // CORPO ROLÁVEL DOS GRUPOS DE FILTRO
+            Flexible(
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 1. FILTRO POR STATUS
+                    _secaoTitulo('Status Operacional'),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _chipOpcao(
+                          label: 'Todos',
+                          selecionado: _filtroTemp.status == 'todos',
+                          onTap: () => setState(() => _filtroTemp.status = 'todos'),
+                        ),
+                        _chipOpcao(
+                          label: 'Disponível',
+                          icone: Icons.circle,
+                          corIcone: Colors.green,
+                          selecionado: _filtroTemp.status == 'disponivel',
+                          onTap: () => setState(() => _filtroTemp.status = 'disponivel'),
+                        ),
+                        _chipOpcao(
+                          label: 'Em Viagem',
+                          icone: Icons.circle,
+                          corIcone: Colors.blue,
+                          selecionado: _filtroTemp.status == 'emViagem',
+                          onTap: () => setState(() => _filtroTemp.status = 'emViagem'),
+                        ),
+                        _chipOpcao(
+                          label: 'Em Manutenção',
+                          icone: Icons.circle,
+                          corIcone: Colors.orange,
+                          selecionado: _filtroTemp.status == 'emManutencao',
+                          onTap: () => setState(() => _filtroTemp.status = 'emManutencao'),
+                        ),
+                        _chipOpcao(
+                          label: 'Inativo',
+                          icone: Icons.circle,
+                          corIcone: Colors.grey,
+                          selecionado: _filtroTemp.status == 'inativo',
+                          onTap: () => setState(() => _filtroTemp.status = 'inativo'),
+                        ),
+                      ],
+                    ),
+
+                    // 2. FILTRO POR TIPO DE VEÍCULO
+                    _secaoTitulo('Tipo de Veículo'),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _chipOpcao(
+                          label: 'Todos',
+                          selecionado: _filtroTemp.tipo == 'todos',
+                          onTap: () => setState(() => _filtroTemp.tipo = 'todos'),
+                        ),
+                        _chipOpcao(
+                          label: 'Van',
+                          icone: Icons.airport_shuttle_outlined,
+                          selecionado: _filtroTemp.tipo == 'van',
+                          onTap: () => setState(() => _filtroTemp.tipo = 'van'),
+                        ),
+                        _chipOpcao(
+                          label: 'Ambulância',
+                          icone: Icons.emergency_outlined,
+                          corIcone: Colors.red[700],
+                          selecionado: _filtroTemp.tipo == 'ambulancia',
+                          onTap: () => setState(() => _filtroTemp.tipo = 'ambulancia'),
+                        ),
+                        _chipOpcao(
+                          label: 'Ônibus / Micro',
+                          icone: Icons.directions_bus_outlined,
+                          selecionado: _filtroTemp.tipo == 'onibus',
+                          onTap: () => setState(() => _filtroTemp.tipo = 'onibus'),
+                        ),
+                        _chipOpcao(
+                          label: 'Carro',
+                          icone: Icons.directions_car_outlined,
+                          selecionado: _filtroTemp.tipo == 'carro',
+                          onTap: () => setState(() => _filtroTemp.tipo = 'carro'),
+                        ),
+                      ],
+                    ),
+
+                    // 3. FILTRO POR OPCIONAIS / EQUIPAMENTOS
+                    _secaoTitulo('Opcionais e Recursos'),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _chipOpcao(
+                          label: 'Com Ar-condicionado',
+                          icone: Icons.ac_unit_outlined,
+                          corIcone: Colors.blue,
+                          selecionado: _filtroTemp.possuiAC,
+                          onTap: () => setState(() => _filtroTemp.possuiAC = !_filtroTemp.possuiAC),
+                        ),
+                        _chipOpcao(
+                          label: 'Acesso Preferencial / PCD',
+                          icone: Icons.accessible_outlined,
+                          corIcone: Colors.purple,
+                          selecionado: _filtroTemp.possuiPreferencial,
+                          onTap: () => setState(
+                            () => _filtroTemp.possuiPreferencial = !_filtroTemp.possuiPreferencial,
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    // 4. FILTRO POR CAPACIDADE DE ASSENTOS
+                    _secaoTitulo('Capacidade de Assentos'),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _chipOpcao(
+                          label: 'Qualquer capacidade',
+                          selecionado: _filtroTemp.faixaAssentos == 'todos',
+                          onTap: () => setState(() => _filtroTemp.faixaAssentos = 'todos'),
+                        ),
+                        _chipOpcao(
+                          label: 'Até 5 lugares',
+                          icone: Icons.chair_outlined,
+                          selecionado: _filtroTemp.faixaAssentos == 'ate_5',
+                          onTap: () => setState(() => _filtroTemp.faixaAssentos = 'ate_5'),
+                        ),
+                        _chipOpcao(
+                          label: '6 a 15 lugares',
+                          icone: Icons.event_seat_outlined,
+                          selecionado: _filtroTemp.faixaAssentos == '6_a_15',
+                          onTap: () => setState(() => _filtroTemp.faixaAssentos = '6_a_15'),
+                        ),
+                        _chipOpcao(
+                          label: 'Mais de 15 lugares',
+                          icone: Icons.groups_outlined,
+                          selecionado: _filtroTemp.faixaAssentos == 'mais_15',
+                          onTap: () => setState(() => _filtroTemp.faixaAssentos = 'mais_15'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                  ],
                 ),
-                _chipOpcao(
-                  label: 'Disponível',
-                  icone: Icons.circle,
-                  corIcone: Colors.green,
-                  selecionado: _filtroTemp.status == 'disponivel',
-                  onTap: () => setState(() => _filtroTemp.status = 'disponivel'),
-                ),
-                _chipOpcao(
-                  label: 'Em Viagem',
-                  icone: Icons.circle,
-                  corIcone: Colors.blue,
-                  selecionado: _filtroTemp.status == 'emViagem',
-                  onTap: () => setState(() => _filtroTemp.status = 'emViagem'),
-                ),
-                _chipOpcao(
-                  label: 'Em Manutenção',
-                  icone: Icons.circle,
-                  corIcone: Colors.orange,
-                  selecionado: _filtroTemp.status == 'emManutencao',
-                  onTap: () => setState(() => _filtroTemp.status = 'emManutencao'),
-                ),
-                _chipOpcao(
-                  label: 'Inativo',
-                  icone: Icons.circle,
-                  corIcone: Colors.grey,
-                  selecionado: _filtroTemp.status == 'inativo',
-                  onTap: () => setState(() => _filtroTemp.status = 'inativo'),
-                ),
-              ],
+              ),
             ),
 
-            // 2. FILTRO POR TIPO DE VEÍCULO
-            _secaoTitulo('Tipo de Veículo'),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _chipOpcao(
-                  label: 'Todos',
-                  selecionado: _filtroTemp.tipo == 'todos',
-                  onTap: () => setState(() => _filtroTemp.tipo = 'todos'),
-                ),
-                _chipOpcao(
-                  label: 'Van',
-                  icone: Icons.airport_shuttle_outlined,
-                  selecionado: _filtroTemp.tipo == 'van',
-                  onTap: () => setState(() => _filtroTemp.tipo = 'van'),
-                ),
-                _chipOpcao(
-                  label: 'Ambulância',
-                  icone: Icons.emergency_outlined,
-                  corIcone: Colors.red[700],
-                  selecionado: _filtroTemp.tipo == 'ambulancia',
-                  onTap: () => setState(() => _filtroTemp.tipo = 'ambulancia'),
-                ),
-                _chipOpcao(
-                  label: 'Ônibus / Micro',
-                  icone: Icons.directions_bus_outlined,
-                  selecionado: _filtroTemp.tipo == 'onibus',
-                  onTap: () => setState(() => _filtroTemp.tipo = 'onibus'),
-                ),
-                _chipOpcao(
-                  label: 'Carro',
-                  icone: Icons.directions_car_outlined,
-                  selecionado: _filtroTemp.tipo == 'carro',
-                  onTap: () => setState(() => _filtroTemp.tipo = 'carro'),
-                ),
-              ],
-            ),
+            const Divider(height: 1),
+            const SizedBox(height: 12),
 
-            // 3. FILTRO POR OPCIONAIS / EQUIPAMENTOS
-            _secaoTitulo('Opcionais e Recursos'),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _chipOpcao(
-                  label: 'Com Ar-condicionado',
-                  icone: Icons.ac_unit_outlined,
-                  corIcone: Colors.blue,
-                  selecionado: _filtroTemp.possuiAC,
-                  onTap: () => setState(() => _filtroTemp.possuiAC = !_filtroTemp.possuiAC),
-                ),
-                _chipOpcao(
-                  label: 'Acesso Preferencial / PCD',
-                  icone: Icons.accessible_outlined,
-                  corIcone: Colors.purple,
-                  selecionado: _filtroTemp.possuiPreferencial,
-                  onTap: () => setState(
-                      () => _filtroTemp.possuiPreferencial = !_filtroTemp.possuiPreferencial),
-                ),
-              ],
-            ),
-
-            // 4. FILTRO POR CAPACIDADE DE ASSENTOS
-            _secaoTitulo('Capacidade de Assentos'),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _chipOpcao(
-                  label: 'Qualquer capacidade',
-                  selecionado: _filtroTemp.faixaAssentos == 'todos',
-                  onTap: () => setState(() => _filtroTemp.faixaAssentos = 'todos'),
-                ),
-                _chipOpcao(
-                  label: 'Até 5 lugares',
-                  icone: Icons.chair_outlined,
-                  selecionado: _filtroTemp.faixaAssentos == 'ate_5',
-                  onTap: () => setState(() => _filtroTemp.faixaAssentos = 'ate_5'),
-                ),
-                _chipOpcao(
-                  label: '6 a 15 lugares',
-                  icone: Icons.event_seat_outlined,
-                  selecionado: _filtroTemp.faixaAssentos == '6_a_15',
-                  onTap: () => setState(() => _filtroTemp.faixaAssentos = '6_a_15'),
-                ),
-                _chipOpcao(
-                  label: 'Mais de 15 lugares',
-                  icone: Icons.groups_outlined,
-                  selecionado: _filtroTemp.faixaAssentos == 'mais_15',
-                  onTap: () => setState(() => _filtroTemp.faixaAssentos = 'mais_15'),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 24),
-
-            // BOTÃO APLICAR FILTROS
+            // BOTÃO APLICAR FILTROS FIXO NA BASE
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.green[700],
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),
                   ),

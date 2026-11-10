@@ -170,6 +170,8 @@ class _FormularioInicioViagemState extends State<FormularioInicioViagem> {
 
   @override
   Widget build(BuildContext context) {
+    final telaPequena = MediaQuery.sizeOf(context).width < 360;
+
     return Center(
       child: Material(
         color: Colors.white,
@@ -179,7 +181,10 @@ class _FormularioInicioViagemState extends State<FormularioInicioViagem> {
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 420),
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
+            padding: EdgeInsets.symmetric(
+              horizontal: telaPequena ? 16 : 20,
+              vertical: 20,
+            ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -288,17 +293,18 @@ class _FormularioInicioViagemState extends State<FormularioInicioViagem> {
                   },
                 ),
                 const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 8,
+                  runSpacing: 4,
                   children: [
-                    const Flexible(
-                      child: Text(
-                        'Quilometragem Inicial',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF0F172A),
-                        ),
+                    const Text(
+                      'Quilometragem Inicial',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF0F172A),
                       ),
                     ),
                     if (_veiculoSelecionado != null)
@@ -367,13 +373,17 @@ class _FormularioInicioViagemState extends State<FormularioInicioViagem> {
                   ),
                 ),
                 const SizedBox(height: 24),
-                SizedBox(
-                  height: 50,
+                ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: 50),
                   child: ElevatedButton(
                     key: const Key('botaoIniciarViagem'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF0F172A),
                       foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
@@ -394,11 +404,14 @@ class _FormularioInicioViagemState extends State<FormularioInicioViagem> {
                             children: [
                               Icon(Icons.play_arrow_rounded, size: 24),
                               SizedBox(width: 8),
-                              Text(
-                                'Iniciar Viagem',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
+                              Flexible(
+                                child: Text(
+                                  'Iniciar Viagem',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                               ),
                             ],

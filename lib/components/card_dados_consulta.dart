@@ -30,15 +30,19 @@ class CardDadosConsulta extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  'DADOS DO AGENDAMENTO',
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 0.5,
-                    color: Color(0xFF64748B),
+                const Expanded(
+                  child: Text(
+                    'DADOS DO AGENDAMENTO',
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.5,
+                      color: Color(0xFF64748B),
+                    ),
                   ),
                 ),
+                const SizedBox(width: 8),
                 Text(
                   'Hoje',
                   style: TextStyle(
@@ -126,20 +130,20 @@ class _ItemLinhaConsulta extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 2),
-              Row(
+              Wrap(
+                spacing: 6,
+                runSpacing: 2,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  Expanded(
-                    child: Text(
-                      valor.isNotEmpty ? valor : 'Não informado',
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF0F172A),
-                      ),
+                  Text(
+                    valor.isNotEmpty ? valor : 'Não informado',
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF0F172A),
                     ),
                   ),
-                  if (detalheExtra != null) ...[
-                    const SizedBox(width: 6),
+                  if (detalheExtra != null)
                     Text(
                       detalheExtra!,
                       style: const TextStyle(
@@ -148,7 +152,6 @@ class _ItemLinhaConsulta extends StatelessWidget {
                         fontWeight: FontWeight.w500,
                       ),
                     ),
-                  ],
                 ],
               ),
             ],

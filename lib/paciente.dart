@@ -128,8 +128,9 @@ class _PacienteState extends State<Paciente> {
       final confirmar = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
           title: const Text('Tem certeza dessa ação?'),
-          content: Text(mensagemConfirmacao),
+          content: SingleChildScrollView(child: Text(mensagemConfirmacao)),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(false),
@@ -562,6 +563,8 @@ class _PacienteState extends State<Paciente> {
             ),
             title: const Text(
               'Painel do Paciente',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -586,7 +589,10 @@ class _PacienteState extends State<Paciente> {
           ),
           body: SafeArea(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(16.0),
+              padding: EdgeInsets.symmetric(
+                horizontal: MediaQuery.sizeOf(context).width < 360 ? 12.0 : 16.0,
+                vertical: 16.0,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -637,93 +643,131 @@ class _PacienteState extends State<Paciente> {
     required bool fuiEmboraHabilitado,
     required bool estouProntoHabilitado,
   }) {
-    return Row(
-      children: [
-        Expanded(
-          child: SizedBox(
-            height: 54,
-            child: OutlinedButton.icon(
-              key: const Key('botao_fui_embora'),
-              style: OutlinedButton.styleFrom(
-                side: BorderSide(
+    final botaoFuiEmbora = ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 54),
+      child: OutlinedButton(
+        key: const Key('botao_fui_embora'),
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          side: BorderSide(
+            color: fuiEmboraHabilitado
+                ? const Color(0xFFB83227)
+                : Colors.grey.shade400,
+            width: 1.5,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          backgroundColor: fuiEmboraHabilitado
+              ? const Color(0xFFFFFDF8)
+              : const Color(0xFFF1F5F9),
+        ),
+        onPressed: fuiEmboraHabilitado
+            ? () => _solicitarCancelamentoComConfirmacao(paciente)
+            : null,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.cancel_outlined,
+              color: fuiEmboraHabilitado
+                  ? const Color(0xFFB83227)
+                  : Colors.grey.shade400,
+              size: 18,
+            ),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                'Fui embora',
+                textAlign: TextAlign.center,
+                style: TextStyle(
                   color: fuiEmboraHabilitado
                       ? const Color(0xFFB83227)
                       : Colors.grey.shade400,
-                  width: 1.5,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                backgroundColor: fuiEmboraHabilitado
-                    ? const Color(0xFFFFFDF8)
-                    : const Color(0xFFF1F5F9),
-              ),
-              icon: Icon(
-                Icons.cancel_outlined,
-                color: fuiEmboraHabilitado
-                    ? const Color(0xFFB83227)
-                    : Colors.grey.shade400,
-                size: 18,
-              ),
-              label: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
-                  'Fui embora',
-                  style: TextStyle(
-                    color: fuiEmboraHabilitado
-                        ? const Color(0xFFB83227)
-                        : Colors.grey.shade400,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
-                  ),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
                 ),
               ),
-              onPressed: fuiEmboraHabilitado
-                  ? () => _solicitarCancelamentoComConfirmacao(paciente)
-                  : null,
             ),
-          ),
+          ],
         ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: SizedBox(
-            height: 54,
-            child: ElevatedButton.icon(
-              key: const Key('botao_estou_pronto'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: estouProntoHabilitado
-                    ? const Color(0xFF0F172A)
-                    : Colors.grey.shade400,
-                foregroundColor: Colors.white,
-                disabledBackgroundColor: Colors.grey.shade400,
-                disabledForegroundColor: Colors.white70,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                elevation: estouProntoHabilitado ? 2 : 0,
-              ),
-              icon: const Icon(
-                Icons.check_circle_outline,
-                size: 18,
-                color: Colors.white,
-              ),
-              label: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
-                  paciente.prontoRetorno ? 'Pronto (Avisado)' : 'Estou Pronto',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
-                  ),
-                ),
-              ),
-              onPressed: estouProntoHabilitado
-                  ? () => _sinalizarProntoComConfirmacao(paciente)
-                  : null,
+      ),
+    );
+
+    final botaoEstouPronto = ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 54),
+      child: ElevatedButton(
+        key: const Key('botao_estou_pronto'),
+        style: ElevatedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          backgroundColor: estouProntoHabilitado
+              ? const Color(0xFF0F172A)
+              : Colors.grey.shade400,
+          foregroundColor: Colors.white,
+          disabledBackgroundColor: Colors.grey.shade400,
+          disabledForegroundColor: Colors.white70,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          elevation: estouProntoHabilitado ? 2 : 0,
+        ),
+        onPressed: estouProntoHabilitado
+            ? () => _sinalizarProntoComConfirmacao(paciente)
+            : null,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              Icons.check_circle_outline,
+              size: 18,
+              color: Colors.white,
             ),
-          ),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                paciente.prontoRetorno ? 'Pronto (Avisado)' : 'Estou Pronto',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+          ],
         ),
-      ],
+      ),
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final fonteAmpliada = MediaQuery.textScalerOf(context).scale(13) > 20;
+        final empilhar =
+            constraints.maxWidth < 280 || (constraints.maxWidth < 340 && fonteAmpliada);
+
+        if (empilhar) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              botaoFuiEmbora,
+              const SizedBox(height: 10),
+              botaoEstouPronto,
+            ],
+          );
+        }
+
+        return IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(child: botaoFuiEmbora),
+              const SizedBox(width: 10),
+              Expanded(child: botaoEstouPronto),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -731,28 +775,29 @@ class _PacienteState extends State<Paciente> {
     return Container(
       key: const Key('mensagem_apoio_botoes_inativos'),
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.info_outline, size: 16, color: Color(0xFF64748B)),
+          const Padding(
+            padding: EdgeInsets.only(top: 2),
+            child: Icon(Icons.info_outline, size: 16, color: Color(0xFF64748B)),
+          ),
           const SizedBox(width: 8),
           Flexible(
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                mensagemApoio,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF475569),
-                ),
+            child: Text(
+              mensagemApoio,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF475569),
               ),
             ),
           ),

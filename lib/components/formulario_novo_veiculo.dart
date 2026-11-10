@@ -420,22 +420,27 @@ class _FormularioNovoVeiculoState extends State<FormularioNovoVeiculo> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    children: [
-                      Icon(
-                        _isEdicao ? Icons.edit_outlined : Icons.add_circle_outline,
-                        color: Colors.green[700],
-                        size: 24,
-                      ),
-                      const SizedBox(width: 10),
-                      Text(
-                        _isEdicao ? 'Editar Veículo' : 'Novo Veículo',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Icon(
+                          _isEdicao ? Icons.edit_outlined : Icons.add_circle_outline,
+                          color: Colors.green[700],
+                          size: 24,
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 10),
+                        Flexible(
+                          child: Text(
+                            _isEdicao ? 'Editar Veículo' : 'Novo Veículo',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   IconButton(
                     icon: const Icon(Icons.close),
@@ -470,139 +475,157 @@ class _FormularioNovoVeiculoState extends State<FormularioNovoVeiculo> {
                         children: [
                           Padding(
                             padding: const EdgeInsets.all(12),
-                            child: Column(
-                              children: [
-                                Row(
+                            child: LayoutBuilder(
+                              builder: (context, constraints) {
+                                final empilhar = constraints.maxWidth < 360;
+
+                                final campoPlaca = Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Expanded(
-                                      flex: 3,
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          TextFormField(
-                                            controller: _placaController,
-                                            validator: (valor) {
-                                              final limpa = (valor ?? '')
-                                                  .replaceAll(RegExp(r'[^A-Za-z0-9]'), '')
-                                                  .toUpperCase();
-                                              if (limpa.isEmpty) {
-                                                return 'Informe a placa';
-                                              }
-                                              if (limpa.length < 7) {
-                                                return 'A placa deve ter 7 dígitos';
-                                              }
-                                              if (_placaJaExiste(limpa)) {
-                                                return 'Esta placa já pertence a outro veículo';
-                                              }
-                                              // Placa fora do padrão Mercosul/antigo NÃO bloqueia, apenas alerta visualmente
-                                              return null;
-                                            },
-                                            decoration: _campoDecoracao(
-                                              label: 'Placa *',
-                                              hint: 'Ex: ABC1D23 ou ABC1234',
-                                              icone: Icons.pin_outlined,
-                                            ),
-                                          ),
-                                          ValueListenableBuilder<_StatusPlacaInfo?>(
-                                            valueListenable: _avisoPlacaNotifier,
-                                            builder: (context, info, _) {
-                                              if (info == null) return const SizedBox.shrink();
-                                              return Padding(
-                                                padding: const EdgeInsets.only(top: 6, left: 4),
-                                                child: Row(
-                                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                                  children: [
-                                                    Icon(info.icone, size: 16, color: info.cor),
-                                                    const SizedBox(width: 6),
-                                                    Expanded(
-                                                      child: Text(
-                                                        info.mensagem,
-                                                        style: TextStyle(
-                                                          fontSize: 12,
-                                                          fontWeight: FontWeight.w500,
-                                                          color: info.cor,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ],
+                                    TextFormField(
+                                      controller: _placaController,
+                                      validator: (valor) {
+                                        final limpa = (valor ?? '')
+                                            .replaceAll(RegExp(r'[^A-Za-z0-9]'), '')
+                                            .toUpperCase();
+                                        if (limpa.isEmpty) {
+                                          return 'Informe a placa';
+                                        }
+                                        if (limpa.length < 7) {
+                                          return 'A placa deve ter 7 dígitos';
+                                        }
+                                        if (_placaJaExiste(limpa)) {
+                                          return 'Esta placa já pertence a outro veículo';
+                                        }
+                                        // Placa fora do padrão Mercosul/antigo NÃO bloqueia, apenas alerta visualmente
+                                        return null;
+                                      },
+                                      decoration: _campoDecoracao(
+                                        label: 'Placa *',
+                                        hint: 'Ex: ABC1D23 ou ABC1234',
+                                        icone: Icons.pin_outlined,
+                                      ),
+                                    ),
+                                    ValueListenableBuilder<_StatusPlacaInfo?>(
+                                      valueListenable: _avisoPlacaNotifier,
+                                      builder: (context, info, _) {
+                                        if (info == null) return const SizedBox.shrink();
+                                        return Padding(
+                                          padding: const EdgeInsets.only(top: 6, left: 4),
+                                          child: Row(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Icon(info.icone, size: 16, color: info.cor),
+                                              const SizedBox(width: 6),
+                                              Expanded(
+                                                child: Text(
+                                                  info.mensagem,
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.w500,
+                                                    color: info.cor,
+                                                  ),
                                                 ),
-                                              );
-                                            },
+                                              ),
+                                            ],
                                           ),
-                                        ],
-                                      ),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      flex: 2,
-                                      child: TextFormField(
-                                        controller: _anoController,
-                                        keyboardType: TextInputType.number,
-                                        validator: (valor) {
-                                          if (valor == null || valor.trim().isEmpty) {
-                                            return 'Informe o ano';
-                                          }
-                                          final num = int.tryParse(valor.trim());
-                                          if (num == null || num < 1980 || num > DateTime.now().year + 1) {
-                                            return 'Ano inválido';
-                                          }
-                                          return null;
-                                        },
-                                        decoration: _campoDecoracao(
-                                          label: 'Ano *',
-                                          hint: '2024',
-                                          icone: Icons.calendar_today_outlined,
-                                        ),
-                                      ),
+                                        );
+                                      },
                                     ),
                                   ],
-                                ),
-                                const SizedBox(height: 12),
-                                Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                );
+
+                                final campoAno = TextFormField(
+                                  controller: _anoController,
+                                  keyboardType: TextInputType.number,
+                                  validator: (valor) {
+                                    if (valor == null || valor.trim().isEmpty) {
+                                      return 'Informe o ano';
+                                    }
+                                    final num = int.tryParse(valor.trim());
+                                    if (num == null || num < 1980 || num > DateTime.now().year + 1) {
+                                      return 'Ano inválido';
+                                    }
+                                    return null;
+                                  },
+                                  decoration: _campoDecoracao(
+                                    label: 'Ano *',
+                                    hint: '2024',
+                                    icone: Icons.calendar_today_outlined,
+                                  ),
+                                );
+
+                                final campoMarca = _construirCampoAutocomplete(
+                                  controller: _marcaController,
+                                  focusNode: _marcaFocusNode,
+                                  label: 'Marca *',
+                                  hint: 'Ex: Renault, Fiat',
+                                  icone: Icons.directions_car_outlined,
+                                  opcoesCallback: _obterSugestoesMarca,
+                                  validator: (valor) => (valor == null || valor.trim().isEmpty)
+                                      ? 'Informe a marca'
+                                      : null,
+                                );
+
+                                final campoModelo = _construirCampoAutocomplete(
+                                  controller: _modeloController,
+                                  focusNode: _modeloFocusNode,
+                                  label: 'Modelo *',
+                                  hint: 'Ex: Master, Ducato',
+                                  icone: Icons.info_outline,
+                                  opcoesCallback: _obterSugestoesModelo,
+                                  validator: (valor) => (valor == null || valor.trim().isEmpty)
+                                      ? 'Informe o modelo'
+                                      : null,
+                                  onSelecionado: (modeloSelecionado) {
+                                    // Autopreenchimento inteligente da marca se ainda estiver em branco
+                                    if (_marcaController.text.trim().isEmpty) {
+                                      for (final entry in _modelosPorMarca.entries) {
+                                        if (entry.value.contains(modeloSelecionado)) {
+                                          _marcaController.text = entry.key;
+                                          break;
+                                        }
+                                      }
+                                    }
+                                  },
+                                );
+
+                                if (empilhar) {
+                                  return Column(
+                                    children: [
+                                      campoPlaca,
+                                      const SizedBox(height: 12),
+                                      campoAno,
+                                      const SizedBox(height: 12),
+                                      campoMarca,
+                                      const SizedBox(height: 12),
+                                      campoModelo,
+                                    ],
+                                  );
+                                }
+
+                                return Column(
                                   children: [
-                                    Expanded(
-                                      child: _construirCampoAutocomplete(
-                                        controller: _marcaController,
-                                        focusNode: _marcaFocusNode,
-                                        label: 'Marca *',
-                                        hint: 'Ex: Renault, Fiat',
-                                        icone: Icons.directions_car_outlined,
-                                        opcoesCallback: _obterSugestoesMarca,
-                                        validator: (valor) => (valor == null || valor.trim().isEmpty)
-                                            ? 'Informe a marca'
-                                            : null,
-                                      ),
+                                    Row(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Expanded(flex: 3, child: campoPlaca),
+                                        const SizedBox(width: 10),
+                                        Expanded(flex: 2, child: campoAno),
+                                      ],
                                     ),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: _construirCampoAutocomplete(
-                                        controller: _modeloController,
-                                        focusNode: _modeloFocusNode,
-                                        label: 'Modelo *',
-                                        hint: 'Ex: Master, Ducato',
-                                        icone: Icons.info_outline,
-                                        opcoesCallback: _obterSugestoesModelo,
-                                        validator: (valor) => (valor == null || valor.trim().isEmpty)
-                                            ? 'Informe o modelo'
-                                            : null,
-                                        onSelecionado: (modeloSelecionado) {
-                                          // Autopreenchimento inteligente da marca se ainda estiver em branco
-                                          if (_marcaController.text.trim().isEmpty) {
-                                            for (final entry in _modelosPorMarca.entries) {
-                                              if (entry.value.contains(modeloSelecionado)) {
-                                                _marcaController.text = entry.key;
-                                                break;
-                                              }
-                                            }
-                                          }
-                                        },
-                                      ),
+                                    const SizedBox(height: 12),
+                                    Row(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Expanded(child: campoMarca),
+                                        const SizedBox(width: 10),
+                                        Expanded(child: campoModelo),
+                                      ],
                                     ),
                                   ],
-                                ),
-                              ],
+                                );
+                              },
                             ),
                           ),
                         ],
@@ -631,6 +654,7 @@ class _FormularioNovoVeiculoState extends State<FormularioNovoVeiculo> {
                               children: [
                                 DropdownButtonFormField<String>(
                                   initialValue: _tipoSelecionado,
+                                  isExpanded: true,
                                   decoration: _campoDecoracao(
                                     label: 'Tipo de Veículo',
                                     icone: Icons.local_shipping_outlined,
@@ -638,7 +662,10 @@ class _FormularioNovoVeiculoState extends State<FormularioNovoVeiculo> {
                                   items: _tipos.map((tipo) {
                                     return DropdownMenuItem<String>(
                                       value: tipo['valor'],
-                                      child: Text(tipo['nome']!),
+                                      child: Text(
+                                        tipo['nome']!,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
                                     );
                                   }).toList(),
                                   onChanged: (valor) {
@@ -650,6 +677,7 @@ class _FormularioNovoVeiculoState extends State<FormularioNovoVeiculo> {
                                 const SizedBox(height: 12),
                                 DropdownButtonFormField<String>(
                                   initialValue: _statusSelecionado,
+                                  isExpanded: true,
                                   decoration: _campoDecoracao(
                                     label: 'Status do Veículo',
                                     icone: Icons.flag_outlined,
@@ -657,7 +685,10 @@ class _FormularioNovoVeiculoState extends State<FormularioNovoVeiculo> {
                                   items: _statusOpcoes.map((st) {
                                     return DropdownMenuItem<String>(
                                       value: st['valor'],
-                                      child: Text(st['nome']!),
+                                      child: Text(
+                                        st['nome']!,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
                                     );
                                   }).toList(),
                                   onChanged: (valor) {
@@ -691,46 +722,59 @@ class _FormularioNovoVeiculoState extends State<FormularioNovoVeiculo> {
                         children: [
                           Padding(
                             padding: const EdgeInsets.all(12),
-                            child: Column(
-                              children: [
-                                Row(
+                            child: LayoutBuilder(
+                              builder: (context, constraints) {
+                                final empilhar = constraints.maxWidth < 360;
+
+                                final campoAssentos = TextFormField(
+                                  controller: _assentosController,
+                                  keyboardType: TextInputType.number,
+                                  validator: (val) {
+                                    final n = int.tryParse(val ?? '');
+                                    if (n == null || n <= 0) return 'Mínimo 1';
+                                    return null;
+                                  },
+                                  decoration: _campoDecoracao(
+                                    label: 'Qtd. Assentos *',
+                                    hint: 'Ex: 15',
+                                    icone: Icons.chair_outlined,
+                                  ),
+                                );
+
+                                final campoKm = TextFormField(
+                                  controller: _kmController,
+                                  keyboardType: TextInputType.number,
+                                  validator: (val) {
+                                    final n = int.tryParse(val ?? '');
+                                    if (n == null || n < 0) return 'Km inválido';
+                                    return null;
+                                  },
+                                  decoration: _campoDecoracao(
+                                    label: 'Km Atual *',
+                                    hint: 'Ex: 45000',
+                                    icone: Icons.speed_outlined,
+                                  ),
+                                );
+
+                                if (empilhar) {
+                                  return Column(
+                                    children: [
+                                      campoAssentos,
+                                      const SizedBox(height: 12),
+                                      campoKm,
+                                    ],
+                                  );
+                                }
+
+                                return Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Expanded(
-                                      child: TextFormField(
-                                        controller: _assentosController,
-                                        keyboardType: TextInputType.number,
-                                        validator: (val) {
-                                          final n = int.tryParse(val ?? '');
-                                          if (n == null || n <= 0) return 'Mínimo 1';
-                                          return null;
-                                        },
-                                        decoration: _campoDecoracao(
-                                          label: 'Qtd. Assentos *',
-                                          hint: 'Ex: 15',
-                                          icone: Icons.chair_outlined,
-                                        ),
-                                      ),
-                                    ),
+                                    Expanded(child: campoAssentos),
                                     const SizedBox(width: 10),
-                                    Expanded(
-                                      child: TextFormField(
-                                        controller: _kmController,
-                                        keyboardType: TextInputType.number,
-                                        validator: (val) {
-                                          final n = int.tryParse(val ?? '');
-                                          if (n == null || n < 0) return 'Km inválido';
-                                          return null;
-                                        },
-                                        decoration: _campoDecoracao(
-                                          label: 'Km Atual *',
-                                          hint: 'Ex: 45000',
-                                          icone: Icons.speed_outlined,
-                                        ),
-                                      ),
-                                    ),
+                                    Expanded(child: campoKm),
                                   ],
-                                ),
-                              ],
+                                );
+                              },
                             ),
                           ),
                         ],
@@ -830,41 +874,55 @@ class _FormularioNovoVeiculoState extends State<FormularioNovoVeiculo> {
                 borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
                 border: Border(top: BorderSide(color: Colors.grey.shade200)),
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: Text(
-                      'Cancelar',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey[800],
+              child: SizedBox(
+                width: double.infinity,
+                child: Wrap(
+                  alignment: WrapAlignment.end,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 12,
+                  runSpacing: 8,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: Text(
+                        'Cancelar',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey[800],
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  ElevatedButton.icon(
-                    onPressed: _salvar,
-                    icon: const Icon(Icons.check, size: 18),
-                    label: Text(
-                      _isEdicao ? 'Salvar Alterações' : 'Salvar Veículo',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green[700],
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 14,
+                    ElevatedButton(
+                      onPressed: _salvar,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green[700],
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 14,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
                       ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.check, size: 18),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              _isEdicao ? 'Salvar Alterações' : 'Salvar Veículo',
+                              style: const TextStyle(fontWeight: FontWeight.bold),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ],

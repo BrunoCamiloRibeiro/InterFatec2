@@ -355,6 +355,7 @@ class _FormularioEncerramentoState extends State<FormularioEncerramento> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       backgroundColor: Colors.white,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       title: Row(
@@ -377,9 +378,9 @@ class _FormularioEncerramentoState extends State<FormularioEncerramento> {
           ),
         ],
       ),
-      content: SingleChildScrollView(
-        child: SizedBox(
-          width: 340,
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 340),
+        child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,

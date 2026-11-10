@@ -1016,39 +1016,46 @@ class _MotoristaState extends State<Motorista> {
   Widget _construirTelaCarregamentoViagem() {
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF38BDF8)),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Carregando viagem ativa...',
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
-                fontSize: 16,
-              ),
-            ),
-            const SizedBox(height: 24),
-            TextButton(
-              key: const Key('botaoCancelarCarregandoViagem'),
-              onPressed: () {
-                _cancelarTimeoutCarregamentoViagem();
-                _resetarEstadoParaNovaViagem(_obterIdMotoristaSessao());
-              },
-              child: const Text(
-                'Iniciar nova viagem',
-                style: TextStyle(
-                  color: Color(0xFF94A3B8),
-                  fontSize: 14,
-                  decoration: TextDecoration.underline,
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF38BDF8)),
                 ),
-              ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Carregando viagem ativa...',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                TextButton(
+                  key: const Key('botaoCancelarCarregandoViagem'),
+                  onPressed: () {
+                    _cancelarTimeoutCarregamentoViagem();
+                    _resetarEstadoParaNovaViagem(_obterIdMotoristaSessao());
+                  },
+                  child: const Text(
+                    'Iniciar nova viagem',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Color(0xFF94A3B8),
+                      fontSize: 14,
+                      decoration: TextDecoration.underline,
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -1058,7 +1065,10 @@ class _MotoristaState extends State<Motorista> {
     final idMotoristaSessao = _obterIdMotoristaSessao();
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Início da Viagem'),
+        title: const Text(
+          'Início da Viagem',
+          overflow: TextOverflow.ellipsis,
+        ),
         backgroundColor: const Color(0xFF0F172A),
         foregroundColor: Colors.white,
         elevation: 2,
@@ -1075,7 +1085,7 @@ class _MotoristaState extends State<Motorista> {
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 18),
             child: FormularioInicioViagem(
               motoristaId: idMotoristaSessao.isNotEmpty
                   ? idMotoristaSessao
@@ -1110,6 +1120,7 @@ class _MotoristaState extends State<Motorista> {
       backgroundColor: const Color(0xFF0F172A),
       foregroundColor: Colors.white,
       elevation: 2,
+      titleSpacing: 4,
       leading: IconButton(
         icon: const Icon(Icons.arrow_back),
         color: Colors.white,
@@ -1123,8 +1134,10 @@ class _MotoristaState extends State<Motorista> {
       ),
       title: const Text(
         'Lista de Passageiros',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
         style: TextStyle(
-          fontSize: 18,
+          fontSize: 17,
           fontWeight: FontWeight.bold,
           color: Colors.white,
         ),
@@ -1132,20 +1145,32 @@ class _MotoristaState extends State<Motorista> {
       actions: [
         if (_viagemAtiva != null)
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10.0),
+            padding: const EdgeInsets.symmetric(horizontal: 6.0),
             child: Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: Colors.green.shade700,
-                  borderRadius: BorderRadius.circular(12),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.sizeOf(context).width < 360 ? 115 : 150,
                 ),
-                child: Text(
-                  'Em Viagem: ${_viagemAtiva!.veiculoPlaca}',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 9,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade700,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      'Em Viagem: ${_viagemAtiva!.veiculoPlaca}',
+                      maxLines: 1,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
                 ),
               ),

@@ -162,12 +162,18 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final larguraTela = MediaQuery.sizeOf(context).width;
+    final telaPequena = larguraTela < 360;
+
     return Scaffold(
       backgroundColor: const Color(0xFFF7F8FA),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+            padding: EdgeInsets.symmetric(
+              horizontal: telaPequena ? 12 : 20,
+              vertical: 20,
+            ),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 420),
               child: Card(
@@ -178,9 +184,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   side: BorderSide(color: Colors.grey.shade300),
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 28,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: telaPequena ? 18 : 24,
+                    vertical: 26,
                   ),
                   child: _modoLogin == 0
                       ? _construirFormularioMotoristaGestao()
@@ -302,10 +308,11 @@ class _LoginScreenState extends State<LoginScreen> {
           Semantics(
             label: 'Alternar para acesso do paciente ou acompanhante',
             button: true,
-            child: TextButton.icon(
+            child: TextButton(
               key: const Key('botaoModoPaciente'),
               style: TextButton.styleFrom(
                 minimumSize: const Size.fromHeight(48),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               ),
               onPressed: _isLoading
                   ? null
@@ -315,18 +322,28 @@ class _LoginScreenState extends State<LoginScreen> {
                         _errorMessage = null;
                       });
                     },
-              icon: const Icon(
-                Icons.badge_outlined,
-                size: 18,
-                color: Color(0xFF0F172A),
-              ),
-              label: const Text(
-                'Acesso do Paciente / Acompanhante',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF0F172A),
-                ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.badge_outlined,
+                    size: 18,
+                    color: Color(0xFF0F172A),
+                  ),
+                  SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      'Acesso do Paciente / Acompanhante',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -426,10 +443,11 @@ class _LoginScreenState extends State<LoginScreen> {
           Semantics(
             label: 'Voltar para login de motorista ou gestão',
             button: true,
-            child: TextButton.icon(
+            child: TextButton(
               key: const Key('botaoVoltarMotorista'),
               style: TextButton.styleFrom(
                 minimumSize: const Size.fromHeight(48),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               ),
               onPressed: _isLoading
                   ? null
@@ -439,18 +457,28 @@ class _LoginScreenState extends State<LoginScreen> {
                         _errorMessage = null;
                       });
                     },
-              icon: const Icon(
-                Icons.directions_bus,
-                size: 18,
-                color: Color(0xFF0F172A),
-              ),
-              label: const Text(
-                'Voltar para Motorista / Gestão',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF0F172A),
-                ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.directions_bus,
+                    size: 18,
+                    color: Color(0xFF0F172A),
+                  ),
+                  SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      'Voltar para Motorista / Gestão',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),

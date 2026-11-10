@@ -300,7 +300,43 @@ class _CardTrackingPacienteState extends State<CardTrackingPaciente>
 
   Widget _construirCabecalho(int totalAtivos) {
     final eAtivo = totalAtivos > 0;
+    final badgeStatus = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: eAtivo ? const Color(0xFFDCFCE7) : const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: eAtivo ? const Color(0xFF86EFAC) : const Color(0xFFCBD5E1),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: eAtivo ? const Color(0xFF16A34A) : const Color(0xFF94A3B8),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              eAtivo ? '$totalAtivos em trânsito' : 'Sem viagens ativas',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: eAtivo ? const Color(0xFF15803D) : const Color(0xFF64748B),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
           width: 40,
@@ -320,52 +356,29 @@ class _CardTrackingPacienteState extends State<CardTrackingPaciente>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Localização dos Motoristas',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF0F172A),
-                ),
+              Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  const Text(
+                    'Localização dos Motoristas',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                  badgeStatus,
+                ],
               ),
-              const SizedBox(height: 2),
+              const SizedBox(height: 3),
               Text(
                 'Visualização da frota ativa em tempo real',
                 style: TextStyle(
                   fontSize: 12,
                   color: Colors.grey.shade600,
-                ),
-              ),
-            ],
-          ),
-        ),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-          decoration: BoxDecoration(
-            color: eAtivo ? const Color(0xFFDCFCE7) : const Color(0xFFF1F5F9),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: eAtivo ? const Color(0xFF86EFAC) : const Color(0xFFCBD5E1),
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: eAtivo ? const Color(0xFF16A34A) : const Color(0xFF94A3B8),
-                ),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                eAtivo ? '$totalAtivos em trânsito' : 'Sem viagens ativas',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  color: eAtivo ? const Color(0xFF15803D) : const Color(0xFF64748B),
                 ),
               ),
             ],
@@ -380,7 +393,37 @@ class _CardTrackingPacienteState extends State<CardTrackingPaciente>
     final gpsNegado = _permissaoGps == LocationPermission.denied ||
         _permissaoGps == LocationPermission.deniedForever;
 
+    final botaoGps = TextButton(
+      onPressed: _pedirPermissaoEAtualizarGps,
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      child: _solicitandoGps
+          ? const SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : Text(
+              gpsAtivo
+                  ? 'Atualizar GPS'
+                  : (gpsNegado ? 'Permitir GPS' : 'Ativar GPS'),
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: gpsAtivo
+                    ? const Color(0xFF2563EB)
+                    : (gpsNegado
+                        ? const Color(0xFFDC2626)
+                        : const Color(0xFF0F172A)),
+              ),
+            ),
+    );
+
     return Container(
+      width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         color: gpsAtivo
@@ -393,65 +436,70 @@ class _CardTrackingPacienteState extends State<CardTrackingPaciente>
               : (gpsNegado ? const Color(0xFFFECACA) : const Color(0xFFE2E8F0)),
         ),
       ),
-      child: Row(
-        children: [
-          Icon(
-            gpsAtivo
-                ? Icons.gps_fixed
-                : (gpsNegado ? Icons.location_disabled : Icons.gps_not_fixed),
-            size: 16,
-            color: gpsAtivo
-                ? const Color(0xFF2563EB)
-                : (gpsNegado ? const Color(0xFFDC2626) : const Color(0xFF64748B)),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              gpsAtivo
-                  ? 'Localização do seu aparelho ativa (exibida no mapa)'
-                  : (gpsNegado
-                      ? 'Permissão de GPS do Android não concedida'
-                      : 'Ative a localização do aparelho para ver sua posição'),
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                color: gpsAtivo
-                    ? const Color(0xFF1E40AF)
-                    : (gpsNegado
-                        ? const Color(0xFF991B1B)
-                        : const Color(0xFF475569)),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final linhaGps = Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Icon(
+                  gpsAtivo
+                      ? Icons.gps_fixed
+                      : (gpsNegado ? Icons.location_disabled : Icons.gps_not_fixed),
+                  size: 16,
+                  color: gpsAtivo
+                      ? const Color(0xFF2563EB)
+                      : (gpsNegado
+                          ? const Color(0xFFDC2626)
+                          : const Color(0xFF64748B)),
+                ),
               ),
-            ),
-          ),
-          TextButton(
-            onPressed: _pedirPermissaoEAtualizarGps,
-            style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              minimumSize: Size.zero,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            child: _solicitandoGps
-                ? const SizedBox(
-                    width: 14,
-                    height: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : Text(
-                    gpsAtivo
-                        ? 'Atualizar GPS'
-                        : (gpsNegado ? 'Permitir GPS' : 'Ativar GPS'),
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: gpsAtivo
-                          ? const Color(0xFF2563EB)
-                          : (gpsNegado
-                              ? const Color(0xFFDC2626)
-                              : const Color(0xFF0F172A)),
-                    ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  gpsAtivo
+                      ? 'Localização do seu aparelho ativa (exibida no mapa)'
+                      : (gpsNegado
+                          ? 'Permissão de GPS do Android não concedida'
+                          : 'Ative a localização do aparelho para ver sua posição'),
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: gpsAtivo
+                        ? const Color(0xFF1E40AF)
+                        : (gpsNegado
+                            ? const Color(0xFF991B1B)
+                            : const Color(0xFF475569)),
                   ),
-          ),
-        ],
+                ),
+              ),
+            ],
+          );
+
+          final escala = MediaQuery.textScalerOf(context).scale(12);
+          final empilhar = constraints.maxWidth < 310 ||
+              (constraints.maxWidth < 380 && escala > 16);
+
+          if (empilhar) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                linhaGps,
+                const SizedBox(height: 4),
+                Align(alignment: Alignment.centerRight, child: botaoGps),
+              ],
+            );
+          }
+
+          return Row(
+            children: [
+              Expanded(child: linhaGps),
+              const SizedBox(width: 8),
+              Flexible(flex: 0, child: botaoGps),
+            ],
+          );
+        },
       ),
     );
   }
@@ -614,32 +662,39 @@ class _CardTrackingPacienteState extends State<CardTrackingPaciente>
             Positioned(
               left: 10,
               bottom: 10,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.92),
-                  borderRadius: BorderRadius.circular(6),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.08),
-                      blurRadius: 4,
-                    ),
-                  ],
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.map_outlined, size: 12, color: Color(0xFF0F172A)),
-                    SizedBox(width: 4),
-                    Text(
-                      'OpenStreetMap • Tempo Real',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF334155),
+              right: 50,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.92),
+                    borderRadius: BorderRadius.circular(6),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.08),
+                        blurRadius: 4,
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.map_outlined, size: 12, color: Color(0xFF0F172A)),
+                      SizedBox(width: 4),
+                      Flexible(
+                        child: Text(
+                          'OpenStreetMap • Tempo Real',
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF334155),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -864,18 +919,22 @@ class _CardTrackingPacienteState extends State<CardTrackingPaciente>
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE0F2FE),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  m.veiculoPlaca,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF0369A1),
+              const SizedBox(width: 6),
+              Flexible(
+                flex: 0,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE0F2FE),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    m.veiculoPlaca,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF0369A1),
+                    ),
                   ),
                 ),
               ),
@@ -896,37 +955,61 @@ class _CardTrackingPacienteState extends State<CardTrackingPaciente>
               ),
             ],
           ),
-          const SizedBox(height: 4),
-          Row(
-            children: [
-              const Icon(Icons.gps_fixed, size: 14, color: Color(0xFF64748B)),
-              const SizedBox(width: 4),
-              Text(
-                'Posição: ${m.latitude.toStringAsFixed(4)}, ${m.longitude.toStringAsFixed(4)}',
-                style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
-              ),
-              const Spacer(),
-              InkWell(
-                onTap: () {
-                  _mapController.move(LatLng(m.latitude, m.longitude), 13.5);
-                },
-                child: const Row(
+          const SizedBox(height: 6),
+          SizedBox(
+            width: double.infinity,
+            child: Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.center_focus_strong,
-                        size: 14, color: Color(0xFF0284C7)),
-                    SizedBox(width: 4),
-                    Text(
-                      'Focar no Mapa',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF0284C7),
+                    const Icon(Icons.gps_fixed, size: 14, color: Color(0xFF64748B)),
+                    const SizedBox(width: 4),
+                    Flexible(
+                      child: Text(
+                        'Posição: ${m.latitude.toStringAsFixed(4)}, ${m.longitude.toStringAsFixed(4)}',
+                        style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
                       ),
                     ),
                   ],
                 ),
-              ),
-            ],
+                InkWell(
+                  borderRadius: BorderRadius.circular(6),
+                  onTap: () {
+                    _mapController.move(LatLng(m.latitude, m.longitude), 13.5);
+                  },
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 2, horizontal: 2),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.center_focus_strong,
+                          size: 14,
+                          color: Color(0xFF0284C7),
+                        ),
+                        SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            'Focar no Mapa',
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF0284C7),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),

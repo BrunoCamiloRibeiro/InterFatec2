@@ -32,13 +32,15 @@ class CardAcompanhante extends StatelessWidget {
                 color: Colors.blueAccent,
               ),
               SizedBox(width: 6),
-              Text(
-                'ACOMPANHANTE',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF334155),
-                  letterSpacing: 0.5,
+              Flexible(
+                child: Text(
+                  'ACOMPANHANTE',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF334155),
+                    letterSpacing: 0.5,
+                  ),
                 ),
               ),
             ],

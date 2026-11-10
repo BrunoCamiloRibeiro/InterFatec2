@@ -210,13 +210,19 @@ class _AuthGateState extends State<AuthGate> {
     required Key botaoKey,
     required VoidCallback onAcao,
   }) {
+    final larguraTela = MediaQuery.sizeOf(context).width;
+    final compacto = larguraTela < 360;
+
     return Scaffold(
       key: key,
       backgroundColor: const Color(0xFFF7F8FA),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+            padding: EdgeInsets.symmetric(
+              horizontal: compacto ? 14 : 24,
+              vertical: 20,
+            ),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 420),
               child: Card(
@@ -227,7 +233,7 @@ class _AuthGateState extends State<AuthGate> {
                   side: BorderSide(color: Colors.grey.shade300),
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.all(28.0),
+                  padding: EdgeInsets.all(compacto ? 20.0 : 28.0),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -257,14 +263,20 @@ class _AuthGateState extends State<AuthGate> {
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 28),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 48,
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(
+                          minWidth: double.infinity,
+                          minHeight: 48,
+                        ),
                         child: ElevatedButton(
                           key: botaoKey,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF0F172A),
                             foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8),
                             ),
@@ -272,6 +284,7 @@ class _AuthGateState extends State<AuthGate> {
                           onPressed: onAcao,
                           child: Text(
                             textoBotao,
+                            textAlign: TextAlign.center,
                             style: const TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.w600,

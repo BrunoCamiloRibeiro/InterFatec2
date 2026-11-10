@@ -42,6 +42,7 @@ class CardPaciente extends StatelessWidget {
     required TextStyle style,
   }) {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Icon(icone, size: tamanhoIcone),
         const SizedBox(width: 5),
@@ -76,12 +77,14 @@ class CardPaciente extends StatelessWidget {
         children: [
           Icon(icone, size: 14, color: corTexto),
           const SizedBox(width: 4),
-          Text(
-            texto,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: pesoFonte,
-              color: corTexto,
+          Flexible(
+            child: Text(
+              texto,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: pesoFonte,
+                color: corTexto,
+              ),
             ),
           ),
         ],
@@ -101,8 +104,12 @@ class CardPaciente extends StatelessWidget {
         // com diálogo de confirmação para evitar toques acidentais.
         onTap: null,
         child: Container(
-          padding: const EdgeInsets.all(10),
+          padding: const EdgeInsets.all(8),
           child: ListTile(
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 8,
+              vertical: 2,
+            ),
             title: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -125,41 +132,44 @@ class CardPaciente extends StatelessWidget {
                     ),
                     if (codigoAcesso != null && codigoAcesso!.isNotEmpty) ...[
                       const SizedBox(width: 6),
-                      Tooltip(
-                        message: 'Código de acesso temporário do passageiro',
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF1E293B),
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(
-                              color: const Color(0xFF3B82F6),
-                              width: 1,
+                      Flexible(
+                        flex: 0,
+                        child: Tooltip(
+                          message: 'Código de acesso temporário do passageiro',
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
                             ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(
-                                Icons.key,
-                                size: 12,
-                                color: Color(0xFF60A5FA),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF1E293B),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: const Color(0xFF3B82F6),
+                                width: 1,
                               ),
-                              const SizedBox(width: 3),
-                              Text(
-                                codigoAcesso!,
-                                key: const ValueKey('codigo_acesso_badge'),
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 12,
-                                  letterSpacing: 1.1,
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.key,
+                                  size: 12,
+                                  color: Color(0xFF60A5FA),
                                 ),
-                              ),
-                            ],
+                                const SizedBox(width: 3),
+                                Text(
+                                  codigoAcesso!,
+                                  key: const ValueKey('codigo_acesso_badge'),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                    letterSpacing: 1.1,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
@@ -233,7 +243,7 @@ class CardPaciente extends StatelessWidget {
                           Expanded(
                             child: Text(
                               textoStatus,
-                              maxLines: 1,
+                              maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 fontSize: 14,
