@@ -13,10 +13,10 @@
 // 4. Cálculo e validação de hash SHA-256 com salt por viagem;
 // 5. Validação rigorosa de CPFs (algoritmo módulo 11) e normalização de documentos;
 // 6. Mascaramento de dados sensíveis para conformidade com a LGPD;
-// 7. Resolução hierárquica do identificador civil em todos os casos de borda:
+// 7. Resolução hierárquica do CPF em todos os casos de borda:
 //    (a) CPF do paciente válido;
 //    (b) CPF vazio/inválido com acompanhante -> CPF do acompanhante;
-//    (c) Sem acompanhante -> outro documento informado (RG, CNH);
+//    (c) Sem acompanhante e sem CPF (apenas RG/CNH) -> ignorado (login apenas por CPF);
 //    (d) Nenhum documento -> ignorado com aviso de auditoria anônimo;
 //    (e) CPF repetido entre titular e acompanhante;
 //    (f) Acompanhante responsável por múltiplos pacientes;
@@ -160,7 +160,7 @@ void main() {
       expect(res.isAcompanhante, isTrue);
     });
 
-    test('10. Caso (c): Sem acompanhante e sem CPF resolve para outro documento (RG/CNH)', () {
+    test('10. Caso (c): Sem acompanhante e sem CPF não aceita RG/CNH (apenas CPF)', () {
       final res = CodigoAcessoService.resolverIdentificador(
         cpfPaciente: null,
         cpfAcompanhante: null,
@@ -168,12 +168,12 @@ void main() {
         pacienteId: 'p_idoso',
         pacienteNome: 'Idoso Teste',
       );
-      expect(res.tipo, equals('outro_documento'));
-      expect(res.documentoNormalizado, equals('RG 451234567'));
+      expect(res.tipo, equals('ignorado'));
+      expect(res.documentoNormalizado, isNull);
       expect(res.isAcompanhante, isFalse);
     });
 
-    test('11. Caso (d): Nenhum documento disponível é ignorado com log anonimizado', () {
+    test('11. Caso (d): Nenhum CPF disponível é ignorado com log anonimizado', () {
       final res = CodigoAcessoService.resolverIdentificador(
         cpfPaciente: null,
         cpfAcompanhante: null,
@@ -181,7 +181,7 @@ void main() {
       );
       expect(res.tipo, equals('ignorado'));
       expect(res.documentoNormalizado, isNull);
-      expect(res.logAnonimizado, contains('sem documento'));
+      expect(res.logAnonimizado, contains('sem CPF'));
     });
 
     test('12. Caso (e): CPF repetido entre titular e acompanhante resolve com sucesso', () {

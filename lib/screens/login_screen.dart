@@ -345,31 +345,41 @@ class _LoginScreenState extends State<LoginScreen> {
           ..._construirCabecalho(
             icone: Icons.airline_seat_recline_normal,
             titulo: 'Acesso do Paciente',
-            subtitulo: 'Informe seu documento e o código temporário',
+            subtitulo: 'Informe seu CPF e o código temporário',
           ),
           if (_errorMessage != null) ...[
             _construirBannerErro(),
             const SizedBox(height: 16),
           ],
-          _construirRotuloCampo('DOCUMENTO (CPF, RG OU CNH)'),
+          _construirRotuloCampo('CPF'),
           const SizedBox(height: 6),
           Semantics(
-            label: 'Campo de documento do passageiro',
+            label: 'Campo de CPF do paciente',
             textField: true,
             child: TextFormField(
               key: const Key('campoDocumentoPaciente'),
               controller: _documentoPacienteController,
-              keyboardType: TextInputType.text,
+              keyboardType: TextInputType.number,
               textInputAction: TextInputAction.next,
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                CpfInputFormatter(),
+              ],
               decoration: _decoracaoCampo(
-                labelText: 'Documento',
-                hintText: '000.000.000-00 ou RG/CNH',
-                prefixIcon: Icons.person_pin_outlined,
+                labelText: 'CPF',
+                hintText: '000.000.000-00',
+                prefixIcon: Icons.badge_outlined,
               ),
               validator: (value) {
                 final raw = value?.trim() ?? '';
-                if (raw.isEmpty) return 'Informe seu documento.';
-                if (raw.length < 3) return 'Informe um documento válido.';
+                if (raw.isEmpty) return 'Informe o CPF.';
+                final digits = CpfValidator.limpar(raw);
+                if (digits.length != 11) {
+                  return 'Informe um CPF válido com 11 dígitos.';
+                }
+                if (!CpfValidator.validar(digits)) {
+                  return 'CPF inválido. Verifique os dígitos digitados.';
+                }
                 return null;
               },
             ),

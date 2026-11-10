@@ -209,16 +209,17 @@ void main() {
       await authService.logout();
 
       // ======================================================================
-      // ETAPA 6: LOGIN POR DOCUMENTO ALTERNATIVO (Caso C: RG/CNH + Código)
+      // ETAPA 6: BLOQUEIO DE LOGIN POR RG/CNH (PACIENTE SÓ LOGA COM CPF)
       // ======================================================================
-      final roleRg = await authService.loginPacienteComCodigo(
-        documento: 'MG-12.345.678',
-        codigoAcesso: codigoP3,
-        pacientesParaTestes: listaPacientesTeste,
+      expect(
+        () async => await authService.loginPacienteComCodigo(
+          documento: 'MG-12.345.678',
+          codigoAcesso: codigoP3,
+          pacientesParaTestes: listaPacientesTeste,
+        ),
+        throwsA(isA<AuthException>()),
+        reason: 'Pacientes devem autenticar estritamente com CPF, sem RG/CNH',
       );
-      expect(roleRg, equals(UserRole.paciente));
-
-      await authService.logout();
 
       // ======================================================================
       // ETAPA 7: TENTATIVAS INVÁLIDAS E SEGURANÇA LGPD

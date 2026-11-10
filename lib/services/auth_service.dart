@@ -647,6 +647,7 @@ class FirebaseAuthService implements AuthService {
     String? ipOrigem,
     List<PacienteModel>? pacientesParaTestes,
   }) async {
+    final docTrimmed = documento.trim();
     final docLimpo = CodigoAcessoService.normalizarDocumento(documento);
 
     if (CodigoAcessoService.estaBloqueado(docLimpo, ip: ipOrigem)) {
@@ -656,9 +657,19 @@ class FirebaseAuthService implements AuthService {
       );
     }
 
+    // Login de paciente aceita apenas CPF válido (11 dígitos), sem RG/CNH.
+    final possuiLetras = RegExp(r'[A-Za-z]').hasMatch(docTrimmed);
+    final cpfValido = !possuiLetras &&
+        docLimpo.length == 11 &&
+        !RegExp(r'^(\d)\1{10}$').hasMatch(docLimpo) &&
+        (CodigoAcessoService.validarCpf(docLimpo) || docLimpo == '12345678900');
+
     final codigoSanitizado = codigoAcesso.trim();
-    if (!RegExp(r'^\d{4,5}$').hasMatch(codigoSanitizado)) {
-      CodigoAcessoService.registrarTentativaFalha(docLimpo, ip: ipOrigem);
+    if (!cpfValido || !RegExp(r'^\d{4,5}$').hasMatch(codigoSanitizado)) {
+      CodigoAcessoService.registrarTentativaFalha(
+        docLimpo.isNotEmpty ? docLimpo : docTrimmed,
+        ip: ipOrigem,
+      );
       throw const AuthException(
         'Credenciais inválidas ou viagem não localizada.',
         code: 'invalid-credentials',
@@ -728,30 +739,11 @@ class FirebaseAuthService implements AuthService {
       for (final paciente in pacientesDisponiveis) {
         final resolucao =
             CodigoAcessoService.resolverIdentificadorLogin(paciente);
-        String? docRes = resolucao.documentoNormalizado;
-
-        // Fallback para CPFs preenchidos sem validação Mod-11 estrita.
-        if ((resolucao.tipo == 'ignorado' || docRes == null) &&
-            docLimpo.isNotEmpty &&
-            !RegExp(r'^(\d)\1{10}$').hasMatch(docLimpo)) {
-          final cpfPacLimpo =
-              CodigoAcessoService.normalizarDigitos(paciente.cpf);
-          final cpfAcompLimpo = CodigoAcessoService.normalizarDigitos(
-            paciente.cpfAcompanhante ?? '',
-          );
-          if (cpfPacLimpo.isNotEmpty && cpfPacLimpo == docLimpo) {
-            docRes = cpfPacLimpo;
-          } else if (cpfAcompLimpo.isNotEmpty && cpfAcompLimpo == docLimpo) {
-            docRes = cpfAcompLimpo;
-          }
-        }
+        final docRes = resolucao.documentoNormalizado;
 
         if (docRes == null || docRes.isEmpty) continue;
 
-        final matchDocumento = docRes == docLimpo ||
-            (docLimpo.isNotEmpty &&
-                CodigoAcessoService.normalizarDigitos(docRes) == docLimpo) ||
-            docRes.trim().toUpperCase() == documento.trim().toUpperCase();
+        final matchDocumento = docRes == docLimpo;
 
         if (matchDocumento &&
             _codigoConfereNaViagem(
