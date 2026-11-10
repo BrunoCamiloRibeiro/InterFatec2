@@ -92,19 +92,19 @@ class RelatorioPdfService {
 
   /// Altura vertical fixa ocupada por cada bloco de paciente (pitch entre passageiros).
   /// Medida real entre o topo do paciente N e o topo do paciente N+1: 17.9 mm -> 50.7 pt.
-  static const double kAlturaBlocoPaciente = 50.7;
+  static const double kAlturaBlocoPaciente = 54.0;
 
   /// Altura total ocupada pelo bloco 'Resumo' e linha de assinatura na última página.
   /// Compreende o título, contadores, linhas de Km/Retorno e a linha da assinatura (33.5 mm -> 95.0 pt).
   static const double kAlturaBlocoResumo = 95.0;
 
-  /// Altura vertical ocupada pelo cabeçalho na Página 1 (43.7 mm -> 124.0 pt).
-  /// Inclui os dados institucionais da UBS, dados da viagem e a faixa "Relação de Passageiros".
-  static const double kAlturaCabecalhoPagina1 = 124.0;
+  /// Altura vertical ocupada pelo cabeçalho na Página 1 (55.0 mm -> 156.0 pt).
+  /// Inclui os dados institucionais da UBS, dados da viagem, o título "Relação de Passageiros" e espaçamento.
+  static const double kAlturaCabecalhoPagina1 = 156.0;
 
-  /// Altura vertical ocupada pelo cabeçalho em páginas de continuação (37.0 mm -> 105.0 pt).
+  /// Altura vertical ocupada pelo cabeçalho em páginas de continuação (44.4 mm -> 126.0 pt).
   /// Não inclui a faixa "Relação de Passageiros", que é exclusiva da primeira página.
-  static const double kAlturaCabecalhoContinuacao = 105.0;
+  static const double kAlturaCabecalhoContinuacao = 126.0;
 
   /// Altura reservada na base da Página 1 para a linha 'Emitido em' (12.3 mm -> 35.0 pt).
   static const double kAlturaRodapeEmissao = 35.0;
@@ -522,6 +522,11 @@ class RelatorioPdfService {
       viagem.dataHoraInicio,
       usarDoisPontosHorario,
     );
+    final modeloLimpo = viagem.veiculoModelo.trim();
+    final placaLimpa = viagem.veiculoPlaca.trim();
+    final textoVeiculo = (modeloLimpo.isNotEmpty && placaLimpa.isNotEmpty)
+        ? '$modeloLimpo - $placaLimpa'
+        : (modeloLimpo.isNotEmpty ? modeloLimpo : placaLimpa);
 
     return pw.Positioned(
       left: 0,
@@ -567,7 +572,7 @@ class RelatorioPdfService {
               color: PdfColors.black,
             ),
           ),
-          pw.SizedBox(height: 5.0),
+          pw.SizedBox(height: 6.0),
 
           // BLOCO DE METADADOS DA VIAGEM: Informações da escala e do veículo
           pw.Padding(
@@ -575,68 +580,73 @@ class RelatorioPdfService {
             child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                // Linha de dados 1: Motorista (flex 4), Veículo (flex 3) e Horário de Saída (flex 3)
+                // Linha de dados 1: Motorista (flex 3), Veículo (flex 5) e Horário de Saída (largura fixa)
                 pw.Row(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
                     // Campo: Motorista escalado
                     pw.Expanded(
-                      flex: 4,
-                      child: pw.Column(
-                        crossAxisAlignment: pw.CrossAxisAlignment.start,
-                        children: [
-                          pw.Text(
-                            'Motorista',
-                            style: pw.TextStyle(
-                              font: fRegular,
-                              fontSize: 6.0,
-                              color: PdfColors.black,
+                      flex: 3,
+                      child: pw.Padding(
+                        padding: const pw.EdgeInsets.only(right: 8.0),
+                        child: pw.Column(
+                          crossAxisAlignment: pw.CrossAxisAlignment.start,
+                          children: [
+                            pw.Text(
+                              'Motorista',
+                              style: pw.TextStyle(
+                                font: fRegular,
+                                fontSize: 6.0,
+                                color: PdfColors.black,
+                              ),
                             ),
-                          ),
-                          pw.Text(
-                            viagem.motoristaNome.toUpperCase(),
-                            maxLines: 1,
-                            overflow: pw.TextOverflow.clip,
-                            style: pw.TextStyle(
-                              font: fBold,
-                              fontSize: 8.5,
-                              color: PdfColors.black,
+                            pw.Text(
+                              viagem.motoristaNome.toUpperCase(),
+                              maxLines: 1,
+                              overflow: pw.TextOverflow.clip,
+                              style: pw.TextStyle(
+                                font: fBold,
+                                fontSize: 8.5,
+                                color: PdfColors.black,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                     // Campo: Veículo (Modelo e Placa)
                     pw.Expanded(
-                      flex: 3,
-                      child: pw.Column(
-                        crossAxisAlignment: pw.CrossAxisAlignment.start,
-                        children: [
-                          pw.Text(
-                            'Veículo',
-                            style: pw.TextStyle(
-                              font: fRegular,
-                              fontSize: 6.0,
-                              color: PdfColors.black,
+                      flex: 5,
+                      child: pw.Padding(
+                        padding: const pw.EdgeInsets.only(right: 8.0),
+                        child: pw.Column(
+                          crossAxisAlignment: pw.CrossAxisAlignment.start,
+                          children: [
+                            pw.Text(
+                              'Veículo',
+                              style: pw.TextStyle(
+                                font: fRegular,
+                                fontSize: 6.0,
+                                color: PdfColors.black,
+                              ),
                             ),
-                          ),
-                          pw.Text(
-                            '${viagem.veiculoModelo} - ${viagem.veiculoPlaca}'
-                                .toUpperCase(),
-                            maxLines: 1,
-                            overflow: pw.TextOverflow.clip,
-                            style: pw.TextStyle(
-                              font: fRegular,
-                              fontSize: 8.5,
-                              color: PdfColors.black,
+                            pw.Text(
+                              textoVeiculo.toUpperCase(),
+                              maxLines: 1,
+                              overflow: pw.TextOverflow.clip,
+                              style: pw.TextStyle(
+                                font: fRegular,
+                                fontSize: 8.5,
+                                color: PdfColors.black,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                     // Campo: Data e Hora de Saída
-                    pw.Expanded(
-                      flex: 3,
+                    pw.SizedBox(
+                      width: 105.0,
                       child: pw.Column(
                         crossAxisAlignment: pw.CrossAxisAlignment.start,
                         children: [
@@ -729,9 +739,9 @@ class RelatorioPdfService {
           ),
 
           // SUB-TÍTULO "Relação de Passageiros"
-          // Exclusivo da Página 1, logo antes do primeiro registro de paciente
+          // Exclusivo da Página 1, com espaçamento e linha divisória antes do primeiro passageiro
           if (isPrimeiraPagina) ...[
-            pw.SizedBox(height: 8.0),
+            pw.SizedBox(height: 10.0),
             pw.Text(
               'Relação de Passageiros',
               textAlign: pw.TextAlign.center,
@@ -740,6 +750,12 @@ class RelatorioPdfService {
                 fontSize: 11.5,
                 color: PdfColors.black,
               ),
+            ),
+            pw.SizedBox(height: 5.0),
+            pw.Container(
+              margin: const pw.EdgeInsets.symmetric(horizontal: kMargemEsquerda),
+              height: 0.5,
+              color: PdfColors.grey400,
             ),
           ],
         ],
@@ -803,25 +819,32 @@ class RelatorioPdfService {
         usarDoisPontosHorario,
       );
 
-      // Cria o container posicionado absoluto do passageiro
+      // Cria o container posicionado absoluto do passageiro com alinhamento vertical de colunas
       blocos.add(
         pw.Positioned(
           left: kMargemEsquerda,
           right: kMargemDireita,
           top: yPos,
-          child: pw.SizedBox(
-            height: kAlturaBlocoPaciente,
+          child: pw.Container(
+            height: kAlturaBlocoPaciente - 6.0,
+            padding: const pw.EdgeInsets.only(bottom: 4.0),
+            decoration: const pw.BoxDecoration(
+              border: pw.Border(
+                bottom: pw.BorderSide(color: PdfColors.grey300, width: 0.4),
+              ),
+            ),
             child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
+              mainAxisAlignment: pw.MainAxisAlignment.center,
               children: [
                 // LINHA SUPERIOR DO BLOCO DO PACIENTE
                 pw.Row(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    // Coluna: Nome do Paciente (largura fixa 227 pt com corte de texto em overflow)
+                    // Coluna 1 (195 pt): Nome do Paciente e CPF
                     pw.Container(
-                      width: 227.0,
-                      padding: const pw.EdgeInsets.only(right: 6.0),
+                      width: 195.0,
+                      padding: const pw.EdgeInsets.only(right: 8.0),
                       child: pw.Column(
                         crossAxisAlignment: pw.CrossAxisAlignment.start,
                         children: [
@@ -834,7 +857,7 @@ class RelatorioPdfService {
                             style: pw.TextStyle(
                               font: fRegular,
                               fontSize: 5.5,
-                              color: PdfColors.black,
+                              color: PdfColors.grey700,
                             ),
                           ),
                           pw.Text(
@@ -851,10 +874,10 @@ class RelatorioPdfService {
                       ),
                     ),
 
-                    // Coluna: Telefone do Paciente (largura fixa 79 pt)
+                    // Coluna 2 (115 pt): Telefone e Código de Acesso
                     pw.Container(
-                      width: 79.0,
-                      padding: const pw.EdgeInsets.only(right: 6.0),
+                      width: 115.0,
+                      padding: const pw.EdgeInsets.only(right: 8.0),
                       child: pw.Column(
                         crossAxisAlignment: pw.CrossAxisAlignment.start,
                         children: [
@@ -867,7 +890,7 @@ class RelatorioPdfService {
                             style: pw.TextStyle(
                               font: fRegular,
                               fontSize: 5.5,
-                              color: PdfColors.black,
+                              color: PdfColors.grey700,
                             ),
                           ),
                           pw.Text(
@@ -884,10 +907,10 @@ class RelatorioPdfService {
                       ),
                     ),
 
-                    // Coluna: Acompanhantes (expandida para preencher o espaço intermediário)
+                    // Coluna 3 (Expandida): Acompanhantes
                     pw.Expanded(
                       child: pw.Padding(
-                        padding: const pw.EdgeInsets.only(right: 6.0),
+                        padding: const pw.EdgeInsets.only(right: 8.0),
                         child: pw.Column(
                           crossAxisAlignment: pw.CrossAxisAlignment.start,
                           children: [
@@ -898,7 +921,7 @@ class RelatorioPdfService {
                               style: pw.TextStyle(
                                 font: fRegular,
                                 fontSize: 5.5,
-                                color: PdfColors.black,
+                                color: PdfColors.grey700,
                               ),
                             ),
                             pw.Text(
@@ -916,9 +939,9 @@ class RelatorioPdfService {
                       ),
                     ),
 
-                    // Coluna: Telefone do Acompanhante (largura fixa 78 pt)
+                    // Coluna 4 (83 pt): Telefone do Acompanhante
                     pw.SizedBox(
-                      width: 78.0,
+                      width: 83.0,
                       child: pw.Column(
                         crossAxisAlignment: pw.CrossAxisAlignment.start,
                         children: [
@@ -929,7 +952,7 @@ class RelatorioPdfService {
                             style: pw.TextStyle(
                               font: fRegular,
                               fontSize: 5.5,
-                              color: PdfColors.black,
+                              color: PdfColors.grey700,
                             ),
                           ),
                           pw.Text(
@@ -947,16 +970,16 @@ class RelatorioPdfService {
                     ),
                   ],
                 ),
-                pw.SizedBox(height: 3.5),
+                pw.SizedBox(height: 4.0),
 
-                // LINHA INFERIOR DO BLOCO DO PACIENTE
+                // LINHA INFERIOR DO BLOCO DO PACIENTE (colunas perfeitamente alinhadas às de cima)
                 pw.Row(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    // Coluna: Endereço residencial do paciente (largura fixa 195 pt)
+                    // Coluna 1 (195 pt): Endereço residencial do paciente
                     pw.Container(
                       width: 195.0,
-                      padding: const pw.EdgeInsets.only(right: 6.0),
+                      padding: const pw.EdgeInsets.only(right: 8.0),
                       child: pw.Column(
                         crossAxisAlignment: pw.CrossAxisAlignment.start,
                         children: [
@@ -967,7 +990,7 @@ class RelatorioPdfService {
                             style: pw.TextStyle(
                               font: fRegular,
                               fontSize: 5.5,
-                              color: PdfColors.black,
+                              color: PdfColors.grey700,
                             ),
                           ),
                           pw.Text(
@@ -984,11 +1007,10 @@ class RelatorioPdfService {
                       ),
                     ),
 
-                    // Coluna: Local de Saída específico (ex: "SANTA CASA").
-                    // Por regra municipal, se for 'Residência' ou vazio, fica em branco para não poluir
+                    // Coluna 2 (115 pt): Local de Saída específico (ex: "SANTA CASA")
                     pw.Container(
-                      width: 123.0,
-                      padding: const pw.EdgeInsets.only(right: 6.0),
+                      width: 115.0,
+                      padding: const pw.EdgeInsets.only(right: 8.0),
                       child: pw.Column(
                         crossAxisAlignment: pw.CrossAxisAlignment.start,
                         children: [
@@ -999,7 +1021,7 @@ class RelatorioPdfService {
                             style: pw.TextStyle(
                               font: fRegular,
                               fontSize: 5.5,
-                              color: PdfColors.black,
+                              color: PdfColors.grey700,
                             ),
                           ),
                           pw.Text(
@@ -1019,11 +1041,10 @@ class RelatorioPdfService {
                       ),
                     ),
 
-                    // Coluna: Destino / Clínica / Hospital da Consulta
-                    // Utiliza TextOverflow.clip para evitar sobreposição caso o nome do local seja muito extenso
+                    // Coluna 3 (Expandida): Destino / Clínica / Hospital da Consulta
                     pw.Expanded(
                       child: pw.Padding(
-                        padding: const pw.EdgeInsets.only(right: 6.0),
+                        padding: const pw.EdgeInsets.only(right: 8.0),
                         child: pw.Column(
                           crossAxisAlignment: pw.CrossAxisAlignment.start,
                           children: [
@@ -1034,7 +1055,7 @@ class RelatorioPdfService {
                               style: pw.TextStyle(
                                 font: fRegular,
                                 fontSize: 5.5,
-                                color: PdfColors.black,
+                                color: PdfColors.grey700,
                               ),
                             ),
                             pw.Text(
@@ -1052,9 +1073,9 @@ class RelatorioPdfService {
                       ),
                     ),
 
-                    // Coluna: Horário agendado da Consulta (largura fixa 55 pt)
+                    // Coluna 4 (83 pt): Horário agendado da Consulta
                     pw.SizedBox(
-                      width: 55.0,
+                      width: 83.0,
                       child: pw.Column(
                         crossAxisAlignment: pw.CrossAxisAlignment.start,
                         children: [
@@ -1065,7 +1086,7 @@ class RelatorioPdfService {
                             style: pw.TextStyle(
                               font: fRegular,
                               fontSize: 5.5,
-                              color: PdfColors.black,
+                              color: PdfColors.grey700,
                             ),
                           ),
                           pw.Text(

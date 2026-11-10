@@ -14,6 +14,7 @@ class FooterPacientes extends StatelessWidget {
   final List<ViagemModel>? viagens;
   final List<PacienteModel>? pacientes;
   final String? motoristaId;
+  final String? motoristaNome;
   final VoidCallback? onViagemEncerrada;
 
   const FooterPacientes({
@@ -24,6 +25,7 @@ class FooterPacientes extends StatelessWidget {
     this.viagens,
     this.pacientes,
     this.motoristaId,
+    this.motoristaNome,
     this.onViagemEncerrada,
   });
 
@@ -314,6 +316,7 @@ class FooterPacientes extends StatelessWidget {
           viagens: viagensParaEncerrar,
           pacientes: pacientes,
           motoristaId: motoristaId,
+          motoristaNome: motoristaNome,
           onViagemEncerrada: onViagemEncerrada,
         );
       },

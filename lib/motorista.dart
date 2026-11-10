@@ -1069,6 +1069,7 @@ class _MotoristaState extends State<Motorista> {
                       viagem: vConcluida,
                       viagens: [vConcluida],
                       motoristaId: _obterIdMotoristaSessao(),
+                      motoristaNome: _motoristaNome,
                       onViagemEncerrada: _aoEncerrarViagemMotorista,
                     ),
                   );
@@ -1206,6 +1207,7 @@ class _MotoristaState extends State<Motorista> {
             viagens: _viagensAtivas,
             pacientes: pacientes,
             motoristaId: _obterIdMotoristaSessao(),
+            motoristaNome: motoristaHeader ?? _motoristaNome,
             onViagemEncerrada: _aoEncerrarViagemMotorista,
           ),
         );

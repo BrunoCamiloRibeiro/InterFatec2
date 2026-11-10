@@ -41,6 +41,7 @@ class FormularioEncerramento extends StatefulWidget {
   final List<ViagemModel>? viagens;
   final List<PacienteModel>? pacientes;
   final String? motoristaId;
+  final String? motoristaNome;
   final void Function(String retorno, String kmRetorno, String kmRodado)?
       onConfirmar;
   final VoidCallback? onViagemEncerrada;
@@ -51,6 +52,7 @@ class FormularioEncerramento extends StatefulWidget {
     this.viagens,
     this.pacientes,
     this.motoristaId,
+    this.motoristaNome,
     this.onConfirmar,
     this.onViagemEncerrada,
   });
@@ -351,7 +353,16 @@ class _FormularioEncerramentoState extends State<FormularioEncerramento> {
       }
     }
 
+    final motNomePdf = (vBase.motoristaNome.trim().isNotEmpty &&
+            vBase.motoristaNome.trim() != 'motorista_atual')
+        ? vBase.motoristaNome.trim()
+        : ((widget.motoristaNome?.trim().isNotEmpty == true &&
+                widget.motoristaNome!.trim() != 'motorista_atual')
+            ? widget.motoristaNome!.trim()
+            : '');
+
     final viagemParaPdf = vBase.copyWith(
+      motoristaNome: motNomePdf,
       cidadeDestino:
           destinos.isNotEmpty ? destinos.join(' / ') : vBase.cidadeDestino,
       passageirosIds: idsPassageirosConsolidados,
