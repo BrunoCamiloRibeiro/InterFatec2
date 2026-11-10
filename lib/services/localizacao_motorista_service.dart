@@ -36,6 +36,7 @@ import 'package:geolocator/geolocator.dart';
 
 import '../models/localizacao_motorista_model.dart';
 import '../models/viagem_model.dart';
+import 'auth_service.dart';
 import 'viagem_service.dart';
 
 /// Serviço singleton para controle e streaming de geolocalização dos motoristas.
@@ -170,6 +171,7 @@ class LocalizacaoMotoristaService {
       try {
         authUid = FirebaseAuth.instance.currentUser?.uid;
       } catch (_) {}
+      authUid ??= FirebaseAuthService().currentUserId;
       if (authUid == null || authUid.isEmpty) {
         return;
       }

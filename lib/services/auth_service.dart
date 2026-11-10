@@ -644,6 +644,38 @@ class FirebaseAuthService implements AuthService {
     return codigoClaroValido || hashValido;
   }
 
+  Future<UserRole> _finalizarLoginPaciente({
+    required String pacienteId,
+    required String viagemId,
+    required String docLimpo,
+    String? ipOrigem,
+  }) async {
+    CodigoAcessoService.registrarSucesso(docLimpo, ip: ipOrigem);
+    _pacienteLogadoId = pacienteId;
+    _pacienteViagemId = viagemId;
+    _roleCache[pacienteId] = UserRole.paciente;
+
+    if (customAuth == null) {
+      try {
+        if (auth.currentUser == null) {
+          final cred = await auth.signInAnonymously();
+          final anonUid = cred.user?.uid;
+          if (anonUid != null && anonUid.isNotEmpty) {
+            _roleCache[anonUid] = UserRole.paciente;
+          }
+        } else {
+          _roleCache[auth.currentUser!.uid] = UserRole.paciente;
+        }
+      } catch (_) {
+        // Mantém fallback quando Auth anônimo não estiver habilitado no console.
+      }
+    }
+
+    ViagemService().garantirEscutaFirestore();
+    LocalizacaoMotoristaService().garantirEscutasFirestore();
+    return UserRole.paciente;
+  }
+
   @override
   Future<UserRole> loginPacienteComCodigo({
     required String documento,
@@ -754,13 +786,12 @@ class FirebaseAuthService implements AuthService {
               codigoSanitizado,
               hashTentativa,
             )) {
-          CodigoAcessoService.registrarSucesso(docLimpo, ip: ipOrigem);
-          _pacienteLogadoId = paciente.id;
-          _pacienteViagemId = viagem.id;
-          _roleCache[paciente.id] = UserRole.paciente;
-          ViagemService().garantirEscutaFirestore();
-          LocalizacaoMotoristaService().garantirEscutasFirestore();
-          return UserRole.paciente;
+          return _finalizarLoginPaciente(
+            pacienteId: paciente.id,
+            viagemId: viagem.id,
+            docLimpo: docLimpo,
+            ipOrigem: ipOrigem,
+          );
         }
       }
 
@@ -777,13 +808,12 @@ class FirebaseAuthService implements AuthService {
               codigoSanitizado,
               hashTentativa,
             )) {
-          CodigoAcessoService.registrarSucesso(docLimpo, ip: ipOrigem);
-          _pacienteLogadoId = pv.pacienteId;
-          _pacienteViagemId = viagem.id;
-          _roleCache[pv.pacienteId] = UserRole.paciente;
-          ViagemService().garantirEscutaFirestore();
-          LocalizacaoMotoristaService().garantirEscutasFirestore();
-          return UserRole.paciente;
+          return _finalizarLoginPaciente(
+            pacienteId: pv.pacienteId,
+            viagemId: viagem.id,
+            docLimpo: docLimpo,
+            ipOrigem: ipOrigem,
+          );
         }
       }
     }

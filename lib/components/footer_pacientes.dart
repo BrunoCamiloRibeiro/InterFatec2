@@ -222,11 +222,12 @@ class FooterPacientes extends StatelessWidget {
 
     if (querFinalizar != true || !context.mounted) return;
 
-    final viagensParaEncerrar = (viagens != null && viagens!.isNotEmpty)
-        ? viagens!
-        : (ViagemService().viagensAtivas.isNotEmpty
-            ? ViagemService().viagensAtivas
-            : (viagem != null ? <ViagemModel>[viagem!] : const <ViagemModel>[]));
+    final ViagemModel? viagemAtual = viagem ??
+        ViagemService().viagemAtiva ??
+        ((viagens != null && viagens!.isNotEmpty) ? viagens!.first : null);
+    final viagensParaEncerrar = viagemAtual != null
+        ? <ViagemModel>[viagemAtual]
+        : const <ViagemModel>[];
 
     showDialog<bool>(
       context: context,

@@ -380,7 +380,7 @@ class ViagemService {
         );
         return st != 5;
       }).toList();
-      if (naoCancelados.isEmpty) return true;
+      if (naoCancelados.isEmpty) return viagem.isConcluida;
       return naoCancelados.every((p) {
         final st = resolverStatusEfetivoPassageiro(
           p,
@@ -396,7 +396,7 @@ class ViagemService {
           ? pacientesContexto.where((p) => ids.contains(p.id)).toList()
           : pacientesContexto;
       final naoCancelados = listaRef.where((p) => p.status != 5).toList();
-      if (naoCancelados.isEmpty) return true;
+      if (naoCancelados.isEmpty) return viagem.isConcluida;
       return naoCancelados.every((p) => p.status == 4);
     }
     if (viagem.passageirosIds.isNotEmpty) {
@@ -645,16 +645,20 @@ class ViagemService {
 
   void _garantirEscutaFirestore() {
     if (_escutandoFirestore || !_isFirebaseDisponivel()) return;
+    final authSvc = FirebaseAuthService();
     String? authUid;
     bool ehAnonimo = false;
     try {
       final user = FirebaseAuth.instance.currentUser;
-      authUid = user?.uid;
+      authUid = user?.uid ?? authSvc.currentUserId;
       ehAnonimo = user?.isAnonymous ?? false;
-    } catch (_) {}
+    } catch (_) {
+      authUid = authSvc.currentUserId;
+    }
     if (authUid == null || authUid.isEmpty) return;
 
-    final roleAtual = FirebaseAuthService().getCachedRole(authUid);
+    final roleAtual = authSvc.getCachedRole(authUid) ??
+        authSvc.getCachedRole(authSvc.currentUserId ?? '');
     final podeLerColecoesOperacionais =
         roleAtual != UserRole.paciente && !ehAnonimo;
     _escutandoFirestore = true;
@@ -1020,15 +1024,21 @@ class ViagemService {
     List<ViagemModel>? viagensExplicitas,
     ViagemModel? viagemUnica,
   }) {
-    final informadas = <ViagemModel>[
-      ...?viagensExplicitas,
-      ?viagemUnica,
-      ..._viagensAtivasMemoria,
-      ?_viagemAtiva,
-    ];
-    final refSessao = viagemUnica ?? _viagemAtiva ?? informadas.firstOrNull;
+    final List<ViagemModel> listaBase;
+    if (viagemUnica != null) {
+      listaBase = [viagemUnica];
+    } else if (viagensExplicitas != null && viagensExplicitas.isNotEmpty) {
+      listaBase = List<ViagemModel>.from(viagensExplicitas);
+    } else {
+      listaBase = <ViagemModel>[
+        ..._viagensConcluidasNaSessao,
+        ..._viagensAtivasMemoria,
+        ?_viagemAtiva,
+      ];
+    }
+    final refSessao = viagemUnica ?? _viagemAtiva ?? listaBase.firstOrNull;
     final reais = <String, ViagemModel>{};
-    for (final v in [..._viagensConcluidasNaSessao, ...informadas]) {
+    for (final v in listaBase) {
       if (v.id.isNotEmpty && !v.id.startsWith('sessao_ativa_')) {
         final emTodas =
             _todasViagensMemoria.where((tv) => tv.id == v.id).firstOrNull;
@@ -1041,7 +1051,7 @@ class ViagemService {
     if (reais.isNotEmpty) return reais.values.toList();
 
     final unicas = <String, ViagemModel>{};
-    for (final v in informadas) {
+    for (final v in listaBase) {
       if (v.id.isNotEmpty) {
         unicas[v.id] = _enriquecerViagemParaRelatorio(
           v,
@@ -2470,7 +2480,7 @@ class ViagemService {
             final ativos =
                 passageirosMerged.where((p) => p.statusEmbarque != 5).toList();
             final todosConcluidos =
-                ativos.isEmpty || ativos.every((p) => p.statusEmbarque == 4);
+                ativos.isNotEmpty && ativos.every((p) => p.statusEmbarque == 4);
             final temPassageiroEmTransito = passageirosMerged.any(
               (p) => p.statusEmbarque > 0 && p.statusEmbarque != 5,
             );
@@ -2531,6 +2541,10 @@ class ViagemService {
     int? kmFinal,
     int? kmRodado,
     List<PacienteModel>? pacientes,
+    bool forcarConclusao = false,
+    bool forcarLiberacaoSessao = false,
+    bool manterSessaoAtiva = false,
+    String? motoristaEncerramentoId,
   }) async {
     final idAlvo = viagemExplicita?.id ?? viagemId ?? _viagemAtiva?.id;
     if (idAlvo == null || idAlvo.isEmpty) return;
@@ -2551,14 +2565,50 @@ class ViagemService {
         : (_sessaoAtiva?.veiculoId ?? '');
     final agoraFim = DateTime.now();
 
-    final passageirosSincronizados = viagem.passageiros.map((p) {
+    var passageirosSincronizados = viagem.passageiros.map((p) {
       final st = resolverStatusEfetivoPassageiro(
         p,
         viagemId: viagem.id,
         pacientesContexto: pacientes,
       );
-      return p.copyWith(statusEmbarque: st);
+      final stFinal = (forcarConclusao && st < 4) ? 4 : st;
+      final atualizado = p.copyWith(
+        statusEmbarque: stFinal,
+        prontoRetorno: forcarConclusao ? false : p.prontoRetorno,
+        limparJanelaReversao: forcarConclusao || p.janelaReversao == null,
+      );
+      if (forcarConclusao && !ehPlaceholderSessao) {
+        _sincronizarPassageiroEmMemoriaPorViagem(viagem.id, atualizado);
+      }
+      return atualizado;
     }).toList();
+
+    if (forcarConclusao &&
+        passageirosSincronizados.isEmpty &&
+        pacientes != null &&
+        pacientes.isNotEmpty) {
+      passageirosSincronizados = [
+        for (int idx = 0; idx < pacientes.length; idx++)
+          PassageiroViagemModel(
+            pacienteId: pacientes[idx].id,
+            pacienteNome: pacientes[idx].nome,
+            pacienteCpf: pacientes[idx].cpf,
+            pacienteTelefone: pacientes[idx].telefone,
+            localOrigem: pacientes[idx].localSaida.isNotEmpty
+                ? pacientes[idx].localSaida
+                : pacientes[idx].enderecoPaciente,
+            localDestino: pacientes[idx].localConsulta.isNotEmpty
+                ? pacientes[idx].localConsulta
+                : viagem.cidadeDestino,
+            horarioAtendimento: pacientes[idx].horarioConsulta,
+            acompanhanteNome: pacientes[idx].nomeAcompanhante,
+            acompanhanteTelefone: pacientes[idx].telAcompanhante,
+            ordemEmbarque: idx + 1,
+            statusEmbarque:
+                pacientes[idx].status < 4 ? 4 : pacientes[idx].status,
+          ),
+      ];
+    }
 
     final kmFinalCalculado = kmFinal ?? viagem.kmFinal;
     final kmRodadoCalculado = kmRodado ??
@@ -2567,7 +2617,8 @@ class ViagemService {
             ? (kmFinalCalculado - viagem.kmInicial)
             : null);
 
-    final todosVoltaram = viagem.isConcluida ||
+    final todosVoltaram = forcarConclusao ||
+        viagem.isConcluida ||
         ((viagem.passageiros.isNotEmpty || viagem.passageirosIds.isNotEmpty) &&
             todosPacientesVoltaram(
               viagem.copyWith(passageiros: passageirosSincronizados),
@@ -2654,8 +2705,10 @@ class ViagemService {
       }
       return false;
     });
-    final sessaoFinalizada =
-        _viagensAtivasMemoria.isEmpty || !aindaTemViagensDaSessao;
+    final sessaoFinalizada = !manterSessaoAtiva &&
+        (forcarLiberacaoSessao ||
+            _viagensAtivasMemoria.isEmpty ||
+            !aindaTemViagensDaSessao);
     final sessaoIdEncerrada = sessaoIdAlvo.isNotEmpty ? sessaoIdAlvo : null;
     if (!sessaoFinalizada && !ehPlaceholderSessao) {
       _viagensLiberadasNaSessaoAtual.add(idAlvo);
@@ -2746,6 +2799,10 @@ class ViagemService {
           idMotoristaParaLiberar: idMotoristaParaLiberar,
           idLocalizacaoParaLiberar: idLocalizacaoParaLiberar,
           nomeMotoristaParaLiberar: nomeMotoristaParaLiberar,
+          motoristaEncerramentoId:
+              (motoristaEncerramentoId?.trim().isNotEmpty == true)
+                  ? motoristaEncerramentoId!.trim()
+                  : idMotoristaParaLiberar,
         ),
       );
     }
@@ -2766,19 +2823,24 @@ class ViagemService {
     required String idMotoristaParaLiberar,
     required String idLocalizacaoParaLiberar,
     required String nomeMotoristaParaLiberar,
+    String? motoristaEncerramentoId,
   }) async {
     try {
       if (!ehPlaceholderSessao) {
+        final motEncLimpo = motoristaEncerramentoId?.trim() ?? '';
         final dadosViagem = <String, dynamic>{
           'status': viagemAtualizada.status,
           'motoristaId': '',
           'motoristaNome': '',
           'sessaoId': null,
+          'atualizadoEm': FieldValue.serverTimestamp(),
           if (!todosVoltaram) 'veiculoId': '',
           if (todosVoltaram)
             'dataHoraFim':
                 (viagemAtualizada.dataHoraFim ?? agoraFim).toIso8601String(),
           if (todosVoltaram) 'codigosAcesso': <String, dynamic>{},
+          if (todosVoltaram && motEncLimpo.isNotEmpty)
+            'motoristaEncerramentoId': motEncLimpo,
           if (passageirosSincronizados.isNotEmpty)
             'passageiros':
                 passageirosSincronizados.map((p) => p.toMap()).toList(),
@@ -2921,6 +2983,7 @@ class ViagemService {
     List<ViagemModel>? viagensExplicitas,
     List<PacienteModel>? pacientes,
     String? motoristaId,
+    bool encerrarViagensDefinitivamente = false,
   }) async {
     final motArg = motoristaId?.trim() ?? '';
     final sessaoDoMapa =
@@ -2945,9 +3008,7 @@ class ViagemService {
         _sessaoAtiva!.motoristaId.trim().isEmpty ||
         _sessaoAtiva!.motoristaId.trim() == idMotoristaDaSessaoAntes;
 
-    if (encerrandoSessaoCorrente) {
-      _sessaoFinalizadaPeloMotorista = true;
-    }
+
     final mapaParaEncerrar = <String, ViagemModel>{};
 
     bool pertenceAoCondutor(ViagemModel v) {
@@ -2984,7 +3045,10 @@ class ViagemService {
 
     if (viagensExplicitas != null && viagensExplicitas.isNotEmpty) {
       for (final v in viagensExplicitas) {
-        if (v.id.isNotEmpty && (!temEscopoCondutor || pertenceAoCondutor(v))) {
+        if (v.id.isNotEmpty &&
+            (encerrarViagensDefinitivamente ||
+                !temEscopoCondutor ||
+                pertenceAoCondutor(v))) {
           mapaParaEncerrar[v.id] = v;
         }
       }
@@ -3007,7 +3071,7 @@ class ViagemService {
     }
 
     final refViagem = mapaParaEncerrar.values.firstOrNull;
-    if (refViagem != null) {
+    if (!encerrarViagensDefinitivamente && refViagem != null) {
       final placaRef = _normalizarPlacaInterna(refViagem.veiculoPlaca);
       for (final tv in _todasViagensMemoria) {
         if (tv.isCancelada || tv.isConcluida) continue;
@@ -3024,6 +3088,20 @@ class ViagemService {
     }
 
     if (mapaParaEncerrar.isNotEmpty) {
+      final aindaRestamOutrasViagensAtivas = _viagensAtivasMemoria.any(
+        (va) =>
+            !mapaParaEncerrar.containsKey(va.id) &&
+            !va.id.startsWith('sessao_ativa_') &&
+            va.isEmOperacao,
+      );
+      final manterSessaoPorOutrasViagens =
+          encerrarViagensDefinitivamente && aindaRestamOutrasViagensAtivas;
+      if (encerrandoSessaoCorrente && !manterSessaoPorOutrasViagens) {
+        _sessaoFinalizadaPeloMotorista = true;
+      }
+      final deveLiberarSessao =
+          encerrarViagensDefinitivamente && !aindaRestamOutrasViagensAtivas;
+
       for (final v in mapaParaEncerrar.values.toList()) {
         await encerrarViagem(
           viagemId: v.id,
@@ -3031,9 +3109,17 @@ class ViagemService {
           kmFinal: kmFinal,
           kmRodado: kmRodado,
           pacientes: pacientes,
+          forcarConclusao: encerrarViagensDefinitivamente,
+          forcarLiberacaoSessao: deveLiberarSessao,
+          manterSessaoAtiva: manterSessaoPorOutrasViagens,
+          motoristaEncerramentoId:
+              idMotoristaDaSessaoAntes.isNotEmpty ? idMotoristaDaSessaoAntes : null,
         );
       }
     } else if (sessaoAlvo != null) {
+      if (encerrandoSessaoCorrente) {
+        _sessaoFinalizadaPeloMotorista = true;
+      }
       final agoraFim = DateTime.now();
       final kmRodadoCalc = kmRodado ??
           ((kmFinal != null && kmFinal >= sessaoAlvo.kmInicial)

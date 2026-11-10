@@ -154,7 +154,7 @@ class _PacienteState extends State<Paciente> {
     try {
       final (viagemAtual, _) =
           _localizarViagemEPassageiro(paciente.id, cpf: paciente.cpf);
-      final idViagem = viagemAtual?.id;
+      final idViagem = viagemAtual?.id ?? FirebaseAuthService.pacienteViagemId;
       if (idViagem != null) {
         _syncService.registrarPacienteEmMemoriaSeAusente(
           paciente,
@@ -175,7 +175,6 @@ class _PacienteState extends State<Paciente> {
             prontoRetorno: res.paciente?.prontoRetorno ?? prontoFallback,
             janelaReversao: res.paciente?.janelaReversao,
             limparJanelaReversao: res.paciente?.janelaReversao == null,
-            persistirRemoto: false,
           ),
         );
       }
@@ -463,7 +462,14 @@ class _PacienteState extends State<Paciente> {
               return _processarDocumentoUsuario(doc.id, doc.data()!);
             }
             return _buscarPacienteEmViagem(docIdAlvo);
-          });
+          })
+          .transform(
+            StreamTransformer<PacienteModel?, PacienteModel?>.fromHandlers(
+              handleError: (_, _, sink) {
+                sink.add(_buscarPacienteEmViagem(docIdAlvo));
+              },
+            ),
+          );
     }
 
     return FirebaseFirestore.instance

@@ -182,22 +182,45 @@ class _FormularioEncerramentoState extends State<FormularioEncerramento> {
 
     widget.onConfirmar?.call(retorno, kmRetorno, kmRodado);
 
+    final listaViagensAlvo = widget.viagem != null
+        ? <ViagemModel>[widget.viagem!]
+        : ((widget.viagens != null && widget.viagens!.isNotEmpty)
+            ? <ViagemModel>[widget.viagens!.first]
+            : null);
+
     final listaParaRelatorio = ViagemService().obterViagensParaRelatorio(
-      viagensExplicitas: widget.viagens,
+      viagensExplicitas: listaViagensAlvo,
       viagemUnica: widget.viagem,
     );
 
     final viagensSnapshot = listaParaRelatorio
         .map(
           (v) => v.copyWith(
+            status: 'encerrada',
             codigosAcesso: Map<String, String>.from(v.codigosAcesso),
-            passageiros: List.from(v.passageiros),
+            passageiros: v.passageiros
+                .map(
+                  (p) => p.copyWith(
+                    statusEmbarque: p.statusEmbarque < 4 ? 4 : p.statusEmbarque,
+                    prontoRetorno: false,
+                    limparJanelaReversao: true,
+                  ),
+                )
+                .toList(),
           ),
         )
         .toList();
-    final pacientesSnapshot = widget.pacientes != null
-        ? List<PacienteModel>.from(widget.pacientes!)
-        : null;
+    final pacientesSnapshot = widget.pacientes
+        ?.map(
+          (p) => p.status < 4
+              ? p.copyWith(
+                  status: 4,
+                  prontoRetorno: false,
+                  limparJanelaReversao: true,
+                )
+              : p,
+        )
+        .toList();
 
     // Atualiza estado e sessão do motorista imediatamente antes da geração do PDF (Zero-Wait UI).
     unawaited(
@@ -207,6 +230,7 @@ class _FormularioEncerramentoState extends State<FormularioEncerramento> {
         viagensExplicitas: viagensSnapshot,
         pacientes: pacientesSnapshot,
         motoristaId: widget.motoristaId,
+        encerrarViagensDefinitivamente: true,
       ),
     );
 

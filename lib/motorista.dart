@@ -182,15 +182,18 @@ class _MotoristaState extends State<Motorista> {
 
     _subViagensAtivas = _viagemService.viagensAtivasStream.listen((viagens) {
       if (!mounted) return;
-      final ativas = viagens
+      final reais = viagens
           .where(
             (v) =>
-                v.id.startsWith('sessao_ativa_') ||
-                (!v.isCancelada &&
-                    !v.isConcluida &&
-                    !_viagemService.todosPacientesVoltaram(v)),
+                !v.id.startsWith('sessao_ativa_') &&
+                !v.isCancelada &&
+                !v.isConcluida &&
+                !_viagemService.todosPacientesVoltaram(v),
           )
           .toList();
+      final ativas = reais.isNotEmpty
+          ? reais
+          : viagens.where((v) => v.id.startsWith('sessao_ativa_')).toList();
       if (ativas.any((v) => v.isEmOperacao)) {
         _cancelarTimeoutCarregamentoViagem();
       }
@@ -403,6 +406,23 @@ class _MotoristaState extends State<Motorista> {
 
   void _aoEncerrarViagemMotorista() {
     if (!mounted) return;
+    final restantes = _viagemService.viagensAtivas
+        .where(
+          (v) =>
+              !v.id.startsWith('sessao_ativa_') &&
+              !v.isCancelada &&
+              !v.isConcluida,
+        )
+        .toList();
+    if (restantes.isNotEmpty) {
+      setState(() {
+        _selecionarViagemPreservandoId(restantes);
+        _capacidadeVeiculo = _resolverCapacidadeVeiculo();
+      });
+      _atualizarTransmissaoGpsMotorista();
+      return;
+    }
+
     _cancelarTimeoutCarregamentoViagem();
     _inicioViagemOptimistaEm = null;
     setState(() {
@@ -895,7 +915,8 @@ class _MotoristaState extends State<Motorista> {
     DismissDirection direction,
     PacienteModel paciente,
   ) async {
-    if (direction != DismissDirection.endToStart || paciente.status >= 4) {
+    if (direction != DismissDirection.endToStart ||
+        (paciente.status >= 4 && paciente.status != 5)) {
       return false;
     }
 
@@ -913,6 +934,7 @@ class _MotoristaState extends State<Motorista> {
       1 => (2, AcaoTransicao.motoristaDesembarcarConsulta),
       2 => (3, AcaoTransicao.motoristaReembarcarVolta),
       3 => (4, AcaoTransicao.motoristaConcluirViagem),
+      5 => (1, AcaoTransicao.motoristaEmbarcarIda),
       _ => (-1, AcaoTransicao.motoristaEmbarcarIda),
     };
     if (proximoStatus == -1) return false;
@@ -1095,9 +1117,11 @@ class _MotoristaState extends State<Motorista> {
                 MotoristaHeader(
                   tituloViagem: _viagensAtivas.length > 1
                       ? 'Viagem ${_indiceViagemAtual + 1} de ${_viagensAtivas.length} (${_viagemAtiva?.cidadeDestino ?? ""})'
-                      : (_viagemAtiva != null && _viagemAtiva!.id.isNotEmpty
-                            ? 'Viagem ${_viagemAtiva!.id}'
-                            : 'Viagem 1'),
+                      : (_viagemAtiva != null &&
+                              _viagemAtiva!.id.isNotEmpty &&
+                              !_viagemAtiva!.id.startsWith('sessao_ativa_')
+                          ? 'Viagem ${_viagemAtiva!.id}'
+                          : 'Sem Viagens Ativas'),
                   motoristaNome: motoristaHeader,
                   destino: destinoHeader,
                   veiculo: veiculoViagemHeader,
@@ -1119,6 +1143,8 @@ class _MotoristaState extends State<Motorista> {
                       : null,
                 ),
                 const SizedBox(height: 12),
+                if (pacientes.isEmpty)
+                  _construirEstadoVazioViagem(),
                 for (final paciente in pacientes)
                   _construirCardPassageiro(paciente),
               ],
@@ -1135,6 +1161,50 @@ class _MotoristaState extends State<Motorista> {
           ),
         );
       },
+    );
+  }
+
+  Widget _construirEstadoVazioViagem() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: const BoxDecoration(
+                color: Color(0xFFF1F5F9),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.directions_bus_outlined,
+                size: 48,
+                color: Color(0xFF64748B),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Nenhum passageiro nesta viagem',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF1E293B),
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Quando o setor administrativo agendar novos passageiros ou viagens para este veículo, eles aparecerão aqui automaticamente.',
+              style: TextStyle(
+                fontSize: 14,
+                color: Color(0xFF64748B),
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1318,8 +1388,9 @@ class _MotoristaState extends State<Motorista> {
       child: Dismissible(
         key: ValueKey(paciente.id.isNotEmpty ? paciente.id : paciente.nome),
         // Permite apenas deslize da direita para a esquerda para avançar status.
-        direction:
-            (paciente.status < 4) ? DismissDirection.endToStart : DismissDirection.none,
+        direction: (paciente.status < 4 || paciente.status == 5)
+            ? DismissDirection.endToStart
+            : DismissDirection.none,
         background: Container(),
         secondaryBackground: Container(
           padding: const EdgeInsets.only(right: 16),

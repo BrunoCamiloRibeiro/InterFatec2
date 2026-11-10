@@ -211,7 +211,7 @@ void main() {
     );
 
     testWidgets(
-      '5. Fechar a própria viagem redireciona o motorista para o FormularioInicioViagem, mas a viagem só finaliza se todos os pacientes tiverem voltado',
+      '5. Fechar a viagem via Gerar Relatório consolida passageiros pendentes para concluído (4) e encerra a viagem atual',
       (tester) async {
         final viagemService = ViagemService();
         final syncService = PacienteSyncService();
@@ -280,27 +280,13 @@ void main() {
         expect(find.text('Início da Viagem'), findsOneWidget);
         expect(find.text('Lista de Passageiros'), findsNothing);
 
-        // Porém a viagem NÃO finalizou ainda porque a paciente ainda não voltou (status == 2)
-        final viagemParcial = viagemService.todasViagens
-            .where((v) => v.id == 'horario_2026_11_8_999999')
-            .firstOrNull;
-        expect(viagemParcial, isNotNull);
-        expect(viagemParcial!.isAtiva, isTrue);
-        expect(viagemParcial.isConcluida, isFalse);
-        expect(viagemParcial.passageiros.first.statusEmbarque, equals(2));
-
-        // Agora outro motorista traz a paciente de volta (status -> 4)
-        await viagemService.atualizarStatusPassageiroNaViagem(
-          viagemId: 'horario_2026_11_8_999999',
-          pacienteId: 'p_1',
-          novoStatus: 4,
-        );
-
+        // A viagem exibida na tela é encerrada e a passageira pendente recebe fallback para status 4 (Concluído)
         final viagemFinal = viagemService.todasViagens
             .where((v) => v.id == 'horario_2026_11_8_999999')
             .firstOrNull;
         expect(viagemFinal, isNotNull);
         expect(viagemFinal!.isConcluida, isTrue);
+        expect(viagemFinal.status, equals('encerrada'));
         expect(viagemFinal.passageiros.first.statusEmbarque, equals(4));
       },
     );
