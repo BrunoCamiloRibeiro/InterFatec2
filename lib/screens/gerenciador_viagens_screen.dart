@@ -1,36 +1,3 @@
-// ============================================================================
-// CABEÇALHO DE DOCUMENTAÇÃO DE ARQUIVO
-// ============================================================================
-// Arquivo: lib/screens/gerenciador_viagens_screen.dart
-// Camada: Apresentação / Telas Administrativas (Screens / UI)
-//
-// O QUE ESTE ARQUIVO FAZ:
-// Implementa o painel de Gerenciamento Diário de Viagens e Grade de Horários
-// ("Gerenciador do Dia" / "Horários de Saída") acessível exclusivamente pelo
-// Administrador do sistema de saúde (TFD). Permite ao gestor:
-// 1) Selecionar qualquer data com navegação dia a dia e seletor de calendário;
-// 2) Visualizar os indicadores consolidados (total de horários, ativos, assentos);
-// 3) Filtrar a grade por texto (cidade, motorista, veículo) e por status;
-// 4) Criar novos Horários com validação rigorosa de conflitos (veículo, condutor,
-//    capacidade de assentos, consultas prévias e pacientes simultâneos);
-// 5) Vincular passageiros e acompanhantes a partir das pessoas cadastradas;
-// 6) Reordenar o itinerário de embarque (ordem 1..N);
-// 7) Duplicar a escala completa de viagens de outro dia para agilizar o trabalho;
-// 8) Cancelar horários com exclusão lógica segura e invalidação de credenciais;
-// 9) Oferecer layout 100% responsivo para celular (360dp) e desktop.
-//
-// VOCABULÁRIO ADOTADO:
-// Em estrita conformidade com a especificação, as viagens são apresentadas na
-// interface exclusivamente sob o vocabulário "Horário" (ex.: "Horário de Saída",
-// "Grade de Horários", "Novo Horário", "Duplicar Horários").
-//
-// ONDE É USADO NO PROJETO:
-// - lib/routes/route_guard.dart (rota protegida '/gerenciador-horarios' e '/administrativo')
-// - lib/screens/admin_placeholder_screen.dart (incorporado como painel principal)
-// - test/gerenciador_viagens_test.dart (testes funcionais e de regras de borda)
-// - test/screens/gerenciador_viagens_mobile_web_test.dart (testes de responsividade)
-// ============================================================================
-
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -97,8 +64,6 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
 
   String _filtroTexto = '';
   String _filtroStatus = 'todos'; // todos, planejada, ativa, concluida, cancelada
-
-  final bool _carregando = false;
 
   @override
   void initState() {
@@ -188,17 +153,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
           final pacientes = <PacienteModel>[];
           for (final doc in snapshot.docs) {
             final dados = doc.data();
-            final ativo = dados['ativo'];
-            final status = dados['status']?.toString().toLowerCase().trim();
-            final situacao = dados['situacao']?.toString().toLowerCase().trim();
-            if (ativo == false ||
-                ativo == 'false' ||
-                status == 'inativo' ||
-                situacao == 'inativo' ||
-                status == 'excluido' ||
-                situacao == 'excluido') {
-              continue;
-            }
+            if (_documentoEstaInativo(dados)) continue;
             final role = (dados['role'] ?? dados['tipo'] ?? '')
                 .toString()
                 .toLowerCase()
@@ -282,6 +237,33 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
     }).toList();
   }
 
+  bool _documentoEstaInativo(Map<String, dynamic> dados) {
+    final ativo = dados['ativo'];
+    final status = dados['status']?.toString().toLowerCase().trim();
+    final situacao = dados['situacao']?.toString().toLowerCase().trim();
+    return ativo == false ||
+        ativo == 'false' ||
+        status == 'inativo' ||
+        situacao == 'inativo' ||
+        status == 'excluido' ||
+        situacao == 'excluido';
+  }
+
+  VeiculoModel _resolverVeiculoDaViagem(ViagemModel viagem) {
+    return _veiculosCadastrados.firstWhere(
+      (ve) =>
+          (viagem.veiculoId.isNotEmpty && ve.id == viagem.veiculoId) ||
+          (viagem.veiculoPlaca.isNotEmpty && ve.placa == viagem.veiculoPlaca),
+      orElse: () => VeiculoModel(
+        id: viagem.veiculoId,
+        placa: viagem.veiculoPlaca,
+        modelo: viagem.veiculoModelo,
+        capacidade: 0,
+        quilometragemAtual: 0,
+      ),
+    );
+  }
+
   String _formatarDataBrasileira(DateTime dt) {
     final dia = dt.day.toString().padLeft(2, '0');
     final mes = dt.month.toString().padLeft(2, '0');
@@ -307,19 +289,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
     int assentosTotais = 0;
     for (final v in _todasViagensDoDia.where((v) => !v.isCancelada)) {
       assentosOcupados += _calcularAssentosComBaixa(v);
-      final veic = _veiculosCadastrados.firstWhere(
-        (ve) =>
-            (v.veiculoId.isNotEmpty && ve.id == v.veiculoId) ||
-            (v.veiculoPlaca.isNotEmpty && ve.placa == v.veiculoPlaca),
-        orElse: () => VeiculoModel(
-          id: v.veiculoId,
-          placa: v.veiculoPlaca,
-          modelo: v.veiculoModelo,
-          capacidade: 0,
-          quilometragemAtual: 0,
-        ),
-      );
-      assentosTotais += veic.capacidade;
+      assentosTotais += _resolverVeiculoDaViagem(v).capacidade;
     }
 
     return Scaffold(
@@ -398,14 +368,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
               const SizedBox(height: 14),
 
               // Lista com os cartões dos Horários
-              if (_carregando)
-                const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(32.0),
-                    child: CircularProgressIndicator(),
-                  ),
-                )
-              else if (viagensExibicao.isEmpty)
+              if (viagensExibicao.isEmpty)
                 _construirEstadoVazio()
               else
                 ...viagensExibicao.map((v) => _construirCardHorario(v)),
@@ -820,18 +783,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
 
     final temVeiculoDefinido =
         viagem.veiculoId.trim().isNotEmpty || viagem.veiculoPlaca.trim().isNotEmpty;
-    final veic = _veiculosCadastrados.firstWhere(
-      (v) =>
-          (viagem.veiculoId.isNotEmpty && v.id == viagem.veiculoId) ||
-          (viagem.veiculoPlaca.isNotEmpty && v.placa == viagem.veiculoPlaca),
-      orElse: () => VeiculoModel(
-        id: viagem.veiculoId,
-        placa: viagem.veiculoPlaca,
-        modelo: viagem.veiculoModelo,
-        capacidade: 0,
-        quilometragemAtual: 0,
-      ),
-    );
+    final veic = _resolverVeiculoDaViagem(viagem);
 
     final capacidade = temVeiculoDefinido
         ? (veic.capacidade > 0 ? veic.capacidade : 7)
