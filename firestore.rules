@@ -445,7 +445,7 @@ service cloud.firestore {
       // - Motorista: lê viagens ativas ou abertas (status != 'encerrada')
       // - Paciente (autenticado anônimo ou paciente): lê SOMENTE SE status != 'encerrada'
       // Ao encerrar a viagem (status == 'encerrada'), o acesso de leitura é bloqueado na fonte pelas Security Rules!
-      allow read: if isAdmin() || (
+      allow read: if isAdmin() || isMotorista() || (
         isAuthenticated() && resource.data.status != 'encerrada'
       );
 

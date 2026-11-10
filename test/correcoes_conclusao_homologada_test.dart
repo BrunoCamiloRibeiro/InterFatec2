@@ -999,5 +999,138 @@ void main() {
         expect(veicFinal.emUso, isFalse);
       },
     );
+
+    test(
+      '15. obterTodasViagensDoDiaParaRelatorio consolida todas as viagens do dia mantendo encerramento isolado',
+      () async {
+        final viagemService = ViagemService();
+        viagemService.limparSessaoLocal();
+        final hoje = DateTime(2026, 11, 10, 8, 0);
+
+        final v1Encerrada = ViagemModel(
+          id: 'horario_2026_11_10_01',
+          motoristaId: '',
+          motoristaNome: '',
+          veiculoId: 'veic_a',
+          veiculoPlaca: 'BRA-2E19',
+          veiculoModelo: 'Spin',
+          kmInicial: 50000,
+          cidadeDestino: 'SÃO JOSÉ DO RIO PRETO',
+          dataHoraInicio: DateTime(2026, 11, 10, 6, 0),
+          status: 'encerrada',
+          passageirosIds: const ['pac_matheus'],
+          passageiros: const [
+            PassageiroViagemModel(
+              pacienteId: 'pac_matheus',
+              pacienteNome: 'Matheus',
+              localOrigem: 'Origem',
+              localDestino: 'HB',
+              horarioAtendimento: '08:30',
+              statusEmbarque: 4,
+            ),
+          ],
+        );
+
+        final v2Ativa = ViagemModel(
+          id: 'horario_2026_11_10_02',
+          motoristaId: '',
+          motoristaNome: '',
+          veiculoId: '',
+          veiculoPlaca: 'DEF-4G56',
+          veiculoModelo: 'Ducato',
+          kmInicial: 72000,
+          cidadeDestino: 'SÃO JOSÉ DO RIO PRETO',
+          dataHoraInicio: DateTime(2026, 11, 10, 8, 0),
+          status: 'ativa',
+          passageirosIds: const ['pac_hank'],
+          passageiros: const [
+            PassageiroViagemModel(
+              pacienteId: 'pac_hank',
+              pacienteNome: 'Hank',
+              localOrigem: 'Origem',
+              localDestino: 'AME',
+              horarioAtendimento: '22:00',
+              statusEmbarque: 0,
+            ),
+          ],
+        );
+
+        final v3Foco = ViagemModel(
+          id: 'horario_2026_11_10_03',
+          motoristaId: 'mot_bruno',
+          motoristaNome: 'Bruno',
+          veiculoId: 'veic_b',
+          veiculoPlaca: 'AEG-1234',
+          veiculoModelo: 'Ka',
+          kmInicial: 10000,
+          cidadeDestino: 'BARRETOS',
+          dataHoraInicio: DateTime(2026, 11, 10, 10, 0),
+          status: 'ativa',
+          passageirosIds: const ['pac_heitor'],
+          passageiros: const [
+            PassageiroViagemModel(
+              pacienteId: 'pac_heitor',
+              pacienteNome: 'Heitor',
+              localOrigem: 'Origem',
+              localDestino: 'Hospital de Amor',
+              horarioAtendimento: '15:00',
+              statusEmbarque: 1,
+            ),
+          ],
+        );
+
+        viagemService.sincronizarViagensRemotas([
+          v1Encerrada,
+          v2Ativa,
+          v3Foco,
+        ]);
+
+        await viagemService.iniciarViagem(
+          veiculo: const VeiculoModel(
+            id: 'veic_b',
+            placa: 'AEG-1234',
+            modelo: 'Ka',
+            capacidade: 4,
+            quilometragemAtual: 10000,
+          ),
+          kmInicial: 10000,
+          cidadeDestino: 'BARRETOS',
+          motoristaId: 'mot_bruno',
+          motoristaNome: 'Bruno',
+        );
+
+        // Encerramento isola estritamente a v3Foco
+        final paraEncerrar = viagemService.obterViagensParaRelatorio(
+          viagensExplicitas: [v3Foco],
+          viagemUnica: v3Foco,
+        );
+        expect(paraEncerrar.map((v) => v.id).toList(), equals([v3Foco.id]));
+
+        await viagemService.encerrarTodasViagens(
+          kmFinal: 10120,
+          kmRodado: 120,
+          viagensExplicitas: paraEncerrar,
+          motoristaId: 'mot_bruno',
+          encerrarViagensDefinitivamente: true,
+        );
+
+        final v3Pos = viagemService.todasViagens
+            .firstWhere((v) => v.id == v3Foco.id);
+        final v2Pos = viagemService.todasViagens
+            .firstWhere((v) => v.id == v2Ativa.id);
+        expect(v3Pos.status, equals('encerrada'));
+        expect(v2Pos.status, equals('ativa'));
+
+        // Relatório diário traz TODAS as 3 viagens do dia em ordem cronológica
+        final doDia = await viagemService.obterTodasViagensDoDiaParaRelatorio(
+          viagemEncerradaAtual: v3Pos,
+          dataReferencia: hoje,
+        );
+        expect(
+          doDia.map((v) => v.id).toList(),
+          equals([v1Encerrada.id, v2Ativa.id, v3Foco.id]),
+        );
+      },
+    );
   });
 }

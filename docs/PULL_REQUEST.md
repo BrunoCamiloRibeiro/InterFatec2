@@ -39,7 +39,7 @@ Refatoração e estabilização do núcleo operacional do TransSaúde (InterFate
 
 ### Verificação e Testes Executados
 * **Análise Estática (`flutter analyze`):** 0 erros, 0 avisos.
-* **Testes Automatizados Flutter (`flutter test -j 1`):** **298/298 testes aprovados (100% de sucesso)**, incluindo:
+* **Testes Automatizados Flutter (`flutter test -j 1`):** **299/299 testes aprovados (100% de sucesso)**, incluindo:
   * `test/correcoes_conclusao_homologada_test.dart` (validação de encerramento isolado, fallback automático e persistência de passageiros).
   * `test/screens/motorista_fluxo_inicio_encerramento_test.dart` (fluxo de encerramento individual via interface com relatório).
   * `test/isolamento_sessoes_motoristas_test.dart` (segregação de sessões e frotas de múltiplos motoristas).

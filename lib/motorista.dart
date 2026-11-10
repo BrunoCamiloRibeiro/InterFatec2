@@ -18,6 +18,7 @@ import 'package:trans_saude/services/viagem_service.dart';
 import 'components/card_paciente.dart';
 import 'components/dialogo_confirmacao_motorista.dart';
 import 'components/footer_pacientes.dart';
+import 'components/formulario_encerramento.dart';
 import 'components/formulario_inicio_viagem.dart';
 import 'components/motorista_header.dart';
 
@@ -954,7 +955,8 @@ class _MotoristaState extends State<Motorista> {
     );
     if (!confirmou) return false;
 
-    final idViagemAlvo = _viagemAtiva?.id;
+    final viagemAntesSwipe = _viagemAtiva;
+    final idViagemAlvo = viagemAntesSwipe?.id;
     _syncService.registrarPacienteEmMemoriaSeAusente(
       paciente,
       viagemId: idViagemAlvo,
@@ -980,6 +982,13 @@ class _MotoristaState extends State<Motorista> {
           ),
         );
       }
+      final viagemAutoEncerrada = widget.pacientesStreamOverride == null &&
+          idViagemAlvo != null &&
+          !idViagemAlvo.startsWith('sessao_ativa_') &&
+          !_viagemService.viagensAtivas.any((v) => v.id == idViagemAlvo) &&
+          _viagemService.todasViagens.any(
+            (v) => v.id == idViagemAlvo && v.isConcluida,
+          );
       if (widget.pacientesStreamOverride == null) {
         setState(() {
           _selecionarViagemPreservandoId(
@@ -1029,10 +1038,50 @@ class _MotoristaState extends State<Motorista> {
           }),
         );
       }
-      _exibirSnackBar(
-        "Avanço para '$proximoStatusNome' confirmado com sucesso.",
-        const Color(0xFF16A34A),
-      );
+      if (viagemAutoEncerrada) {
+        final vConcluida = _viagemService.todasViagens.firstWhere(
+          (v) => v.id == idViagemAlvo,
+          orElse: () => viagemAntesSwipe!,
+        );
+        final rotuloViagem = (vConcluida.nomeHorario != null &&
+                vConcluida.nomeHorario!.trim().isNotEmpty)
+            ? vConcluida.nomeHorario!.trim()
+            : vConcluida.cidadeDestino;
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              duration: const Duration(seconds: 6),
+              backgroundColor: const Color(0xFF0F172A),
+              behavior: SnackBarBehavior.floating,
+              content: Text(
+                'Viagem ($rotuloViagem) concluída automaticamente! Todos os passageiros finalizaram.',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              action: SnackBarAction(
+                label: 'Informar KM / PDF',
+                textColor: const Color(0xFF38BDF8),
+                onPressed: () {
+                  if (!mounted) return;
+                  showDialog<bool>(
+                    context: context,
+                    builder: (_) => FormularioEncerramento(
+                      viagem: vConcluida,
+                      viagens: [vConcluida],
+                      motoristaId: _obterIdMotoristaSessao(),
+                      onViagemEncerrada: _aoEncerrarViagemMotorista,
+                    ),
+                  );
+                },
+              ),
+            ),
+          );
+      } else {
+        _exibirSnackBar(
+          "Avanço para '$proximoStatusNome' confirmado com sucesso.",
+          const Color(0xFF16A34A),
+        );
+      }
     } else {
       _exibirSnackBar(resultado.mensagem, const Color(0xFFB83227));
     }

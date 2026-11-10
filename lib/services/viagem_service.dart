@@ -1062,6 +1062,104 @@ class ViagemService {
     return unicas.values.toList();
   }
 
+  bool _mesmoDiaCalendario(DateTime a, DateTime b) {
+    final al = a.toLocal();
+    final bl = b.toLocal();
+    return al.year == bl.year && al.month == bl.month && al.day == bl.day;
+  }
+
+  bool _viagemPertenceAoDia(ViagemModel v, DateTime dataAlvo) {
+    final dataLocal = dataAlvo.toLocal();
+    if (_mesmoDiaCalendario(v.dataHoraInicio, dataLocal)) return true;
+    if (v.dataViagem != null && _mesmoDiaCalendario(v.dataViagem!, dataLocal)) {
+      return true;
+    }
+    final prefixoHoje =
+        'horario_${dataLocal.year.toString().padLeft(4, '0')}_${dataLocal.month.toString().padLeft(2, '0')}_${dataLocal.day.toString().padLeft(2, '0')}_';
+    if (v.id.startsWith(prefixoHoje)) return true;
+    return false;
+  }
+
+  /// Retorna todas as viagens reais do dia (ativas, concluídas na sessão e
+  /// encerradas no Firestore) para exibição consolidada no relatório PDF,
+  /// mantendo o encerramento isolado apenas na viagem em foco.
+  Future<List<ViagemModel>> obterTodasViagensDoDiaParaRelatorio({
+    ViagemModel? viagemEncerradaAtual,
+    DateTime? dataReferencia,
+  }) async {
+    final dataAlvo =
+        dataReferencia ?? viagemEncerradaAtual?.dataHoraInicio ?? DateTime.now();
+    final refSessao = viagemEncerradaAtual ?? _viagemAtiva;
+    final mapaDoDia = <String, ViagemModel>{};
+
+    void adicionarSeDoDia(ViagemModel v) {
+      if (v.id.isEmpty || v.id.startsWith('sessao_ativa_')) return;
+      if (!_viagemPertenceAoDia(v, dataAlvo)) return;
+      mapaDoDia[v.id] = _enriquecerViagemParaRelatorio(
+        v,
+        referenciaSessao: refSessao,
+      );
+    }
+
+    for (final v in _viagensConcluidasNaSessao) {
+      adicionarSeDoDia(v);
+    }
+    for (final v in _todasViagensMemoria) {
+      adicionarSeDoDia(v);
+    }
+    for (final v in _viagensAtivasMemoria) {
+      adicionarSeDoDia(v);
+    }
+
+    if (_isFirebaseDisponivel()) {
+      try {
+        final snapViagens = await FirebaseFirestore.instance
+            .collection('viagens')
+            .get()
+            .timeout(const Duration(seconds: 3));
+        for (final doc in snapViagens.docs) {
+          final vRemota = ViagemModel.fromMap(doc.data(), docId: doc.id);
+          if (!mapaDoDia.containsKey(vRemota.id)) {
+            adicionarSeDoDia(vRemota);
+          }
+        }
+      } catch (_) {}
+
+      try {
+        final snapHomologadas = await FirebaseFirestore.instance
+            .collection('viagens_homologadas')
+            .get()
+            .timeout(const Duration(seconds: 3));
+        for (final doc in snapHomologadas.docs) {
+          final dados = Map<String, dynamic>.from(doc.data());
+          final idViagem =
+              (dados['viagemId']?.toString().trim().isNotEmpty == true)
+                  ? dados['viagemId'].toString().trim()
+                  : doc.id;
+          dados['id'] = idViagem;
+          dados['status'] = 'encerrada';
+          final vHomologada = ViagemModel.fromMap(dados, docId: idViagem);
+          if (!mapaDoDia.containsKey(vHomologada.id)) {
+            adicionarSeDoDia(vHomologada);
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (viagemEncerradaAtual != null &&
+        viagemEncerradaAtual.id.isNotEmpty &&
+        !viagemEncerradaAtual.id.startsWith('sessao_ativa_')) {
+      mapaDoDia[viagemEncerradaAtual.id] = _enriquecerViagemParaRelatorio(
+        viagemEncerradaAtual,
+        referenciaSessao: refSessao,
+      );
+    }
+
+    final listaOrdenada = mapaDoDia.values.toList()
+      ..sort((a, b) => a.dataHoraInicio.compareTo(b.dataHoraInicio));
+    return listaOrdenada;
+  }
+
   ViagemModel _criarPlaceholderSessaoAtiva(
     SessaoVeiculoModel sessao, {
     String cidadeDestino = '',

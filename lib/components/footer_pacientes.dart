@@ -157,6 +157,22 @@ class FooterPacientes extends StatelessWidget {
   }
 
   Future<void> _confirmarEAbrirEncerramento(BuildContext context) async {
+    final ViagemModel? viagemAtual = viagem ??
+        ViagemService().viagemAtiva ??
+        ((viagens != null && viagens!.isNotEmpty) ? viagens!.first : null);
+    final bool ehViagemReal = viagemAtual != null &&
+        viagemAtual.id.isNotEmpty &&
+        !viagemAtual.id.startsWith('sessao_ativa_');
+    final String rotuloHorario = (viagemAtual?.nomeHorario != null &&
+            viagemAtual!.nomeHorario!.trim().isNotEmpty)
+        ? viagemAtual.nomeHorario!.trim()
+        : (viagemAtual?.id ?? '');
+    final String destinoViagem = viagemAtual?.cidadeDestino.trim() ?? '';
+    final List<PacienteModel> listaPacientesCtx =
+        pacientes ?? const <PacienteModel>[];
+    final List<PacienteModel> pendentes =
+        listaPacientesCtx.where((p) => p.status < 4).toList();
+
     final bool? querFinalizar = await showDialog<bool>(
       context: context,
       builder: (BuildContext dialogContext) {
@@ -187,9 +203,74 @@ class FooterPacientes extends StatelessWidget {
               ),
             ],
           ),
-          content: const Text(
-            'Você tem certeza que quer finalizar a viagem?',
-            style: TextStyle(fontSize: 14),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Você tem certeza que quer finalizar a viagem?',
+                  style: TextStyle(fontSize: 14),
+                ),
+                if (ehViagemReal) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFFCBD5E1)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          destinoViagem.isNotEmpty
+                              ? '$rotuloHorario • $destinoViagem'
+                              : rotuloHorario,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF0F172A),
+                          ),
+                        ),
+                        if (listaPacientesCtx.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            'Passageiros: ${listaPacientesCtx.map((p) => p.nome).join(', ')}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF475569),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+                if (ehViagemReal && pendentes.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEF3C7),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFFF59E0B)),
+                    ),
+                    child: Text(
+                      'Atenção: ${pendentes.length} passageiro(s) ainda pendente(s) (${pendentes.map((p) => p.nome).join(', ')}) serão marcados como Concluídos.',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF92400E),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
           actions: [
             TextButton(
@@ -221,10 +302,6 @@ class FooterPacientes extends StatelessWidget {
     );
 
     if (querFinalizar != true || !context.mounted) return;
-
-    final ViagemModel? viagemAtual = viagem ??
-        ViagemService().viagemAtiva ??
-        ((viagens != null && viagens!.isNotEmpty) ? viagens!.first : null);
     final viagensParaEncerrar = viagemAtual != null
         ? <ViagemModel>[viagemAtual]
         : const <ViagemModel>[];

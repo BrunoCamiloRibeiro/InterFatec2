@@ -289,29 +289,43 @@ class _FormularioEncerramentoState extends State<FormularioEncerramento> {
   }) async {
     await Future<void>.delayed(const Duration(milliseconds: 50));
 
-    final vBase = viagensSnapshot.isNotEmpty
-        ? viagensSnapshot.first
-        : (viagemFallback ??
-            ViagemModel(
-              id: 'relatorio_${DateTime.now().millisecondsSinceEpoch}',
-              motoristaId: '',
-              motoristaNome: '',
-              veiculoId: '',
-              veiculoPlaca: '',
-              veiculoModelo: '',
-              kmInicial: 0,
-              cidadeDestino: 'TFD',
-              dataHoraInicio: DateTime.now(),
-              status: 'encerrada',
-            ));
+    final viagemFocoAtual =
+        viagensSnapshot.isNotEmpty ? viagensSnapshot.first : viagemFallback;
+
+    List<ViagemModel> viagensParaPdf = viagensSnapshot;
+    try {
+      final todasDoDia =
+          await ViagemService().obterTodasViagensDoDiaParaRelatorio(
+        viagemEncerradaAtual: viagemFocoAtual,
+      );
+      if (todasDoDia.isNotEmpty) {
+        viagensParaPdf = todasDoDia;
+      }
+    } catch (_) {}
+
+    final vBase = viagemFocoAtual ??
+        (viagensParaPdf.isNotEmpty
+            ? viagensParaPdf.first
+            : ViagemModel(
+                id: 'relatorio_${DateTime.now().millisecondsSinceEpoch}',
+                motoristaId: '',
+                motoristaNome: '',
+                veiculoId: '',
+                veiculoPlaca: '',
+                veiculoModelo: '',
+                kmInicial: 0,
+                cidadeDestino: 'TFD',
+                dataHoraInicio: DateTime.now(),
+                status: 'encerrada',
+              ));
 
     final mapaPacientesConsolidados = <String, PacienteModel>{};
     final codigosConsolidados = <String, String>{...vBase.codigosAcesso};
     final idsPassageirosConsolidados = <String>[];
     final destinos = <String>[];
 
-    if (viagensSnapshot.isNotEmpty) {
-      for (final v in viagensSnapshot) {
+    if (viagensParaPdf.isNotEmpty) {
+      for (final v in viagensParaPdf) {
         if (v.cidadeDestino.trim().isNotEmpty &&
             !destinos.contains(v.cidadeDestino.trim())) {
           destinos.add(v.cidadeDestino.trim());
@@ -319,7 +333,7 @@ class _FormularioEncerramentoState extends State<FormularioEncerramento> {
         codigosConsolidados.addAll(v.codigosAcesso);
         final pacsDaViagem = ViagemService().obterPacientesParaViagemRelatorio(
           v,
-          pacientesInformados: pacientesSnapshot,
+          pacientesInformados: v.id == vBase.id ? pacientesSnapshot : null,
         );
         for (final p in pacsDaViagem) {
           mapaPacientesConsolidados[p.id] = p;
