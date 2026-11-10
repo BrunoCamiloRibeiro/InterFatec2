@@ -11,6 +11,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:trans_saude/components/footer_pacientes.dart';
 import 'package:trans_saude/models/paciente_model.dart';
 import 'package:trans_saude/models/veiculo_model.dart';
 import 'package:trans_saude/models/viagem_model.dart';
@@ -546,6 +547,45 @@ void main() {
           ),
           findsNothing,
         );
+      },
+    );
+
+    testWidgets(
+      '5. FooterPacientes não sofre RenderFlex overflow em viewport móvel estreita (360x640)',
+      (tester) async {
+        tester.view.physicalSize = const Size(360, 640);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+
+        final errosRender = <FlutterErrorDetails>[];
+        final handlerOriginal = FlutterError.onError;
+        FlutterError.onError = (details) {
+          errosRender.add(details);
+        };
+        addTearDown(() {
+          FlutterError.onError = handlerOriginal;
+        });
+
+        await tester.pumpWidget(
+          const MaterialApp(
+            home: Scaffold(
+              bottomNavigationBar: FooterPacientes(
+                lugaresPreenchidos: 12,
+                lugaresTotais: 15,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(errosRender, isEmpty);
+        expect(find.text('Lugares: 12 / 15'), findsOneWidget);
+        expect(
+          find.byKey(const Key('textoLugaresDisponiveisFooter')),
+          findsOneWidget,
+        );
+        expect(find.text('Disponíveis: 3'), findsOneWidget);
+        expect(find.text('Gerar Relatório'), findsOneWidget);
       },
     );
   });
