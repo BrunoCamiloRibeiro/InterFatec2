@@ -149,15 +149,15 @@ npm test
 ```
 
 Também é possível executar etapas específicas da auditoria:
-* `npm run test:rules` — Validação das Security Rules para os 4 atores e LGPD (9/9 testes passando)
+* `npm run test:rules` — Validação das Security Rules para os 4 atores e LGPD (14/14 testes passando, incluindo consultas de viagens não encerradas e sessão multi-motorista)
 * `npm run test:cenario` — Teste do Cenário Central (liberação de carro com viagem aberta, retorno e corte de acesso)
 * `npm run test:concurrency` — Disputa concorrente por veículo, vaga e paciente com transações atômicas
 
 ### 2. Testes Unitários e de Widgets (Flutter)
 ```bash
-flutter test
+flutter test -j 1
 ```
-* **294/294 testes passando** com 100% de sucesso (incluindo testes de widget, auth, isolamento por viagem, responsividade em tela 320x568 e validações de CPF).
+* **296/296 testes passando** com 100% de sucesso (incluindo testes de widget, auth, isolamento entre sessões de motoristas, visibilidade multi-motorista de viagens operacionais, responsividade em tela 320x568 e validações de CPF).
 
 ---
 
