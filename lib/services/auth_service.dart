@@ -511,7 +511,14 @@ class FirebaseAuthService implements AuthService {
         final role = await resolveUserRole(user.uid);
         if (role == UserRole.motorista || role == UserRole.admin) {
           resetarTentativasOperacional(cleanCpf);
-          _usuarioOperacionalLogadoId = _usuarioOperacionalDocId ?? user.uid;
+          final idOperacional = _usuarioOperacionalDocId ?? user.uid;
+          _usuarioOperacionalLogadoId = idOperacional;
+          final sessaoAtual = ViagemService().sessaoAtiva;
+          if (sessaoAtual != null &&
+              sessaoAtual.motoristaId.trim().isNotEmpty &&
+              sessaoAtual.motoristaId.trim() != idOperacional) {
+            ViagemService().limparSessaoLocal();
+          }
           return role;
         }
         await auth.signOut();
@@ -575,6 +582,12 @@ class FirebaseAuthService implements AuthService {
           _roleCache[uidFinal] = role;
           if (novoAuthUid != null) {
             _roleCache[novoAuthUid] = role;
+          }
+          final sessaoAtual = ViagemService().sessaoAtiva;
+          if (sessaoAtual != null &&
+              sessaoAtual.motoristaId.trim().isNotEmpty &&
+              sessaoAtual.motoristaId.trim() != uidFinal) {
+            ViagemService().limparSessaoLocal();
           }
           return role;
         }
@@ -786,10 +799,16 @@ class FirebaseAuthService implements AuthService {
 
   @override
   Future<void> logout() async {
+    final apenasSessaoPaciente =
+        _pacienteLogadoId != null && _usuarioOperacionalLogadoId == null;
     clearRoleCache();
     // Encerra ouvintes de sessão ativa (SessionScope) antes do signOut.
     try {
-      ViagemService().encerrarEscutasFirestore();
+      final viagemService = ViagemService();
+      viagemService.encerrarEscutasFirestore();
+      if (!apenasSessaoPaciente) {
+        viagemService.limparSessaoLocal();
+      }
       LocalizacaoMotoristaService().encerrarEscutas();
     } catch (_) {}
     try {

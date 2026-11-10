@@ -245,7 +245,8 @@ class ViagemModel {
     final novosPassageiros = passageiros ?? this.passageiros;
     final novosPassageirosIds =
         passageirosIds ??
-        (passageiros != null
+        ((passageiros != null &&
+                (passageiros.isNotEmpty || this.passageiros.isNotEmpty))
             ? passageiros.map((p) => p.pacienteId).toList()
             : this.passageirosIds);
 

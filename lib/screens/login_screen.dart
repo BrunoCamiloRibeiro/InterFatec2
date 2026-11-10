@@ -104,11 +104,22 @@ class _LoginScreenState extends State<LoginScreen> {
             (authSvc is FirebaseAuthService ? authSvc.currentDocId : null) ??
                 authSvc.currentUserId ??
                 '';
-        if (idMotorista.isNotEmpty) {
-          ViagemService().restaurarSessaoMotoristaSeAtiva(
+        final viagemService = ViagemService();
+        final sessaoMem = viagemService.sessaoAtiva;
+        if (sessaoMem != null &&
+            sessaoMem.motoristaId.trim().isNotEmpty &&
+            idMotorista.trim().isNotEmpty &&
+            sessaoMem.motoristaId.trim() != idMotorista.trim()) {
+          viagemService.limparSessaoLocal();
+        }
+        if (idMotorista.isNotEmpty &&
+            FirebaseAuthService.motoristaEmViagemStatic == true) {
+          viagemService.restaurarSessaoMotoristaSeAtiva(
             motoristaId: idMotorista,
             motoristaNome: '',
           );
+        } else if (FirebaseAuthService.motoristaEmViagemStatic == false) {
+          viagemService.limparSessaoLocal();
         }
         Navigator.pushReplacementNamed(context, '/motorista');
       } else if (role == UserRole.admin) {

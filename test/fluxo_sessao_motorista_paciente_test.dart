@@ -254,18 +254,37 @@ void main() {
       // ======================================================================
       // ETAPA 8: ENCERRAMENTO DA VIAGEM E INVALIDAÇÃO DOS CÓDIGOS DE ACESSO
       // ======================================================================
-      // O motorista conclui a primeira viagem informando os dados de encerramento
+      // O motorista libera a primeira viagem da sua sessão; como os pacientes ainda não retornaram,
+      // a viagem permanece ativa no domínio enquanto o motorista segue com a Viagem 2.
       await viagemService.encerrarViagem(
         viagemId: viagem1.id,
         kmFinal: 50080,
         kmRodado: 80,
       );
 
-      // A viagem 1 foi concluída e removida da lista de viagens ativas
       expect(viagemService.viagensAtivas.any((v) => v.id == viagem1.id), isFalse);
-      // Mas a Viagem 2 ainda continua ativa na sessão
       expect(viagemService.viagensAtivas.length, equals(1));
       expect(viagemService.sessaoAtiva?.status, equals('ativa'));
+      expect(
+        viagemService.todasViagens.firstWhere((v) => v.id == viagem1.id).isConcluida,
+        isFalse,
+      );
+
+      // Somente quando TODOS os pacientes retornam (status == 4), a viagem encerra e revoga os códigos
+      await viagemService.atualizarStatusPassageiroNaViagem(
+        viagemId: viagem1.id,
+        pacienteId: pacienteComCpf.id,
+        novoStatus: 4,
+      );
+      await viagemService.atualizarStatusPassageiroNaViagem(
+        viagemId: viagem1.id,
+        pacienteId: pacienteCriancaComMae.id,
+        novoStatus: 4,
+      );
+      expect(
+        viagemService.todasViagens.firstWhere((v) => v.id == viagem1.id).isConcluida,
+        isTrue,
+      );
 
       // TENTATIVA DE LOGIN COM CÓDIGO DA VIAGEM ENCERRADA DEVE FALHAR IMEDIATAMENTE
       expect(
