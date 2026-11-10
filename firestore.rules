@@ -130,9 +130,12 @@ service cloud.firestore {
           ('role' in request.auth.token && (request.auth.token.role == 'admin' || request.auth.token.role == 'administrador')) ||
           ('admin' in request.auth.token && request.auth.token.admin == true)
         )) ||
-        (exists(/databases/$(database)/documents/usuarios/$(request.auth.uid)) &&
-         'role' in get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data &&
-         get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.role in ['admin', 'administrador'])
+        (
+          (request.auth.token == null || !('role' in request.auth.token)) &&
+          exists(/databases/$(database)/documents/usuarios/$(request.auth.uid)) &&
+          'role' in get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data &&
+          get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.role in ['admin', 'administrador']
+        )
       );
     }
 
@@ -140,9 +143,12 @@ service cloud.firestore {
     function isMotorista() {
       return isAuthenticated() && (
         (request.auth.token != null && 'role' in request.auth.token && request.auth.token.role == 'motorista') ||
-        (exists(/databases/$(database)/documents/usuarios/$(request.auth.uid)) &&
-         'role' in get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data &&
-         get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.role == 'motorista')
+        (
+          (request.auth.token == null || !('role' in request.auth.token)) &&
+          exists(/databases/$(database)/documents/usuarios/$(request.auth.uid)) &&
+          'role' in get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data &&
+          get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.role == 'motorista'
+        )
       );
     }
 
@@ -193,8 +199,8 @@ service cloud.firestore {
         'criadoEm', 'atualizadoEm', 'inativadoEm', 'senha', 'password'
       ])
       && dados.nome is string && dados.nome.size() >= 2 && dados.nome.size() <= 120
-      && dados.cpf is string && dados.cpf.matches('^[0-9]{11}$')
-      && dados.telefone is string && dados.telefone.size() >= 8 && dados.telefone.size() <= 30
+      && dados.cpf is string && (dados.cpf.matches('^[0-9]{11}$') || dados.cpf.matches('^[0-9]{3}\\.[0-9]{3}\\.[0-9]{3}-[0-9]{2}$'))
+      && validOptionalString(dados, 'telefone', 8, 30)
       && dados.role is string && dados.role in ['admin', 'administrador', 'motorista', 'paciente']
       && dados.ativo is bool
       && validOptionalString(dados, 'email', 3, 120)
@@ -352,9 +358,9 @@ service cloud.firestore {
       // - Dono (request.auth.uid == userId): pode ler o seu próprio perfil
       // - Paciente / Anônimo: NÃO PODE listar a coleção nem ler dados de outros pacientes (LGPD)
       allow read: if isAuthenticated() && (
-        isAdmin()
-        || isOwner(userId)
-        || (isMotorista() && resource.data.role in ['paciente', 'motorista'])
+        isOwner(userId)
+        || isAdmin()
+        || (isMotorista() && resource.data.role == 'paciente')
       );
 
       // CRIAÇÃO: Apenas Admin
@@ -367,27 +373,29 @@ service cloud.firestore {
                     && ('ativo' in request.resource.data);
 
       // ATUALIZAÇÃO:
-      // - Admin: pode atualizar qualquer documento válido
       // - Motorista dono: pode atualizar 'emViagem' (bool). Não pode mudar seu próprio role nem desativar conta
+      // - Admin: pode atualizar qualquer documento válido
       // - Motorista em rota: pode atualizar status de paciente durante a viagem sem alterar PII
-      allow update: if isValidUsuario(request.resource.data) && (
-        isAdmin()
-        || (
-          isMotorista() && isOwner(userId)
+      allow update: if (
+        (
+          isOwner(userId)
           && request.resource.data.role == resource.data.role
           && request.resource.data.ativo == resource.data.ativo
           && request.resource.data.cpf == resource.data.cpf
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['emViagem', 'atualizadoEm'])
           && request.resource.data.emViagem is bool
         )
-        || (
-          isMotorista() && resource.data.role == 'paciente'
-          && request.resource.data.role == resource.data.role
-          && request.resource.data.ativo == resource.data.ativo
-          && request.resource.data.cpf == resource.data.cpf
-          && request.resource.data.nome == resource.data.nome
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'statusViagem', 'atualizadoEm'])
-        )
+        || (isValidUsuario(request.resource.data) && (
+          isAdmin()
+          || (
+            isMotorista() && resource.data.role == 'paciente'
+            && request.resource.data.role == resource.data.role
+            && request.resource.data.ativo == resource.data.ativo
+            && request.resource.data.cpf == resource.data.cpf
+            && request.resource.data.nome == resource.data.nome
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'statusViagem', 'atualizadoEm'])
+          )
+        ))
       );
 
       // EXCLUSÃO: TERMINANTEMENTE PROIBIDA (LGPD & Soft Delete Obrigatório via ativo: false)

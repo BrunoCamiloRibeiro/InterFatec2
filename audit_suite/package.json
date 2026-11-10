@@ -1,0 +1,24 @@
+{
+  "name": "interfatec2-audit-suite",
+  "version": "1.0.0",
+  "description": "Suite de Auditoria e Testes do InterFatec2 contra Firebase Local Emulator Suite",
+  "scripts": {
+    "seed": "node seed_emulator.js",
+    "test:rules": "node test_rules.js",
+    "test:cenario": "node test_cenario_central.js",
+    "test:concurrency": "node test_concurrency.js",
+    "test:matrix": "node test_state_matrix.js",
+    "test:diff": "node test_differential.js",
+    "test:invariants": "node test_invariants.js",
+    "test:sessions": "node test_sessions.js",
+    "test": "node seed_emulator.js && node test_rules.js && node test_cenario_central.js && node test_concurrency.js",
+    "audit:all": "node run_all_audits.js"
+  },
+  "dependencies": {
+    "@firebase/rules-unit-testing": "^3.0.3",
+    "fast-check": "^3.23.1",
+    "firebase": "^10.14.1",
+    "firebase-admin": "^12.7.0",
+    "playwright": "^1.49.0"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "interfatec2",
+  "version": "1.0.0",
+  "description": "InterFatec2 - Núcleo Conectado ao Firebase",
+  "scripts": {
+    "test": "npm --prefix audit_suite test",
+    "test:rules": "npm --prefix audit_suite run test:rules",
+    "test:cenario": "npm --prefix audit_suite run test:cenario",
+    "test:concurrency": "npm --prefix audit_suite run test:concurrency",
+    "seed": "npm --prefix audit_suite run seed",
+    "audit:all": "npm --prefix audit_suite run audit:all"
+  }
+}
