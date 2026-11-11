@@ -296,6 +296,13 @@ class FirebaseAuthService implements AuthService {
       );
     }
 
+    if (_usuarioEstaInativo(data)) {
+      throw const AuthException(
+        'Usuário inativo. Contate a coordenação.',
+        code: 'user-inactive',
+      );
+    }
+
     final roleRaw = data['role'];
     if (roleRaw == null || roleRaw.toString().trim().isEmpty) {
       throw const AuthException(
@@ -756,6 +763,7 @@ class FirebaseAuthService implements AuthService {
             .where('role', isEqualTo: 'paciente')
             .get();
         pacientesDisponiveis = snap.docs
+            .where((d) => !_usuarioEstaInativo(d.data()))
             .map((d) => PacienteModel.fromMap(d.data(), docId: d.id))
             .toList();
       } catch (_) {}
@@ -771,6 +779,7 @@ class FirebaseAuthService implements AuthService {
       );
 
       for (final paciente in pacientesDisponiveis) {
+        if (!paciente.ativo) continue;
         final resolucao =
             CodigoAcessoService.resolverIdentificadorLogin(paciente);
         final docRes = resolucao.documentoNormalizado;

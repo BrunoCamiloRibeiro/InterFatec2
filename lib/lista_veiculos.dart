@@ -57,10 +57,6 @@ class _VeiculosState extends State<Veiculos> {
     super.dispose();
   }
 
-  Future<List<dynamic>> carregarVeiculos() async {
-    return _inicializar();
-  }
-
   void _alterarStatusVeiculo(Map<String, dynamic> veiculo, String novoStatus) {
     final statusEnum = StatusVeiculo.fromString(novoStatus);
     _controller.alterarStatus(veiculo['id'].toString(), statusEnum);

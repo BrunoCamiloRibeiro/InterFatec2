@@ -472,17 +472,7 @@ class _PacienteState extends State<Paciente> {
           );
     }
 
-    return FirebaseFirestore.instance
-        .collection('usuarios')
-        .where('role', isEqualTo: 'paciente')
-        .snapshots()
-        .map((snapshot) {
-          for (final doc in snapshot.docs) {
-            if (_documentoEstaInativo(doc.data())) continue;
-            return _processarDocumentoUsuario(doc.id, doc.data());
-          }
-          return null;
-        });
+    return Stream.value(null);
   }
 
   String? _resolverMensagemApoio(PacienteModel paciente, bool temTimerAtivo) {
@@ -556,20 +546,10 @@ class _PacienteState extends State<Paciente> {
         return Scaffold(
           backgroundColor: const Color(0xFFF8FAFC),
           appBar: AppBar(
+            automaticallyImplyLeading: false,
             backgroundColor: const Color(0xFF0F172A),
             foregroundColor: Colors.white,
             elevation: 2,
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back),
-              color: Colors.white,
-              onPressed: () {
-                if (Navigator.of(context).canPop()) {
-                  Navigator.of(context).pop();
-                } else {
-                  Navigator.of(context).pushReplacementNamed('/');
-                }
-              },
-            ),
             title: const Text(
               'Painel do Paciente',
               maxLines: 1,

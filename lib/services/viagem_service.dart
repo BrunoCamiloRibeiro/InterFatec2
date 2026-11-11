@@ -2713,11 +2713,15 @@ class ViagemService {
       ];
     }
 
+    final kmInicialCalculado =
+        (sessaoResolvidaEnc != null && sessaoResolvidaEnc.kmInicial > 0)
+            ? sessaoResolvidaEnc.kmInicial
+            : viagem.kmInicial;
     final kmFinalCalculado = kmFinal ?? viagem.kmFinal;
     final kmRodadoCalculado = kmRodado ??
         viagem.kmRodado ??
-        ((kmFinalCalculado != null && kmFinalCalculado >= viagem.kmInicial)
-            ? (kmFinalCalculado - viagem.kmInicial)
+        ((kmFinalCalculado != null && kmFinalCalculado >= kmInicialCalculado)
+            ? (kmFinalCalculado - kmInicialCalculado)
             : null);
 
     final todosVoltaram = forcarConclusao ||
@@ -2736,6 +2740,7 @@ class ViagemService {
       veiculoPlaca: '',
       veiculoModelo: '',
       removerSessaoId: true,
+      kmInicial: kmInicialCalculado,
       kmFinal: kmFinalCalculado,
       kmRodado: kmRodadoCalculado,
       dataHoraFim: todosVoltaram ? (viagem.dataHoraFim ?? agoraFim) : null,
@@ -3612,6 +3617,10 @@ class ViagemService {
     required List<PassageiroViagemModel> passageiros,
     String? viagemIdAtual,
   }) {
+    if (horario.trim().isEmpty) {
+      return 'Informe o horário de saída.';
+    }
+
     final validacaoCidade = ValidacaoViagem.validarCidade(cidadeDestino);
     if (!validacaoCidade.valido) return validacaoCidade.mensagemErro;
 
@@ -3648,7 +3657,12 @@ class ViagemService {
       if (!resCap.valido) return resCap.mensagemErro;
     }
 
+    final idsPassageirosVistos = <String>{};
     for (final p in passageiros) {
+      final idLimpo = p.pacienteId.trim();
+      if (idLimpo.isNotEmpty && !idsPassageirosVistos.add(idLimpo)) {
+        return 'O passageiro ${p.pacienteNome} já foi adicionado a este horário.';
+      }
       final resAcomp = ValidacaoViagem.validarAcompanhante(
         acompanhanteNome: p.acompanhanteNome,
         pacienteId: p.pacienteId,
@@ -3933,6 +3947,11 @@ class ViagemService {
     }
 
     final viagem = _todasViagensMemoria[index];
+    if (softDelete && viagem.isConcluida) {
+      return ResultadoOperacaoViagem.erro(
+        'Não é possível cancelar uma viagem que já foi concluída.',
+      );
+    }
     final ViagemModel resultadoModelo;
 
     if (softDelete) {
@@ -4046,9 +4065,9 @@ class ViagemService {
         id: idDuplicada,
         motoristaId: '',
         motoristaNome: '',
-        veiculoId: vo.veiculoId,
-        veiculoPlaca: vo.veiculoPlaca,
-        veiculoModelo: vo.veiculoModelo,
+        veiculoId: '',
+        veiculoPlaca: '',
+        veiculoModelo: '',
         kmInicial: 0,
         cidadeDestino: vo.cidadeDestino,
         nomeHorario: vo.nomeHorario,

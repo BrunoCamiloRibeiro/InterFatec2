@@ -967,7 +967,7 @@ class _MotoristaState extends State<Motorista> {
     );
     final resultado = await _syncService.avancarEtapaMotorista(
       pacienteId: paciente.id,
-      motoristaId: _motoristaId ?? 'motorista',
+      motoristaId: _obterIdMotoristaSessao(),
       acao: acao,
       viagemId: idViagemAlvo,
     );
@@ -1310,6 +1310,7 @@ class _MotoristaState extends State<Motorista> {
     final idMotoristaSessao = _obterIdMotoristaSessao();
     return Scaffold(
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         title: const Text(
           'Início da Viagem',
           overflow: TextOverflow.ellipsis,
@@ -1362,21 +1363,11 @@ class _MotoristaState extends State<Motorista> {
 
   AppBar _construirAppBarEmViagem() {
     return AppBar(
+      automaticallyImplyLeading: false,
       backgroundColor: const Color(0xFF0F172A),
       foregroundColor: Colors.white,
       elevation: 2,
-      titleSpacing: 4,
-      leading: IconButton(
-        icon: const Icon(Icons.arrow_back),
-        color: Colors.white,
-        onPressed: () {
-          if (Navigator.of(context).canPop()) {
-            Navigator.of(context).pop();
-          } else {
-            Navigator.of(context).pushReplacementNamed('/');
-          }
-        },
-      ),
+      titleSpacing: 16,
       title: const Text(
         'Lista de Passageiros',
         maxLines: 1,
@@ -1446,7 +1437,7 @@ class _MotoristaState extends State<Motorista> {
           padding: const EdgeInsets.only(right: 16),
           alignment: Alignment.centerRight,
           decoration: BoxDecoration(
-            color: Colors.green.withValues(alpha: 0.4),
+            color: const Color(0xFF15803D),
             borderRadius: BorderRadius.circular(16),
           ),
           child: const Column(

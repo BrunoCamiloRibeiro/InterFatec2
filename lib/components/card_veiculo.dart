@@ -6,6 +6,7 @@ class CardVeiculo extends StatelessWidget {
   final VoidCallback? onDetalhes;
   final ValueChanged<String>? onStatusChanged;
   final ValueChanged<String>? onTagSelecionada;
+  final bool exibirAcoesRodape;
 
   const CardVeiculo({
     super.key,
@@ -14,6 +15,7 @@ class CardVeiculo extends StatelessWidget {
     this.onDetalhes,
     this.onStatusChanged,
     this.onTagSelecionada,
+    this.exibirAcoesRodape = true,
   });
 
   @override
@@ -41,9 +43,7 @@ class CardVeiculo extends StatelessWidget {
             rawMotorista == 'null' ||
             rawMotorista == 'motorista_atual')
         ? 'Não informado'
-        : (rawMotorista == 'mot_inicial_01'
-            ? 'Roberto Almeida Prado'
-            : rawMotorista);
+        : rawMotorista;
     final bool possuiAC = veiculo['possuiAC'] == true;
     final bool possuiPreferencial = veiculo['possuiPreferencial'] == true;
     final String? observacoes = veiculo['observacoes']?.toString();
@@ -267,121 +267,30 @@ class CardVeiculo extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               spacing: 12,
               children: [
-                // QUILOMETRAGEM E QTD DE ASSENTOS
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // QUILOMETRAGEM
                     Expanded(
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(
-                            Icons.speed_outlined,
-                            size: 20,
-                            color: Colors.grey[700],
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Quilometragem Atual',
-                                  style: TextStyle(
-                                    color: Color.lerp(
-                                      Colors.grey,
-                                      Colors.black,
-                                      0.5,
-                                    ),
-                                    fontSize: 12,
-                                  ),
-                                ),
-                                Text(
-                                  '$km km',
-                                  style: const TextStyle(fontSize: 14),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
+                      child: _construirCampoMetadado(
+                        icone: Icons.speed_outlined,
+                        rotulo: 'Quilometragem Atual',
+                        valor: '$km km',
                       ),
                     ),
                     const SizedBox(width: 12),
-                    // QTD DE ASSENTOS
                     Expanded(
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(
-                            Icons.chair_outlined,
-                            size: 20,
-                            color: Colors.grey[700],
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Qtd. de Assentos',
-                                  style: TextStyle(
-                                    color: Color.lerp(
-                                      Colors.grey,
-                                      Colors.black,
-                                      0.5,
-                                    ),
-                                    fontSize: 12,
-                                  ),
-                                ),
-                                Text(
-                                  '$assentos',
-                                  style: const TextStyle(fontSize: 14),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
+                      child: _construirCampoMetadado(
+                        icone: Icons.chair_outlined,
+                        rotulo: 'Qtd. de Assentos',
+                        valor: '$assentos',
                       ),
                     ),
                   ],
                 ),
-                // ÚLTIMO MOTORISTA
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(
-                      Icons.person_outline_outlined,
-                      size: 20,
-                      color: Colors.grey[700],
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Último Motorista',
-                            style: TextStyle(
-                              color: Color.lerp(
-                                Colors.grey,
-                                Colors.black,
-                                0.5,
-                              ),
-                              fontSize: 12,
-                            ),
-                          ),
-                          Text(
-                            ultimoMotorista,
-                            style: const TextStyle(fontSize: 14),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+                _construirCampoMetadado(
+                  icone: Icons.person_outline_outlined,
+                  rotulo: 'Último Motorista',
+                  valor: ultimoMotorista,
                 ),
               ],
             ),
@@ -520,91 +429,126 @@ class CardVeiculo extends StatelessWidget {
                 ),
               ),
 
-            // BOTÕES DE EDITAR E VER DETALHES
-            const Divider(height: 2),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: TextButton(
-                    style: ButtonStyle(
-                      padding: WidgetStateProperty.all(
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                      ),
-                      shape: WidgetStateProperty.all(
-                        RoundedRectangleBorder(
-                          borderRadius: BorderRadiusGeometry.circular(8),
+            if (exibirAcoesRodape) ...[
+              // BOTÕES DE EDITAR E VER DETALHES
+              const Divider(height: 2),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      style: ButtonStyle(
+                        padding: WidgetStateProperty.all(
+                          const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                         ),
-                      ),
-                    ),
-                    onPressed: onEditar,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.start,
-                      children: [
-                        Icon(
-                          Icons.edit_outlined,
-                          size: 20,
-                          color: Colors.grey[700],
-                        ),
-                        const SizedBox(width: 8),
-                        Flexible(
-                          child: Text(
-                            'Editar',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: Color.lerp(Colors.grey, Colors.black, 0.5),
-                            ),
-                            overflow: TextOverflow.ellipsis,
+                        shape: WidgetStateProperty.all(
+                          RoundedRectangleBorder(
+                            borderRadius: BorderRadiusGeometry.circular(8),
                           ),
                         ),
-                      ],
+                      ),
+                      onPressed: onEditar,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.start,
+                        children: [
+                          Icon(
+                            Icons.edit_outlined,
+                            size: 20,
+                            color: Colors.grey[700],
+                          ),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              'Editar',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Color.lerp(Colors.grey, Colors.black, 0.5),
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: TextButton(
-                    style: ButtonStyle(
-                      padding: WidgetStateProperty.all(
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                      ),
-                      shape: WidgetStateProperty.all(
-                        RoundedRectangleBorder(
-                          borderRadius: BorderRadiusGeometry.circular(8),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextButton(
+                      style: ButtonStyle(
+                        padding: WidgetStateProperty.all(
+                          const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                         ),
-                      ),
-                    ),
-                    onPressed: onDetalhes,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        Flexible(
-                          child: Text(
-                            'Ver Detalhes',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: Color.lerp(Colors.grey, Colors.black, 0.5),
-                            ),
-                            overflow: TextOverflow.ellipsis,
+                        shape: WidgetStateProperty.all(
+                          RoundedRectangleBorder(
+                            borderRadius: BorderRadiusGeometry.circular(8),
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        Icon(
-                          Icons.arrow_forward_outlined,
-                          size: 20,
-                          color: Colors.grey[700],
-                        ),
-                      ],
+                      ),
+                      onPressed: onDetalhes,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              'Ver Detalhes',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Color.lerp(Colors.grey, Colors.black, 0.5),
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Icon(
+                            Icons.arrow_forward_outlined,
+                            size: 20,
+                            color: Colors.grey[700],
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
+            ],
           ],
         ),
       ),
+    );
+  }
+
+  Widget _construirCampoMetadado({
+    required IconData icone,
+    required String rotulo,
+    required String valor,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icone, size: 20, color: Colors.grey[700]),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                rotulo,
+                style: TextStyle(
+                  color: Color.lerp(Colors.grey, Colors.black, 0.5),
+                  fontSize: 12,
+                ),
+              ),
+              Text(
+                valor,
+                style: const TextStyle(fontSize: 14),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

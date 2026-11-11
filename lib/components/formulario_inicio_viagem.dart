@@ -625,34 +625,3 @@ class _FormularioInicioViagemState extends State<FormularioInicioViagem> {
     );
   }
 }
-
-/// Tela de início de viagem exibida quando o motorista não está com veículo ativo.
-class TelaInicioViagem extends StatelessWidget {
-  const TelaInicioViagem({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF7F8FA),
-      appBar: AppBar(
-        title: const Text('Início da Viagem'),
-        backgroundColor: const Color(0xFF0F172A),
-        foregroundColor: Colors.white,
-        elevation: 2,
-      ),
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-            child: FormularioInicioViagem(
-              onViagemIniciada: (novaViagem) {
-                Navigator.of(context)
-                    .pushReplacementNamed('/motorista', arguments: novaViagem);
-              },
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}

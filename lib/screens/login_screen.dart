@@ -231,7 +231,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 CpfInputFormatter(),
               ],
               decoration: _decoracaoCampo(
-                labelText: 'CPF',
                 hintText: '000.000.000-00',
                 prefixIcon: Icons.badge_outlined,
               ),
@@ -263,7 +262,6 @@ class _LoginScreenState extends State<LoginScreen> {
               textInputAction: TextInputAction.done,
               onFieldSubmitted: _isLoading ? null : (_) => _submit(),
               decoration: _decoracaoCampo(
-                labelText: 'Senha',
                 hintText: '••••••••',
                 prefixIcon: Icons.lock_outline,
                 suffixIcon: Semantics(
@@ -383,7 +381,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 CpfInputFormatter(),
               ],
               decoration: _decoracaoCampo(
-                labelText: 'CPF',
                 hintText: '000.000.000-00',
                 prefixIcon: Icons.badge_outlined,
               ),
@@ -418,7 +415,6 @@ class _LoginScreenState extends State<LoginScreen> {
               ],
               onFieldSubmitted: _isLoading ? null : (_) => _submitPaciente(),
               decoration: _decoracaoCampo(
-                labelText: 'Código de Acesso',
                 hintText: 'Ex.: 12345',
                 prefixIcon: Icons.key_outlined,
               ),
@@ -561,7 +557,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   InputDecoration _decoracaoCampo({
-    required String labelText,
+    String? labelText,
     required String hintText,
     required IconData prefixIcon,
     Widget? suffixIcon,

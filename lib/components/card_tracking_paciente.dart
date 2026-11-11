@@ -19,7 +19,7 @@
 //
 // ONDE É USADO NO PROJETO:
 // - lib/paciente.dart (seção inferior do painel do passageiro)
-// - lib/screens/preview_showcase.dart
+// - lib/screens/gerenciador_viagens_screen.dart
 // - test/components/card_tracking_paciente_test.dart
 //
 // DE ONDE RECEBE DADOS:
@@ -461,7 +461,7 @@ class _CardTrackingPacienteState extends State<CardTrackingPaciente>
                   gpsAtivo
                       ? 'Localização do seu aparelho ativa (exibida no mapa)'
                       : (gpsNegado
-                          ? 'Permissão de GPS do Android não concedida'
+                          ? 'Permissão de GPS não concedida'
                           : 'Ative a localização do aparelho para ver sua posição'),
                   style: TextStyle(
                     fontSize: 12,
@@ -830,10 +830,10 @@ class _CardTrackingPacienteState extends State<CardTrackingPaciente>
         child: Tooltip(
           message: tooltip,
           child: Container(
-            width: 32,
-            height: 32,
+            width: 48,
+            height: 48,
             alignment: Alignment.center,
-            child: Icon(icon, size: 18, color: const Color(0xFF0F172A)),
+            child: Icon(icon, size: 20, color: const Color(0xFF0F172A)),
           ),
         ),
       ),
@@ -888,6 +888,19 @@ class _CardTrackingPacienteState extends State<CardTrackingPaciente>
         }).toList(),
       ),
     );
+  }
+
+  bool _isLocalizacaoDesatualizada(LocalizacaoMotoristaModel m) {
+    return DateTime.now().difference(m.ultimaAtualizacao).inMinutes >= 10;
+  }
+
+  String _formatarPosicaoComHorario(LocalizacaoMotoristaModel m) {
+    final dt = m.ultimaAtualizacao.toLocal();
+    final hh = dt.hour.toString().padLeft(2, '0');
+    final mm = dt.minute.toString().padLeft(2, '0');
+    final base =
+        'Posição: ${m.latitude.toStringAsFixed(4)}, ${m.longitude.toStringAsFixed(4)} • $hh:$mm';
+    return _isLocalizacaoDesatualizada(m) ? '$base (desatualizado)' : base;
   }
 
   Widget _construirCardDetalhesMotorista(LocalizacaoMotoristaModel m) {
@@ -971,8 +984,16 @@ class _CardTrackingPacienteState extends State<CardTrackingPaciente>
                     const SizedBox(width: 4),
                     Flexible(
                       child: Text(
-                        'Posição: ${m.latitude.toStringAsFixed(4)}, ${m.longitude.toStringAsFixed(4)}',
-                        style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                        _formatarPosicaoComHorario(m),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: _isLocalizacaoDesatualizada(m)
+                              ? const Color(0xFFB45309)
+                              : const Color(0xFF64748B),
+                          fontWeight: _isLocalizacaoDesatualizada(m)
+                              ? FontWeight.w600
+                              : FontWeight.normal,
+                        ),
                       ),
                     ),
                   ],

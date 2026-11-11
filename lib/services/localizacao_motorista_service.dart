@@ -485,18 +485,23 @@ class LocalizacaoMotoristaService {
           accuracy: LocationAccuracy.high,
           distanceFilter: 200,
         ),
-      ).listen((pos) {
-        atualizarLocalizacaoMotorista(
-          motoristaId: motoristaId,
-          motoristaNome: motoristaNome,
-          veiculoPlaca: veiculoPlaca,
-          veiculoModelo: veiculoModelo,
-          cidadeDestino: cidadeDestino,
-          latitude: pos.latitude,
-          longitude: pos.longitude,
-          viagemId: viagemId,
-        );
-      });
+      ).listen(
+        (pos) {
+          atualizarLocalizacaoMotorista(
+            motoristaId: motoristaId,
+            motoristaNome: motoristaNome,
+            veiculoPlaca: veiculoPlaca,
+            veiculoModelo: veiculoModelo,
+            cidadeDestino: cidadeDestino,
+            latitude: pos.latitude,
+            longitude: pos.longitude,
+            viagemId: viagemId,
+          );
+        },
+        onError: (Object erro, StackTrace stack) {
+          debugPrint('Erro no stream GPS do motorista: $erro');
+        },
+      );
       _iniciandoTransmissao = false;
       return true;
     } catch (e) {

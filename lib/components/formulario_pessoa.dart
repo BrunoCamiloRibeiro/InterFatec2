@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../lista_pessoas.dart';
-import '../services/pessoa_service.dart';
+import '../services/cpf_validator.dart';
 
 /// Formatador de máscara para CPF: 000.000.000-00
 class _MascaraCpfFormatter extends TextInputFormatter {
@@ -399,6 +399,59 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
     }
   }
 
+  Widget _construirCampoSenhaPessoa() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        TextFormField(
+          key: const Key('campoSenhaPessoa'),
+          controller: _senhaController,
+          obscureText: _ocultarSenha,
+          decoration: InputDecoration(
+            labelText: _isEdicao ? 'Nova Senha (opcional)' : 'Senha de Acesso',
+            hintText: _isEdicao
+                ? 'Deixe em branco para manter'
+                : 'Mínimo de 6 caracteres',
+            prefixIcon: const Icon(Icons.lock_outline, size: 20),
+            suffixIcon: IconButton(
+              icon: Icon(
+                _ocultarSenha
+                    ? Icons.visibility_outlined
+                    : Icons.visibility_off_outlined,
+                size: 20,
+              ),
+              onPressed: () {
+                setState(() {
+                  _ocultarSenha = !_ocultarSenha;
+                });
+              },
+            ),
+            isDense: true,
+            border: const OutlineInputBorder(),
+          ),
+          validator: (val) {
+            final senha = val?.trim() ?? '';
+            if (!_isEdicao && senha.isEmpty) {
+              return 'Informe a senha inicial de acesso';
+            }
+            if (senha.isNotEmpty && senha.length < 6) {
+              return 'A senha deve ter pelo menos 6 caracteres';
+            }
+            return null;
+          },
+        ),
+        if (_isEdicao) ...[
+          const SizedBox(height: 6),
+          const Text(
+            'Atenção: se este usuário já realizou login no Firebase Auth, alterar aqui não muda a credencial do Auth (exige redefinição de senha via suporte/Auth).',
+            style: TextStyle(fontSize: 11, color: Color(0xFF92400E)),
+          ),
+        ],
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
@@ -551,7 +604,7 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
                     border: OutlineInputBorder(),
                   ),
                   validator: (val) {
-                    if (!ValidacaoPessoa.isCpfValido(val)) {
+                    if (!CpfValidator.validar(val)) {
                       return 'CPF inválido';
                     }
                     return null;
@@ -679,7 +732,7 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
                       ),
                       validator: (val) {
                         if (val != null && val.trim().isNotEmpty) {
-                          if (!ValidacaoPessoa.isCpfValido(val)) {
+                          if (!CpfValidator.validar(val)) {
                             return 'CPF do acompanhante inválido';
                           }
                         }
@@ -706,6 +759,7 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
                   ],
                 ] else if (_roleSelecionado == 'motorista') ...[
                   TextFormField(
+                    key: const Key('campoCnhPessoa'),
                     controller: _cnhController,
                     keyboardType: TextInputType.number,
                     inputFormatters: [FilteringTextInputFormatter.digitsOnly],
@@ -716,33 +770,16 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
                       isDense: true,
                       border: OutlineInputBorder(),
                     ),
+                    validator: (val) {
+                      final limpo = val?.replaceAll(RegExp(r'\D'), '') ?? '';
+                      if (limpo.length < 9) {
+                        return 'Informe um número de CNH válido (mín. 9 dígitos)';
+                      }
+                      return null;
+                    },
                   ),
                   const SizedBox(height: 12),
-                  TextFormField(
-                    key: const Key('campoSenhaPessoa'),
-                    controller: _senhaController,
-                    obscureText: _ocultarSenha,
-                    decoration: InputDecoration(
-                      labelText: 'Senha de Acesso',
-                      hintText: 'Informe a senha de login',
-                      prefixIcon: const Icon(Icons.lock_outline, size: 20),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _ocultarSenha
-                              ? Icons.visibility_outlined
-                              : Icons.visibility_off_outlined,
-                          size: 20,
-                        ),
-                        onPressed: () {
-                          setState(() {
-                            _ocultarSenha = !_ocultarSenha;
-                          });
-                        },
-                      ),
-                      isDense: true,
-                      border: const OutlineInputBorder(),
-                    ),
-                  ),
+                  _construirCampoSenhaPessoa(),
                 ] else if (_roleSelecionado == 'admin') ...[
                   TextFormField(
                     controller: _emailController,
@@ -756,31 +793,7 @@ class _FormularioPessoaState extends State<FormularioPessoa> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  TextFormField(
-                    key: const Key('campoSenhaPessoa'),
-                    controller: _senhaController,
-                    obscureText: _ocultarSenha,
-                    decoration: InputDecoration(
-                      labelText: 'Senha de Acesso',
-                      hintText: 'Informe a senha de login',
-                      prefixIcon: const Icon(Icons.lock_outline, size: 20),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _ocultarSenha
-                              ? Icons.visibility_outlined
-                              : Icons.visibility_off_outlined,
-                          size: 20,
-                        ),
-                        onPressed: () {
-                          setState(() {
-                            _ocultarSenha = !_ocultarSenha;
-                          });
-                        },
-                      ),
-                      isDense: true,
-                      border: const OutlineInputBorder(),
-                    ),
-                  ),
+                  _construirCampoSenhaPessoa(),
                 ],
               ],
             ),

@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
+import '../components/card_tracking_paciente.dart';
 import '../lista_pessoas.dart';
 import '../lista_veiculos.dart';
 import '../models/motorista_model.dart';
@@ -64,6 +65,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
 
   String _filtroTexto = '';
   String _filtroStatus = 'todos'; // todos, planejada, ativa, concluida, cancelada
+  bool _mostrarMapaFrota = false;
 
   @override
   void initState() {
@@ -281,8 +283,6 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
     final viagensExibicao = _viagensFiltradas;
     final totalHorarios = _todasViagensDoDia.length;
     final totalAtivos = _todasViagensDoDia.where((v) => v.isAtiva).length;
-    final totalPlanejados =
-        _todasViagensDoDia.where((v) => v.isPlanejada || v.isAberta).length;
     final totalConcluidos = _todasViagensDoDia.where((v) => v.isConcluida).length;
     final totalCancelados = _todasViagensDoDia.where((v) => v.isCancelada).length;
 
@@ -300,39 +300,13 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
         backgroundColor: const Color(0xFF0F172A),
         foregroundColor: Colors.white,
         elevation: 0,
-        title: const FittedBox(
-          fit: BoxFit.scaleDown,
-          alignment: Alignment.centerLeft,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Gerenciador de Horários',
-                style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
-                overflow: TextOverflow.ellipsis,
-                maxLines: 1,
-              ),
-              Text(
-                'Escala e Grade Diária',
-                style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
-                overflow: TextOverflow.ellipsis,
-                maxLines: 1,
-              ),
-            ],
-          ),
+        title: const Text(
+          'Gerenciador de Horários',
+          style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+          overflow: TextOverflow.ellipsis,
+          maxLines: 1,
         ),
         actions: [
-          IconButton(
-            key: const Key('botaoGestaoPessoasAppBar'),
-            icon: const Icon(Icons.people_alt_outlined),
-            tooltip: 'Gestão de Pessoas',
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const ListaPessoas()),
-              );
-            },
-          ),
           IconButton(
             key: const Key('botaoLogoutAdmin'),
             icon: const Icon(Icons.logout),
@@ -360,13 +334,17 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
               _construirPainelIndicadores(
                 total: totalHorarios,
                 ativos: totalAtivos,
-                planejados: totalPlanejados,
                 concluidos: totalConcluidos,
                 cancelados: totalCancelados,
                 assentosOcupados: assentosOcupados,
                 assentosTotais: assentosTotais,
               ),
               const SizedBox(height: 14),
+
+              if (_mostrarMapaFrota) ...[
+                const CardTrackingPaciente(),
+                const SizedBox(height: 14),
+              ],
 
               // Barra de busca e filtros de status
               _construirBarraFiltros(),
@@ -424,7 +402,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                 key: const Key('botaoDiaAnterior'),
                 icon: const Icon(Icons.chevron_left),
                 padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
                 tooltip: 'Dia Anterior',
                 onPressed: () => _mudarDia(-1),
               ),
@@ -460,18 +438,39 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                 key: const Key('botaoProximoDia'),
                 icon: const Icon(Icons.chevron_right),
                 padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
                 tooltip: 'Próximo Dia',
                 onPressed: () => _mudarDia(1),
               ),
             ],
           ),
 
-          // Ações do topo: Duplicar de outro dia e Novo Horário
+          // Ações do topo: Mapa em tempo real e Duplicar de outro dia
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
+              OutlinedButton.icon(
+                key: const Key('botaoMapaFrotaAdmin'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF0F172A),
+                  backgroundColor: _mostrarMapaFrota
+                      ? const Color(0xFFE2E8F0)
+                      : Colors.white,
+                  side: const BorderSide(color: Color(0xFFCBD5E1)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                icon: Icon(
+                  _mostrarMapaFrota ? Icons.map : Icons.map_outlined,
+                  size: 16,
+                ),
+                label: Text(_mostrarMapaFrota ? 'Ocultar Mapa' : 'Mapa da Frota'),
+                onPressed: () {
+                  setState(() {
+                    _mostrarMapaFrota = !_mostrarMapaFrota;
+                  });
+                },
+              ),
               OutlinedButton.icon(
                 key: const Key('botaoDuplicarHorarios'),
                 style: OutlinedButton.styleFrom(
@@ -483,17 +482,6 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                 label: const Text('Duplicar de outro dia'),
                 onPressed: _abrirModalDuplicarHorarios,
               ),
-              ElevatedButton.icon(
-                key: const Key('botaoNovoHorarioBarra'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF0F172A),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                ),
-                icon: const Icon(Icons.add, size: 16),
-                label: const Text('Novo Horário'),
-                onPressed: () => _abrirModalNovoOuEditarHorario(null),
-              ),
             ],
           ),
         ],
@@ -504,7 +492,6 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
   Widget _construirPainelIndicadores({
     required int total,
     required int ativos,
-    required int planejados,
     required int concluidos,
     required int cancelados,
     required int assentosOcupados,
@@ -523,7 +510,6 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
             _itemIndicador(
               titulo: 'Horários no Dia',
               valor: '$total',
-              subtitulo: '$planejados planejados',
               cor: const Color(0xFF0F172A),
               icone: Icons.schedule,
               largura: larguraItem,
@@ -531,15 +517,15 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
             _itemIndicador(
               titulo: 'Em Trânsito (Ativos)',
               valor: '$ativos',
-              subtitulo: 'viagens em andamento',
               cor: const Color(0xFF059669),
               icone: Icons.directions_bus,
               largura: larguraItem,
             ),
             _itemIndicador(
               titulo: 'Assentos Ocupados',
-              valor: '$assentosOcupados / $assentosTotais',
-              subtitulo: 'lotação da frota',
+              valor: assentosTotais > 0
+                  ? '$assentosOcupados / $assentosTotais'
+                  : '$assentosOcupados',
               cor: const Color(0xFF0284C7),
               icone: Icons.event_seat,
               largura: larguraItem,
@@ -547,7 +533,6 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
             _itemIndicador(
               titulo: 'Finalizadas / Canceladas',
               valor: '$concluidos / $cancelados',
-              subtitulo: 'baixa operacional',
               cor: const Color(0xFF475569),
               icone: Icons.check_circle_outline,
               largura: larguraItem,
@@ -561,7 +546,6 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
   Widget _itemIndicador({
     required String titulo,
     required String valor,
-    required String subtitulo,
     required Color cor,
     required IconData icone,
     required double largura,
@@ -614,7 +598,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
           TextField(
             key: const Key('campoBuscaHorario'),
             decoration: InputDecoration(
-              hintText: 'Buscar por horário, cidade, motorista, veículo ou paciente...',
+              hintText: 'Buscar por horário, cidade, motorista ou paciente...',
               hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
               prefixIcon: const Icon(Icons.search, size: 20),
               suffixIcon: _filtroTexto.isNotEmpty
@@ -702,31 +686,9 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
           ),
           const SizedBox(height: 6),
           const Text(
-            'Crie um novo Horário de Saída para o dia ou duplique a grade de uma data anterior.',
+            'Use o botão "Novo Horário" abaixo ou "Duplicar de outro dia" para montar a escala.',
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
-          ),
-          const SizedBox(height: 16),
-          Wrap(
-            alignment: WrapAlignment.center,
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              OutlinedButton.icon(
-                icon: const Icon(Icons.copy, size: 16),
-                label: const Text('Duplicar de outro dia'),
-                onPressed: _abrirModalDuplicarHorarios,
-              ),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF0F172A),
-                  foregroundColor: Colors.white,
-                ),
-                icon: const Icon(Icons.add, size: 16),
-                label: const Text('Criar Novo Horário'),
-                onPressed: () => _abrirModalNovoOuEditarHorario(null),
-              ),
-            ],
           ),
         ],
       ),
@@ -988,7 +950,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                     onPressed: () => _abrirModalNovoOuEditarHorario(viagem),
                   ),
                 ],
-                if (!viagem.isCancelada)
+                if (!viagem.isCancelada && !viagem.isConcluida)
                   OutlinedButton.icon(
                     key: Key('botaoCancelarHorario_${viagem.id}'),
                     style: OutlinedButton.styleFrom(
@@ -1341,7 +1303,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                         runSpacing: 4,
                         children: [
                           Text(
-                            'Passageiros (${passageirosTemp.length}) - Vagas previstas: $totalAssentos (veículo escolhido pelo motorista)',
+                            'Passageiros (${passageirosTemp.length}) • Vagas: $totalAssentos',
                             style: const TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.bold,
@@ -1800,7 +1762,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'Selecione o dia de origem para copiar os horários, veículos, motoristas e passageiros para o dia selecionado:',
+                        'Selecione o dia de origem para copiar os horários e passageiros para o dia selecionado:',
                         style: TextStyle(fontSize: 13, color: Color(0xFF475569)),
                       ),
                       const SizedBox(height: 12),
@@ -1996,7 +1958,6 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                       color: Color(0xFF0284C7),
                     ),
                   ),
-                  subtitle: const Text('Escala e grade diária de viagens'),
                   selected: true,
                   selectedTileColor: const Color(0xFF0284C7).withValues(alpha: 0.08),
                   onTap: () {
@@ -2010,7 +1971,6 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                     'Gestão de Pessoas',
                     style: TextStyle(fontWeight: FontWeight.w600),
                   ),
-                  subtitle: const Text('Pacientes, Motoristas e Admins'),
                   onTap: () {
                     Navigator.of(context).pop();
                     Navigator.of(context).push(
@@ -2025,7 +1985,6 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                     'Gestão de Veículos',
                     style: TextStyle(fontWeight: FontWeight.w600),
                   ),
-                  subtitle: const Text('Controle da frota municipal'),
                   onTap: () {
                     Navigator.of(context).pop();
                     Navigator.of(context).push(

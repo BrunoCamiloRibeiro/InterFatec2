@@ -1,7 +1,6 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
-import 'components/formulario_inicio_viagem.dart';
 import 'firebase_options.dart';
 import 'lista_pessoas.dart';
 import 'lista_veiculos.dart';
@@ -9,7 +8,6 @@ import 'motorista.dart';
 import 'paciente.dart';
 import 'routes/route_guard.dart';
 import 'screens/auth_gate.dart';
-import 'screens/login_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -62,17 +60,10 @@ class MyApp extends StatelessWidget {
       onGenerateRoute: RouteGuard.onGenerateRoute,
       routes: {
         '/': (context) => const AuthGate(),
-        '/auth-gate': (context) => const AuthGate(),
         '/paciente': (context) => const Paciente(),
         '/motorista': (context) => const Motorista(),
-        '/lista-passageiros': (context) => const Motorista(),
-        '/inicio-viagem': (context) => const TelaInicioViagem(),
-        '/login': (context) => LoginScreen(),
-        '/login-paciente': (context) => LoginScreen(modoInicial: 1),
         '/lista-pessoas': (context) => const ListaPessoas(),
-        '/crud-pessoas': (context) => const ListaPessoas(),
         '/veiculos': (context) => const Veiculos(),
-        '/lista-veiculos': (context) => const Veiculos(),
       },
     );
   }

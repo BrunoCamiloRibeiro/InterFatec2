@@ -445,11 +445,17 @@ class _ListaPessoasState extends State<ListaPessoas> {
 
       if (!correspondeAba) continue;
 
-      // 3. Aplica filtro textual de busca por Nome ou CPF
-      if (_termoBusca.isNotEmpty &&
-          !p.nome.toLowerCase().contains(_termoBusca) &&
-          !p.cpf.contains(_termoBusca)) {
-        continue;
+      // 3. Aplica filtro textual de busca por Nome ou CPF (com ou sem pontuação)
+      if (_termoBusca.isNotEmpty) {
+        final matchNome = p.nome.toLowerCase().contains(_termoBusca);
+        final matchCpfFormatado = p.cpf.contains(_termoBusca);
+        final termoDigitos = _termoBusca.replaceAll(RegExp(r'[^0-9]'), '');
+        final cpfDigitos = p.cpf.replaceAll(RegExp(r'[^0-9]'), '');
+        final matchCpfDigitos =
+            termoDigitos.isNotEmpty && cpfDigitos.contains(termoDigitos);
+        if (!matchNome && !matchCpfFormatado && !matchCpfDigitos) {
+          continue;
+        }
       }
 
       filtrados.add(p);
