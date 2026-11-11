@@ -758,6 +758,7 @@ void main() {
     testWidgets(
       '13. Paciente único com "Fui embora" (status 5) não auto-encerra a viagem e permite swipe 5 -> 1 pelo motorista',
       (tester) async {
+        FirebaseAuthService().clearRoleCache();
         final viagemService = ViagemService();
         final syncService = PacienteSyncService();
 
@@ -861,6 +862,7 @@ void main() {
     testWidgets(
       '14. Gerar Relatório encerra apenas a viagem exibida na tela consolidando pendentes para 4 e preserva outra viagem compartilhada ativa',
       (tester) async {
+        FirebaseAuthService().clearRoleCache();
         final viagemService = ViagemService();
         final syncService = PacienteSyncService();
         syncService.resetParaTestes([]);
@@ -1129,6 +1131,104 @@ void main() {
         expect(
           doDia.map((v) => v.id).toList(),
           equals([v1Encerrada.id, v2Ativa.id, v3Foco.id]),
+        );
+      },
+    );
+
+    test(
+      '16. Encerramento com kmFinal atualiza quilometragemAtual do veículo da sessão mesmo restando outras viagens ativas',
+      () async {
+        final viagemService = ViagemService();
+        viagemService.limparSessaoLocal();
+
+        const veicSpin = VeiculoModel(
+          id: 'spin_km_test',
+          placa: 'BRA-2E19',
+          modelo: 'Spin LTZ',
+          capacidade: 7,
+          quilometragemAtual: 50000,
+          emUso: false,
+        );
+
+        final v1Alvo = ViagemModel(
+          id: 'viagem_km_1',
+          motoristaId: '',
+          motoristaNome: '',
+          veiculoId: '',
+          veiculoPlaca: '',
+          veiculoModelo: '',
+          kmInicial: 50000,
+          cidadeDestino: 'Rio Preto',
+          dataHoraInicio: DateTime(2026, 11, 10, 6, 0),
+          status: 'ativa',
+          passageirosIds: const ['p1'],
+          passageiros: const [
+            PassageiroViagemModel(
+              pacienteId: 'p1',
+              pacienteNome: 'Matheus',
+              localOrigem: 'Rua A',
+              localDestino: 'HB',
+              horarioAtendimento: '08:00',
+              statusEmbarque: 2,
+            ),
+          ],
+        );
+
+        final v2Restante = ViagemModel(
+          id: 'viagem_km_2',
+          motoristaId: '',
+          motoristaNome: '',
+          veiculoId: '',
+          veiculoPlaca: '',
+          veiculoModelo: '',
+          kmInicial: 50000,
+          cidadeDestino: 'Barretos',
+          dataHoraInicio: DateTime(2026, 11, 10, 8, 0),
+          status: 'ativa',
+          passageirosIds: const ['p2'],
+          passageiros: const [
+            PassageiroViagemModel(
+              pacienteId: 'p2',
+              pacienteNome: 'Audrey',
+              localOrigem: 'Rua B',
+              localDestino: 'AME',
+              horarioAtendimento: '10:00',
+              statusEmbarque: 0,
+            ),
+          ],
+        );
+
+        viagemService.resetParaTestes(
+          veiculosIniciais: [veicSpin],
+          todasViagensIniciais: [v1Alvo, v2Restante],
+        );
+
+        await viagemService.iniciarViagem(
+          veiculo: veicSpin,
+          kmInicial: 50000,
+          cidadeDestino: 'Rio Preto',
+          motoristaId: 'mot_alberto',
+          motoristaNome: 'Alberto',
+        );
+
+        await viagemService.encerrarTodasViagens(
+          kmFinal: 53000,
+          kmRodado: 3000,
+          viagensExplicitas: [v1Alvo],
+          motoristaId: 'mot_alberto',
+          encerrarViagensDefinitivamente: true,
+        );
+
+        // Mesmo com v2Restante mantendo a sessão ativa, a quilometragem do veículo foi atualizada para 53000!
+        final veicPos = viagemService.todosVeiculos
+            .firstWhere((v) => v.id == 'spin_km_test');
+        expect(veicPos.quilometragemAtual, equals(53000));
+        expect(veicPos.emUso, isTrue);
+        expect(
+          viagemService.todasViagens
+              .firstWhere((v) => v.id == 'viagem_km_2')
+              .status,
+          equals('ativa'),
         );
       },
     );

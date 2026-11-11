@@ -200,6 +200,10 @@ class _MotoristaState extends State<Motorista> {
       }
       setState(() {
         _selecionarViagemPreservandoId(ativas);
+        if (ativas.isEmpty && _viagemService.sessaoFinalizadaPeloMotorista) {
+          _emViagemFirestore = false;
+          FirebaseAuthService.motoristaEmViagemStatic = false;
+        }
         _capacidadeVeiculo = _resolverCapacidadeVeiculo();
       });
       _atualizarTransmissaoGpsMotorista();
@@ -415,7 +419,7 @@ class _MotoristaState extends State<Motorista> {
               !v.isConcluida,
         )
         .toList();
-    if (restantes.isNotEmpty) {
+    if (!_viagemService.sessaoFinalizadaPeloMotorista && restantes.isNotEmpty) {
       setState(() {
         _selecionarViagemPreservandoId(restantes);
         _capacidadeVeiculo = _resolverCapacidadeVeiculo();
@@ -1139,12 +1143,7 @@ class _MotoristaState extends State<Motorista> {
         _garantirCodigosPacientesNaViagemAtiva(pacientes);
         final preenchidos = _contarAssentosOcupados(pacientes);
 
-        final placaSessao = _resolverPlacaVeiculoSessao();
-        final placaViagem = _viagemAtiva?.veiculoPlaca.trim() ?? '';
-        final veiculoViagemHeader = placaViagem.isNotEmpty &&
-                _normalizarPlaca(placaViagem) != _normalizarPlaca(placaSessao)
-            ? placaViagem
-            : null;
+        const String? veiculoViagemHeader = null;
         final motViagemHeader = _viagemAtiva?.motoristaNome.trim() ?? '';
         final motoristaHeader = (motViagemHeader.isNotEmpty &&
                 motViagemHeader != 'motorista_atual')

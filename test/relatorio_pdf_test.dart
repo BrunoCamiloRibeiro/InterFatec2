@@ -380,5 +380,86 @@ void main() {
       expect(pdfBytes, isNotNull);
       expect(pdfBytes.length, greaterThan(1500));
     });
+
+    test('9. Relatório consolidado com viagemIdPorPaciente exibe ID de viagens diferentes antes do CPF', () async {
+      final pacientesMulti = [
+        criarPacienteFicticio(1, comAcompanhante: true),
+        criarPacienteFicticio(2, comAcompanhante: false),
+      ];
+
+      final pdfBytes = await RelatorioPdfService.gerarRoteiroViagemPdf(
+        viagem: viagemBase.copyWith(
+          id: 'relatorio_consolidado',
+          veiculoId: '',
+          veiculoPlaca: '',
+          veiculoModelo: '',
+          cidadeDestino: 'SÃO JOSÉ DO RIO PRETO • BARRETOS',
+        ),
+        pacientes: pacientesMulti,
+        retornoInformado: '16:40',
+        kmSaidaInformado: 50000,
+        kmRetornoInformado: 50240,
+        kmRodadoInformado: 240,
+        viagemIdPorPaciente: const {
+          'pac_1': 'horario_2026_11_10_060000',
+          'pac_2': 'horario_2026_11_10_073000',
+        },
+        fonteRegular: fontRegular,
+        fonteBold: fontBold,
+      );
+
+      expect(pdfBytes, isNotNull);
+      expect(pdfBytes.length, greaterThan(1500));
+      final ascii = String.fromCharCodes(pdfBytes);
+      expect(ascii.startsWith('%PDF-'), isTrue);
+      expect(ascii.trimRight().endsWith('%%EOF'), isTrue);
+
+      // Gera versão sem fonte TTF customizada apenas para inspecionar tokens ASCII no stream FlateDecode
+      final helvBytes = await RelatorioPdfService.gerarRoteiroViagemPdf(
+        viagem: viagemBase.copyWith(
+          id: 'relatorio_consolidado',
+          veiculoId: '',
+          veiculoPlaca: '',
+          veiculoModelo: '',
+          cidadeDestino: 'SAO JOSE DO RIO PRETO - BARRETOS',
+        ),
+        pacientes: pacientesMulti,
+        retornoInformado: '16:40',
+        kmSaidaInformado: 50000,
+        kmRetornoInformado: 50240,
+        kmRodadoInformado: 240,
+        viagemIdPorPaciente: const {
+          'pac_1': 'horario_2026_11_10_060000',
+          'pac_2': 'horario_2026_11_10_073000',
+        },
+      );
+      final helvAscii = String.fromCharCodes(helvBytes);
+      final decodedBuf = StringBuffer();
+      var searchFrom = 0;
+      while (true) {
+        final sIdx = helvAscii.indexOf('stream', searchFrom);
+        if (sIdx == -1) break;
+        var start = sIdx + 6;
+        if (start < helvAscii.length && helvAscii[start] == '\r') start++;
+        if (start < helvAscii.length && helvAscii[start] == '\n') start++;
+        final eIdx = helvAscii.indexOf('endstream', start);
+        if (eIdx == -1) break;
+        var end = eIdx;
+        if (end > start && helvBytes[end - 1] == 10) end--;
+        if (end > start && helvBytes[end - 1] == 13) end--;
+        final rawSlice = helvBytes.sublist(start, end);
+        try {
+          decodedBuf.write(String.fromCharCodes(zlib.decode(rawSlice)));
+        } catch (_) {}
+        searchFrom = eIdx + 9;
+      }
+      final textoExtraido = decodedBuf
+          .toString()
+          .replaceAll(RegExp(r'\)-?\d+\.?\d*\('), '')
+          .replaceAll(')(', '');
+      expect(textoExtraido.contains('horario_2026_11_10_060000'), isTrue);
+      expect(textoExtraido.contains('horario_2026_11_10_073000'), isTrue);
+      expect(textoExtraido.contains('CPF:'), isTrue);
+    });
   });
 }

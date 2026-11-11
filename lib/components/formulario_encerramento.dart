@@ -26,12 +26,18 @@ Future<Uint8List> _compilarPdfEmIsolate(Map<String, dynamic> payload) async {
     );
   }).toList();
 
+  final rawMap = payload['viagemIdPorPaciente'] as Map?;
+  final viagemIdPorPaciente = rawMap?.map(
+    (k, v) => MapEntry(k.toString(), v.toString()),
+  );
+
   return RelatorioPdfService.gerarRoteiroViagemPdf(
     viagem: viagem,
     pacientes: pacientes,
     retornoInformado: payload['retornoInformado'] as String?,
     kmRetornoInformado: payload['kmRetornoInformado'] as int?,
     kmRodadoInformado: payload['kmRodadoInformado'] as int?,
+    viagemIdPorPaciente: viagemIdPorPaciente,
   );
 }
 
@@ -322,6 +328,7 @@ class _FormularioEncerramentoState extends State<FormularioEncerramento> {
               ));
 
     final mapaPacientesConsolidados = <String, PacienteModel>{};
+    final mapaViagemIdPorPaciente = <String, String>{};
     final codigosConsolidados = <String, String>{...vBase.codigosAcesso};
     final idsPassageirosConsolidados = <String>[];
     final destinos = <String>[];
@@ -339,6 +346,7 @@ class _FormularioEncerramentoState extends State<FormularioEncerramento> {
         );
         for (final p in pacsDaViagem) {
           mapaPacientesConsolidados[p.id] = p;
+          mapaViagemIdPorPaciente[p.id] = v.id;
           if (!idsPassageirosConsolidados.contains(p.id)) {
             idsPassageirosConsolidados.add(p.id);
           }
@@ -347,6 +355,9 @@ class _FormularioEncerramentoState extends State<FormularioEncerramento> {
     } else if (pacientesSnapshot != null) {
       for (final p in pacientesSnapshot) {
         mapaPacientesConsolidados[p.id] = p;
+        if (vBase.id.isNotEmpty) {
+          mapaViagemIdPorPaciente[p.id] = vBase.id;
+        }
         if (!idsPassageirosConsolidados.contains(p.id)) {
           idsPassageirosConsolidados.add(p.id);
         }
@@ -388,6 +399,7 @@ class _FormularioEncerramentoState extends State<FormularioEncerramento> {
           'retornoInformado': retorno.isNotEmpty ? retorno : null,
           'kmRetornoInformado': kmRetornoNum,
           'kmRodadoInformado': kmRodadoNum,
+          'viagemIdPorPaciente': mapaViagemIdPorPaciente,
         };
         pdfBytes = await compute(_compilarPdfEmIsolate, payload);
       } else {
@@ -397,6 +409,7 @@ class _FormularioEncerramentoState extends State<FormularioEncerramento> {
           retornoInformado: retorno.isNotEmpty ? retorno : null,
           kmRetornoInformado: kmRetornoNum,
           kmRodadoInformado: kmRodadoNum,
+          viagemIdPorPaciente: mapaViagemIdPorPaciente,
         );
       }
     } catch (_) {}

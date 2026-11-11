@@ -64,7 +64,6 @@ class CardDadosConsulta extends StatelessWidget {
               icone: Icons.access_time_outlined,
               label: 'Horário Previsto',
               valor: horarioConsulta,
-              detalheExtra: '(Chegar com antecedência)',
             ),
             const SizedBox(height: 14),
             _ItemLinhaConsulta(
@@ -93,13 +92,11 @@ class _ItemLinhaConsulta extends StatelessWidget {
   final IconData icone;
   final String label;
   final String valor;
-  final String? detalheExtra;
 
   const _ItemLinhaConsulta({
     required this.icone,
     required this.label,
     required this.valor,
-    this.detalheExtra,
   });
 
   @override
@@ -130,29 +127,13 @@ class _ItemLinhaConsulta extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 2),
-              Wrap(
-                spacing: 6,
-                runSpacing: 2,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  Text(
-                    valor.isNotEmpty ? valor : 'Não informado',
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF0F172A),
-                    ),
-                  ),
-                  if (detalheExtra != null)
-                    Text(
-                      detalheExtra!,
-                      style: const TextStyle(
-                        fontSize: 12.5,
-                        color: Color(0xFF0284C7),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                ],
+              Text(
+                valor.isNotEmpty ? valor : 'Não informado',
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF0F172A),
+                ),
               ),
             ],
           ),

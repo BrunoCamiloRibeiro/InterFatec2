@@ -170,6 +170,7 @@ class RelatorioPdfService {
     bool usarDoisPontosHorario = true,
     pw.Font? fonteRegular,
     pw.Font? fonteBold,
+    Map<String, String>? viagemIdPorPaciente,
   }) async {
     // Validação de sanidade: quilometragem não pode ser negativa
     if (viagem.kmInicial < 0 || (kmSaidaInformado != null && kmSaidaInformado < 0)) {
@@ -261,6 +262,8 @@ class RelatorioPdfService {
                   fRegular: fRegular,
                   fBold: fBold,
                   codigosAcesso: viagem.codigosAcesso,
+                  viagemIdPorPaciente: viagemIdPorPaciente,
+                  viagemIdPadrao: viagem.id,
                 ),
 
                 // CAMADA 3: Rodapé com carimbo temporal 'Emitido em'
@@ -786,6 +789,8 @@ class RelatorioPdfService {
     required pw.Font fRegular,
     required pw.Font fBold,
     Map<String, String>? codigosAcesso,
+    Map<String, String>? viagemIdPorPaciente,
+    String? viagemIdPadrao,
   }) {
     final List<pw.Widget> blocos = [];
 
@@ -808,10 +813,21 @@ class RelatorioPdfService {
 
       // Código de acesso temporário do paciente (Issue #65)
       final String? codigo = codigosAcesso?[p.id];
+      // ID da viagem do passageiro (exibido antes do CPF quando disponível)
+      final String idViagemPac = (viagemIdPorPaciente?[p.id]?.trim().isNotEmpty == true)
+          ? viagemIdPorPaciente![p.id]!.trim()
+          : (viagemIdPadrao?.trim() ?? '');
       // CPF mascarado para conformidade com LGPD (Issue #65)
       final String cpfMascarado = (p.cpf.isNotEmpty)
           ? CodigoAcessoService.mascararCpf(p.cpf)
           : '';
+      final String labelPaciente = (idViagemPac.isNotEmpty && !idViagemPac.startsWith('relatorio_'))
+          ? (cpfMascarado.isNotEmpty
+              ? 'Viagem: $idViagemPac | CPF: $cpfMascarado'
+              : 'Viagem: $idViagemPac')
+          : (cpfMascarado.isNotEmpty
+              ? 'Paciente (CPF: $cpfMascarado)'
+              : 'Paciente');
 
       // Formatação do horário da consulta com validação de formato
       final String horarioConsultaFmt = _formatarHorario(
@@ -841,22 +857,19 @@ class RelatorioPdfService {
                 pw.Row(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    // Coluna 1 (195 pt): Nome do Paciente e CPF
+                    // Coluna 1 (205 pt): ID da Viagem antes do CPF e Nome do Paciente
                     pw.Container(
-                      width: 195.0,
+                      width: 205.0,
                       padding: const pw.EdgeInsets.only(right: 8.0),
                       child: pw.Column(
                         crossAxisAlignment: pw.CrossAxisAlignment.start,
                         children: [
                           pw.Text(
-                            cpfMascarado.isNotEmpty
-                                ? 'Paciente (CPF: $cpfMascarado)'
-                                : 'Paciente',
-                            maxLines: 1,
-                            overflow: pw.TextOverflow.clip,
+                            labelPaciente,
+                            maxLines: 2,
                             style: pw.TextStyle(
                               font: fRegular,
-                              fontSize: 5.5,
+                              fontSize: 5.2,
                               color: PdfColors.grey700,
                             ),
                           ),
@@ -874,9 +887,9 @@ class RelatorioPdfService {
                       ),
                     ),
 
-                    // Coluna 2 (115 pt): Telefone e Código de Acesso
+                    // Coluna 2 (105 pt): Telefone e Código de Acesso
                     pw.Container(
-                      width: 115.0,
+                      width: 105.0,
                       padding: const pw.EdgeInsets.only(right: 8.0),
                       child: pw.Column(
                         crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -976,9 +989,9 @@ class RelatorioPdfService {
                 pw.Row(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    // Coluna 1 (195 pt): Endereço residencial do paciente
+                    // Coluna 1 (205 pt): Endereço residencial do paciente
                     pw.Container(
-                      width: 195.0,
+                      width: 205.0,
                       padding: const pw.EdgeInsets.only(right: 8.0),
                       child: pw.Column(
                         crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -1007,9 +1020,9 @@ class RelatorioPdfService {
                       ),
                     ),
 
-                    // Coluna 2 (115 pt): Local de Saída específico (ex: "SANTA CASA")
+                    // Coluna 2 (105 pt): Local de Saída específico (ex: "SANTA CASA")
                     pw.Container(
-                      width: 115.0,
+                      width: 105.0,
                       padding: const pw.EdgeInsets.only(right: 8.0),
                       child: pw.Column(
                         crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -1060,11 +1073,10 @@ class RelatorioPdfService {
                             ),
                             pw.Text(
                               p.localConsulta.toUpperCase(),
-                              maxLines: 1,
-                              overflow: pw.TextOverflow.clip,
+                              maxLines: 2,
                               style: pw.TextStyle(
                                 font: fRegular,
-                                fontSize: 7.0,
+                                fontSize: 6.8,
                                 color: PdfColors.black,
                               ),
                             ),

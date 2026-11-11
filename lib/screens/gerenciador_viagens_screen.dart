@@ -789,15 +789,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
         break;
     }
 
-    final temVeiculoDefinido =
-        viagem.veiculoId.trim().isNotEmpty || viagem.veiculoPlaca.trim().isNotEmpty;
-    final veic = _resolverVeiculoDaViagem(viagem);
-
-    final capacidade = temVeiculoDefinido
-        ? (veic.capacidade > 0 ? veic.capacidade : 7)
-        : 0;
     final preenchidosBaixa = _calcularAssentosComBaixa(viagem);
-    final lotacaoUltrapassada = capacidade > 0 && preenchidosBaixa > capacidade;
 
     // Regra de borda: verificar se há pacientes sem CPF
     final temPacienteSemCpf = viagem.passageiros.any(
@@ -854,86 +846,48 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
             ),
             subtitle: Padding(
               padding: const EdgeInsets.only(top: 6),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.directions_car_outlined,
-                        size: 13,
-                        color: Color(0xFF64748B),
-                      ),
-                      const SizedBox(width: 4),
-                      Flexible(
-                        child: Text(
-                          temVeiculoDefinido
-                              ? '${viagem.veiculoPlaca} (${viagem.veiculoModelo})'
-                              : 'Veículo a definir',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Color(0xFF475569),
-                          ),
-                        ),
-                      ),
-                    ],
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: corBadge,
+                    borderRadius: BorderRadius.circular(4),
                   ),
-                  const SizedBox(height: 5),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: corBadge,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      textoBadge,
-                      style: const TextStyle(
-                        fontSize: 10,
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
+                  child: Text(
+                    textoBadge,
+                    style: const TextStyle(
+                      fontSize: 10,
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                ],
+                ),
               ),
             ),
             trailing: Container(
               key: Key('contagemAssentos_${viagem.id}'),
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: lotacaoUltrapassada
-                    ? Colors.red.shade100
-                    : const Color(0xFFF1F5F9),
+                color: const Color(0xFFF1F5F9),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: lotacaoUltrapassada
-                      ? Colors.red.shade300
-                      : const Color(0xFFCBD5E1),
-                ),
+                border: Border.all(color: const Color(0xFFCBD5E1)),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
+                  const Icon(
                     Icons.event_seat_rounded,
                     size: 14,
-                    color: lotacaoUltrapassada
-                        ? Colors.red.shade800
-                        : const Color(0xFF334155),
+                    color: Color(0xFF334155),
                   ),
                   const SizedBox(width: 4),
                   Text(
-                    temVeiculoDefinido
-                        ? '$preenchidosBaixa/$capacidade'
-                        : '$preenchidosBaixa',
-                    style: TextStyle(
+                    '$preenchidosBaixa',
+                    style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.bold,
-                      color: lotacaoUltrapassada
-                          ? Colors.red.shade800
-                          : const Color(0xFF0F172A),
+                      color: Color(0xFF0F172A),
                     ),
                   ),
                 ],
