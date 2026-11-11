@@ -157,16 +157,16 @@ class _BannerReversaoPacienteState extends State<BannerReversaoPaciente> {
                   style: TextStyle(
                     color: corTema,
                     fontWeight: FontWeight.bold,
-                    fontSize: 14,
+                    fontSize: 16,
                   ),
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: corTema.withValues(alpha: 0.3)),
+                  border: Border.all(color: corTema.withValues(alpha: 0.35)),
                 ),
                 child: Text(
                   expirou ? 'Expirado' : _formatarTempo(_tempoRestante),
@@ -174,13 +174,13 @@ class _BannerReversaoPacienteState extends State<BannerReversaoPaciente> {
                     color: corTema,
                     fontWeight: FontWeight.bold,
                     fontFamily: 'monospace',
-                    fontSize: 13,
+                    fontSize: 15,
                   ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           Text(
             expirou
                 ? 'O prazo para reversão terminou. A alteração foi consolidada.'
@@ -188,9 +188,9 @@ class _BannerReversaoPacienteState extends State<BannerReversaoPaciente> {
                     ? 'Você avisou que não utilizará o transporte. Caso mude de ideia, desfaça abaixo.'
                     : 'O motorista foi avisado que sua consulta médica terminou.'),
             style: const TextStyle(
-              color: Color(0xFF334155),
-              fontSize: 12.5,
-              height: 1.3,
+              color: Color(0xFF1E293B),
+              fontSize: 14,
+              height: 1.35,
             ),
           ),
           const SizedBox(height: 10),
@@ -200,23 +200,23 @@ class _BannerReversaoPacienteState extends State<BannerReversaoPaciente> {
               value: progresso,
               backgroundColor: Colors.white,
               valueColor: AlwaysStoppedAnimation<Color>(corTema),
-              minHeight: 4,
+              minHeight: 6,
             ),
           ),
           const SizedBox(height: 12),
           ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 44),
+            constraints: const BoxConstraints(minHeight: 52),
             child: ElevatedButton(
               key: const Key('botao_desfazer_reversao'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: expirou ? Colors.grey : corTema,
+                backgroundColor: expirou ? const Color(0xFF64748B) : corTema,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 10,
+                  horizontal: 16,
+                  vertical: 12,
                 ),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(10),
                 ),
                 elevation: 1,
               ),
@@ -227,15 +227,15 @@ class _BannerReversaoPacienteState extends State<BannerReversaoPaciente> {
                 children: [
                   widget.carregando
                       ? const SizedBox(
-                          width: 16,
-                          height: 16,
+                          width: 18,
+                          height: 18,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
                             valueColor:
                                 AlwaysStoppedAnimation<Color>(Colors.white),
                           ),
                         )
-                      : const Icon(Icons.undo_rounded, size: 18),
+                      : const Icon(Icons.undo_rounded, size: 20),
                   const SizedBox(width: 8),
                   Flexible(
                     child: Text(
@@ -247,7 +247,7 @@ class _BannerReversaoPacienteState extends State<BannerReversaoPaciente> {
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
-                        fontSize: 13,
+                        fontSize: 15,
                       ),
                     ),
                   ),

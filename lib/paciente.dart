@@ -129,20 +129,47 @@ class _PacienteState extends State<Paciente> {
         context: context,
         builder: (ctx) => AlertDialog(
           insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-          title: const Text('Tem certeza dessa ação?'),
-          content: SingleChildScrollView(child: Text(mensagemConfirmacao)),
+          title: const Text(
+            'Tem certeza dessa ação?',
+            style: TextStyle(
+              fontSize: 19,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF0F172A),
+            ),
+          ),
+          content: SingleChildScrollView(
+            child: Text(
+              mensagemConfirmacao,
+              style: const TextStyle(
+                fontSize: 15.5,
+                height: 1.4,
+                color: Color(0xFF334155),
+              ),
+            ),
+          ),
           actions: [
             TextButton(
+              style: TextButton.styleFrom(
+                minimumSize: const Size(96, 48),
+                foregroundColor: const Color(0xFF475569),
+              ),
               onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('Cancelar'),
+              child: const Text(
+                'Cancelar',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+              ),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
+                minimumSize: const Size(110, 48),
                 backgroundColor: corBotaoConfirmar,
                 foregroundColor: Colors.white,
               ),
               onPressed: () => Navigator.of(ctx).pop(true),
-              child: const Text('Confirmar'),
+              child: const Text(
+                'Confirmar',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+              ),
             ),
           ],
         ),
@@ -633,15 +660,15 @@ class _PacienteState extends State<Paciente> {
     required bool estouProntoHabilitado,
   }) {
     final botaoFuiEmbora = ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: 54),
+      constraints: const BoxConstraints(minHeight: 58),
       child: OutlinedButton(
         key: const Key('botao_fui_embora'),
         style: OutlinedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           side: BorderSide(
             color: fuiEmboraHabilitado
                 ? const Color(0xFFB83227)
-                : Colors.grey.shade400,
+                : const Color(0xFFCBD5E1),
             width: 1.5,
           ),
           shape: RoundedRectangleBorder(
@@ -662,10 +689,10 @@ class _PacienteState extends State<Paciente> {
               Icons.cancel_outlined,
               color: fuiEmboraHabilitado
                   ? const Color(0xFFB83227)
-                  : Colors.grey.shade400,
-              size: 18,
+                  : const Color(0xFF64748B),
+              size: 20,
             ),
-            const SizedBox(width: 6),
+            const SizedBox(width: 8),
             Flexible(
               child: Text(
                 'Fui embora',
@@ -673,9 +700,9 @@ class _PacienteState extends State<Paciente> {
                 style: TextStyle(
                   color: fuiEmboraHabilitado
                       ? const Color(0xFFB83227)
-                      : Colors.grey.shade400,
+                      : const Color(0xFF475569),
                   fontWeight: FontWeight.bold,
-                  fontSize: 13,
+                  fontSize: 15,
                 ),
               ),
             ),
@@ -685,17 +712,17 @@ class _PacienteState extends State<Paciente> {
     );
 
     final botaoEstouPronto = ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: 54),
+      constraints: const BoxConstraints(minHeight: 58),
       child: ElevatedButton(
         key: const Key('botao_estou_pronto'),
         style: ElevatedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           backgroundColor: estouProntoHabilitado
               ? const Color(0xFF0F172A)
-              : Colors.grey.shade400,
+              : const Color(0xFFE2E8F0),
           foregroundColor: Colors.white,
-          disabledBackgroundColor: Colors.grey.shade400,
-          disabledForegroundColor: Colors.white70,
+          disabledBackgroundColor: const Color(0xFFE2E8F0),
+          disabledForegroundColor: const Color(0xFF475569),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
@@ -708,19 +735,21 @@ class _PacienteState extends State<Paciente> {
           mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(
+            Icon(
               Icons.check_circle_outline,
-              size: 18,
-              color: Colors.white,
+              size: 20,
+              color: estouProntoHabilitado
+                  ? Colors.white
+                  : const Color(0xFF475569),
             ),
-            const SizedBox(width: 6),
+            const SizedBox(width: 8),
             Flexible(
               child: Text(
                 paciente.prontoRetorno ? 'Pronto (Avisado)' : 'Estou Pronto',
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,
-                  fontSize: 13,
+                  fontSize: 15,
                 ),
               ),
             ),
@@ -764,11 +793,11 @@ class _PacienteState extends State<Paciente> {
     return Container(
       key: const Key('mensagem_apoio_botoes_inativos'),
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: const Color(0xFFCBD5E1)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -776,7 +805,7 @@ class _PacienteState extends State<Paciente> {
         children: [
           const Padding(
             padding: EdgeInsets.only(top: 2),
-            child: Icon(Icons.info_outline, size: 16, color: Color(0xFF64748B)),
+            child: Icon(Icons.info_outline, size: 20, color: Color(0xFF475569)),
           ),
           const SizedBox(width: 8),
           Flexible(
@@ -784,9 +813,10 @@ class _PacienteState extends State<Paciente> {
               mensagemApoio,
               textAlign: TextAlign.center,
               style: const TextStyle(
-                fontSize: 13,
+                fontSize: 14.5,
+                height: 1.35,
                 fontWeight: FontWeight.w600,
-                color: Color(0xFF475569),
+                color: Color(0xFF1E293B),
               ),
             ),
           ),

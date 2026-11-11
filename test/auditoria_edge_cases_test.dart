@@ -246,7 +246,9 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 50));
 
+      expect(find.textContaining('Atualizado às '), findsOneWidget);
       expect(find.textContaining('(desatualizado)'), findsOneWidget);
+      expect(find.textContaining('-20.8073'), findsNothing);
 
       final btnZoomIn = tester.getSize(find.byWidgetPredicate(
         (w) => w is Container && w.constraints?.maxWidth == 48 && w.constraints?.maxHeight == 48,
@@ -577,6 +579,49 @@ void main() {
       expect(find.textContaining('Timestamp('), findsNothing);
       expect(find.text('11/11/2026 às 09:30'), findsOneWidget);
       expect(find.text('11/11/2026 às 10:45'), findsOneWidget);
+    });
+
+    testWidgets('Admin inicia recolhidos cards concluídos/cancelados e expandidos ativos/planejados', (tester) async {
+      final dataDia = DateTime(2026, 11, 11);
+      final vPlan = await viagemService.criarHorarioViagem(
+        data: dataDia,
+        horario: '06:00',
+        cidadeDestino: 'BARRETOS',
+        roleRequisitante: UserRole.admin,
+      );
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 5)),
+      );
+      final vCanc = await viagemService.criarHorarioViagem(
+        data: dataDia,
+        horario: '07:30',
+        cidadeDestino: 'RIO PRETO',
+        roleRequisitante: UserRole.admin,
+      );
+      await viagemService.cancelarOuExcluirHorarioViagem(
+        vCanc.viagem!.id,
+        softDelete: true,
+        roleRequisitante: UserRole.admin,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: GerenciadorViagensScreen(
+            viagemServiceOverride: viagemService,
+            dataInicial: dataDia,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final tilePlan = tester.widget<ExpansionTile>(
+        find.byKey(Key('cardHorario_${vPlan.viagem!.id}')),
+      );
+      final tileCanc = tester.widget<ExpansionTile>(
+        find.byKey(Key('cardHorario_${vCanc.viagem!.id}')),
+      );
+      expect(tilePlan.initiallyExpanded, isTrue);
+      expect(tileCanc.initiallyExpanded, isFalse);
     });
   });
 }

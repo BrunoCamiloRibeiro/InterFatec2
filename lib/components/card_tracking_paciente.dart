@@ -269,6 +269,7 @@ class _CardTrackingPacienteState extends State<CardTrackingPaciente>
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // 1. Cabeçalho com indicador de status ao vivo
@@ -396,14 +397,14 @@ class _CardTrackingPacienteState extends State<CardTrackingPaciente>
     final botaoGps = TextButton(
       onPressed: _pedirPermissaoEAtualizarGps,
       style: TextButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        minimumSize: Size.zero,
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        minimumSize: const Size(0, 44),
+        tapTargetSize: MaterialTapTargetSize.padded,
       ),
       child: _solicitandoGps
           ? const SizedBox(
-              width: 14,
-              height: 14,
+              width: 16,
+              height: 16,
               child: CircularProgressIndicator(strokeWidth: 2),
             )
           : Text(
@@ -411,12 +412,12 @@ class _CardTrackingPacienteState extends State<CardTrackingPaciente>
                   ? 'Atualizar GPS'
                   : (gpsNegado ? 'Permitir GPS' : 'Ativar GPS'),
               style: TextStyle(
-                fontSize: 12,
+                fontSize: 13.5,
                 fontWeight: FontWeight.bold,
                 color: gpsAtivo
-                    ? const Color(0xFF2563EB)
+                    ? const Color(0xFF1D4ED8)
                     : (gpsNegado
-                        ? const Color(0xFFDC2626)
+                        ? const Color(0xFFB91C1C)
                         : const Color(0xFF0F172A)),
               ),
             ),
@@ -464,13 +465,13 @@ class _CardTrackingPacienteState extends State<CardTrackingPaciente>
                           ? 'Permissão de GPS não concedida'
                           : 'Ative a localização do aparelho para ver sua posição'),
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: 13.5,
                     fontWeight: FontWeight.w500,
                     color: gpsAtivo
                         ? const Color(0xFF1E40AF)
                         : (gpsNegado
                             ? const Color(0xFF991B1B)
-                            : const Color(0xFF475569)),
+                            : const Color(0xFF334155)),
                   ),
                 ),
               ),
@@ -515,7 +516,7 @@ class _CardTrackingPacienteState extends State<CardTrackingPaciente>
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
       child: Container(
-        height: 240,
+        height: 215,
         width: double.infinity,
         decoration: BoxDecoration(
           color: const Color(0xFFE2E8F0),
@@ -898,8 +899,7 @@ class _CardTrackingPacienteState extends State<CardTrackingPaciente>
     final dt = m.ultimaAtualizacao.toLocal();
     final hh = dt.hour.toString().padLeft(2, '0');
     final mm = dt.minute.toString().padLeft(2, '0');
-    final base =
-        'Posição: ${m.latitude.toStringAsFixed(4)}, ${m.longitude.toStringAsFixed(4)} • $hh:$mm';
+    final base = 'Atualizado às $hh:$mm';
     return _isLocalizacaoDesatualizada(m) ? '$base (desatualizado)' : base;
   }
 
@@ -925,7 +925,7 @@ class _CardTrackingPacienteState extends State<CardTrackingPaciente>
                 child: Text(
                   m.motoristaNome,
                   style: const TextStyle(
-                    fontSize: 14,
+                    fontSize: 15.5,
                     fontWeight: FontWeight.bold,
                     color: Color(0xFF0F172A),
                   ),
@@ -936,7 +936,7 @@ class _CardTrackingPacienteState extends State<CardTrackingPaciente>
               Flexible(
                 flex: 0,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: const Color(0xFFE0F2FE),
                     borderRadius: BorderRadius.circular(6),
@@ -944,7 +944,7 @@ class _CardTrackingPacienteState extends State<CardTrackingPaciente>
                   child: Text(
                     m.veiculoPlaca,
                     style: const TextStyle(
-                      fontSize: 11,
+                      fontSize: 12.5,
                       fontWeight: FontWeight.bold,
                       color: Color(0xFF0369A1),
                     ),
@@ -957,12 +957,16 @@ class _CardTrackingPacienteState extends State<CardTrackingPaciente>
           Row(
             children: [
               const Icon(Icons.navigation_rounded,
-                  size: 14, color: Color(0xFF64748B)),
-              const SizedBox(width: 4),
+                  size: 16, color: Color(0xFF475569)),
+              const SizedBox(width: 6),
               Expanded(
                 child: Text(
                   'Destino: ${m.cidadeDestino}',
-                  style: const TextStyle(fontSize: 12, color: Color(0xFF475569)),
+                  style: const TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w500,
+                    color: Color(0xFF334155),
+                  ),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -980,16 +984,16 @@ class _CardTrackingPacienteState extends State<CardTrackingPaciente>
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.gps_fixed, size: 14, color: Color(0xFF64748B)),
+                    const Icon(Icons.gps_fixed, size: 15, color: Color(0xFF475569)),
                     const SizedBox(width: 4),
                     Flexible(
                       child: Text(
                         _formatarPosicaoComHorario(m),
                         style: TextStyle(
-                          fontSize: 11,
+                          fontSize: 12.5,
                           color: _isLocalizacaoDesatualizada(m)
                               ? const Color(0xFFB45309)
-                              : const Color(0xFF64748B),
+                              : const Color(0xFF475569),
                           fontWeight: _isLocalizacaoDesatualizada(m)
                               ? FontWeight.w600
                               : FontWeight.normal,
@@ -999,19 +1003,19 @@ class _CardTrackingPacienteState extends State<CardTrackingPaciente>
                   ],
                 ),
                 InkWell(
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.circular(8),
                   onTap: () {
                     _mapController.move(LatLng(m.latitude, m.longitude), 13.5);
                   },
                   child: const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 2, horizontal: 2),
+                    padding: EdgeInsets.symmetric(vertical: 8, horizontal: 8),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
                           Icons.center_focus_strong,
-                          size: 14,
-                          color: Color(0xFF0284C7),
+                          size: 16,
+                          color: Color(0xFF0369A1),
                         ),
                         SizedBox(width: 4),
                         Flexible(
@@ -1019,9 +1023,9 @@ class _CardTrackingPacienteState extends State<CardTrackingPaciente>
                             'Focar no Mapa',
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              fontSize: 11,
+                              fontSize: 13,
                               fontWeight: FontWeight.bold,
-                              color: Color(0xFF0284C7),
+                              color: Color(0xFF0369A1),
                             ),
                           ),
                         ),

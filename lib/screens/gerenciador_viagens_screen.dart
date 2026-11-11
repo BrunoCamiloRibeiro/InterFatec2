@@ -552,33 +552,50 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
   }) {
     return Container(
       width: largura,
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.grey.shade200),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Flexible(
-                child: Text(
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: cor.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icone, size: 18, color: cor),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
                   titulo,
-                  style: const TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Color(0xFF64748B),
+                    fontWeight: FontWeight.w600,
+                  ),
                   overflow: TextOverflow.ellipsis,
                 ),
-              ),
-              Icon(icone, size: 16, color: cor),
-            ],
-          ),
-          const SizedBox(height: 2),
-          Text(
-            valor,
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: cor),
-            overflow: TextOverflow.ellipsis,
+                const SizedBox(height: 2),
+                Text(
+                  valor,
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                    color: cor,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -773,7 +790,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
           data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
           child: ExpansionTile(
             key: Key('cardHorario_${viagem.id}'),
-            initiallyExpanded: true,
+            initiallyExpanded: !viagem.isConcluida && !viagem.isCancelada,
             tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             childrenPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             title: Wrap(
@@ -912,7 +929,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                     SizedBox(width: 6),
                     Expanded(
                       child: Text(
-                        'Aviso: Há paciente(s) sem CPF cadastrado neste Horário. Eles constam na escala de embarque, mas não poderão acessar o app até regularização.',
+                        'Há passageiro(s) sem CPF cadastrado (sem acesso ao app até regularizar).',
                         style: TextStyle(fontSize: 11, color: Color(0xFF92400E)),
                       ),
                     ),

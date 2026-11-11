@@ -520,7 +520,7 @@ class _LoginScreenState extends State<LoginScreen> {
     return Text(
       texto,
       style: const TextStyle(
-        fontSize: 11,
+        fontSize: 12.5,
         fontWeight: FontWeight.bold,
         color: Color(0xFF334155),
       ),
@@ -569,8 +569,8 @@ class _LoginScreenState extends State<LoginScreen> {
     return InputDecoration(
       labelText: labelText,
       hintText: hintText,
-      hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
-      prefixIcon: Icon(prefixIcon, color: const Color(0xFF64748B)),
+      hintStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 15),
+      prefixIcon: Icon(prefixIcon, color: const Color(0xFF475569)),
       suffixIcon: suffixIcon,
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       border: bordaPadrao,
@@ -599,7 +599,7 @@ class _LoginScreenState extends State<LoginScreen> {
           disabledBackgroundColor:
               const Color(0xFF0F172A).withValues(alpha: 0.6),
           disabledForegroundColor: Colors.white70,
-          minimumSize: const Size.fromHeight(48),
+          minimumSize: const Size.fromHeight(54),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(10),
           ),
