@@ -161,27 +161,6 @@ class _VeiculosState extends State<Veiculos> {
       onEditar: () => _abrirFormularioEdicao(veiculo),
       onDetalhes: () => _abrirDetalhes(veiculo),
       onStatusChanged: (novoStatus) => _alterarStatusVeiculo(veiculo, novoStatus),
-      onTagSelecionada: (tag) {
-        setState(() {
-          if (tag == 'ac') {
-            _filtro.possuiAC = true;
-          } else if (tag == 'preferencial') {
-            _filtro.possuiPreferencial = true;
-          }
-        });
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            duration: const Duration(seconds: 2),
-            backgroundColor: Colors.blueGrey[900],
-            content: Text(
-              tag == 'ac'
-                  ? 'Filtro aplicado: Com Ar-condicionado'
-                  : 'Filtro aplicado: Acesso Preferencial',
-            ),
-          ),
-        );
-      },
     );
   }
 

@@ -425,53 +425,18 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
       ],
     );
 
-    final botaoMapa = OutlinedButton.icon(
+    final botaoMapa = _construirBotaoBarraTopo(
       key: const Key('botaoMapaFrotaAdmin'),
-      style: OutlinedButton.styleFrom(
-        foregroundColor: const Color(0xFF0F172A),
-        backgroundColor: _mostrarMapaFrota
-            ? const Color(0xFFE2E8F0)
-            : Colors.white,
-        side: const BorderSide(color: Color(0xFFCBD5E1)),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-        minimumSize: const Size(0, 44),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-      icon: Icon(
-        _mostrarMapaFrota ? Icons.map : Icons.map_outlined,
-        size: 16,
-      ),
-      label: FittedBox(
-        fit: BoxFit.scaleDown,
-        child: Text(
-          _mostrarMapaFrota ? 'Ocultar Mapa' : 'Mapa da Frota',
-          maxLines: 1,
-        ),
-      ),
-      onPressed: () {
-        setState(() {
-          _mostrarMapaFrota = !_mostrarMapaFrota;
-        });
-      },
+      icone: _mostrarMapaFrota ? Icons.map : Icons.map_outlined,
+      label: _mostrarMapaFrota ? 'Ocultar Mapa' : 'Mapa da Frota',
+      ativo: _mostrarMapaFrota,
+      onPressed: () => setState(() => _mostrarMapaFrota = !_mostrarMapaFrota),
     );
 
-    final botaoDuplicar = OutlinedButton.icon(
+    final botaoDuplicar = _construirBotaoBarraTopo(
       key: const Key('botaoDuplicarHorarios'),
-      style: OutlinedButton.styleFrom(
-        foregroundColor: const Color(0xFF0F172A),
-        side: const BorderSide(color: Color(0xFFCBD5E1)),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-        minimumSize: const Size(0, 44),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-      icon: const Icon(Icons.copy, size: 16),
-      label: const FittedBox(
-        fit: BoxFit.scaleDown,
-        child: Text(
-          'Duplicar de outro dia',
-          maxLines: 1,
-        ),
-      ),
+      icone: Icons.copy,
+      label: 'Duplicar de outro dia',
       onPressed: _abrirModalDuplicarHorarios,
     );
 
@@ -551,6 +516,32 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
           ),
         );
       },
+    );
+  }
+
+  Widget _construirBotaoBarraTopo({
+    required Key key,
+    required IconData icone,
+    required String label,
+    required VoidCallback onPressed,
+    bool ativo = false,
+  }) {
+    return OutlinedButton.icon(
+      key: key,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: const Color(0xFF0F172A),
+        backgroundColor: ativo ? const Color(0xFFE2E8F0) : Colors.white,
+        side: const BorderSide(color: Color(0xFFCBD5E1)),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        minimumSize: const Size(0, 44),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+      icon: Icon(icone, size: 16),
+      label: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Text(label, maxLines: 1),
+      ),
+      onPressed: onPressed,
     );
   }
 

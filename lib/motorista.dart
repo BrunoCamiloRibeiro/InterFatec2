@@ -320,6 +320,12 @@ class _MotoristaState extends State<Motorista> {
     return '';
   }
 
+  String _obterNomeMotoristaSessao() {
+    final nome = _motoristaNome.trim();
+    if (nome.isNotEmpty) return nome;
+    return _viagemService.sessaoAtiva?.motoristaNome.trim() ?? '';
+  }
+
   bool _isFirebaseDisponivel() {
     try {
       return Firebase.apps.isNotEmpty;
@@ -999,9 +1005,7 @@ class _MotoristaState extends State<Motorista> {
     if (!mounted) return false;
 
     final idMotoristaSwipe = _obterIdMotoristaSessao();
-    final nomeMotoristaSwipe = _motoristaNome.trim().isNotEmpty
-        ? _motoristaNome.trim()
-        : (_viagemService.sessaoAtiva?.motoristaNome.trim() ?? '');
+    final nomeMotoristaSwipe = _obterNomeMotoristaSessao();
 
     if (resultado.sucesso) {
       if (idViagemAlvo != null && !idViagemAlvo.startsWith('sessao_ativa_')) {

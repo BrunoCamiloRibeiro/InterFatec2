@@ -1,11 +1,68 @@
 import 'package:flutter/material.dart';
 
+/// Linha padronizada de metadado (ícone + rótulo + valor) usada nos cards e detalhes de veículo.
+class InfoCampoVeiculo extends StatelessWidget {
+  final IconData icone;
+  final String rotulo;
+  final String valor;
+  final double tamanhoIcone;
+  final double tamanhoRotulo;
+  final double tamanhoValor;
+  final FontWeight pesoValor;
+
+  const InfoCampoVeiculo({
+    super.key,
+    required this.icone,
+    required this.rotulo,
+    required this.valor,
+    this.tamanhoIcone = 22,
+    this.tamanhoRotulo = 13,
+    this.tamanhoValor = 16.5,
+    this.pesoValor = FontWeight.bold,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icone, size: tamanhoIcone, color: const Color(0xFF475569)),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                rotulo,
+                style: TextStyle(
+                  color: const Color(0xFF475569),
+                  fontSize: tamanhoRotulo,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                valor,
+                style: TextStyle(
+                  fontSize: tamanhoValor,
+                  fontWeight: pesoValor,
+                  color: const Color(0xFF0F172A),
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class CardVeiculo extends StatelessWidget {
   final Map<String, dynamic> veiculo;
   final VoidCallback? onEditar;
   final VoidCallback? onDetalhes;
   final ValueChanged<String>? onStatusChanged;
-  final ValueChanged<String>? onTagSelecionada;
   final bool exibirAcoesRodape;
 
   const CardVeiculo({
@@ -14,7 +71,6 @@ class CardVeiculo extends StatelessWidget {
     this.onEditar,
     this.onDetalhes,
     this.onStatusChanged,
-    this.onTagSelecionada,
     this.exibirAcoesRodape = true,
   });
 
@@ -271,12 +327,12 @@ class CardVeiculo extends StatelessWidget {
                   final escala = MediaQuery.textScalerOf(context).scale(15);
                   final empilhar = constraints.maxWidth < 245 || escala > 22;
 
-                  final campoKm = _construirCampoMetadado(
+                  final campoKm = InfoCampoVeiculo(
                     icone: Icons.speed_outlined,
                     rotulo: 'Quilometragem Atual',
                     valor: '$km km',
                   );
-                  final campoAssentos = _construirCampoMetadado(
+                  final campoAssentos = InfoCampoVeiculo(
                     icone: Icons.chair_outlined,
                     rotulo: 'Qtd. de Assentos',
                     valor: '$assentos',
@@ -306,85 +362,21 @@ class CardVeiculo extends StatelessWidget {
             ),
 
             if (exibirAcoesRodape) ...[
-              // BOTÕES DE EDITAR E VER DETALHES
               const Divider(height: 2),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Expanded(
-                    child: TextButton(
-                      style: ButtonStyle(
-                        padding: WidgetStateProperty.all(
-                          const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                        ),
-                        shape: WidgetStateProperty.all(
-                          RoundedRectangleBorder(
-                            borderRadius: BorderRadiusGeometry.circular(8),
-                          ),
-                        ),
-                      ),
-                      onPressed: onEditar,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.start,
-                        children: [
-                          Icon(
-                            Icons.edit_outlined,
-                            size: 20,
-                            color: Colors.grey[700],
-                          ),
-                          const SizedBox(width: 8),
-                          Flexible(
-                            child: Text(
-                              'Editar',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                color: Color.lerp(Colors.grey, Colors.black, 0.5),
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                  _construirBotaoRodape(
+                    icone: Icons.edit_outlined,
+                    rotulo: 'Editar',
+                    onPressed: onEditar,
                   ),
                   const SizedBox(width: 12),
-                  Expanded(
-                    child: TextButton(
-                      style: ButtonStyle(
-                        padding: WidgetStateProperty.all(
-                          const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                        ),
-                        shape: WidgetStateProperty.all(
-                          RoundedRectangleBorder(
-                            borderRadius: BorderRadiusGeometry.circular(8),
-                          ),
-                        ),
-                      ),
-                      onPressed: onDetalhes,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          Flexible(
-                            child: Text(
-                              'Ver Detalhes',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                color: Color.lerp(Colors.grey, Colors.black, 0.5),
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Icon(
-                            Icons.arrow_forward_outlined,
-                            size: 20,
-                            color: Colors.grey[700],
-                          ),
-                        ],
-                      ),
-                    ),
+                  _construirBotaoRodape(
+                    icone: Icons.arrow_forward_outlined,
+                    rotulo: 'Ver Detalhes',
+                    onPressed: onDetalhes,
+                    iconeDepois: true,
                   ),
                 ],
               ),
@@ -395,42 +387,43 @@ class CardVeiculo extends StatelessWidget {
     );
   }
 
-  Widget _construirCampoMetadado({
+  Widget _construirBotaoRodape({
     required IconData icone,
     required String rotulo,
-    required String valor,
+    required VoidCallback? onPressed,
+    bool iconeDepois = false,
   }) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icone, size: 22, color: const Color(0xFF334155)),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                rotulo,
-                style: const TextStyle(
-                  color: Color(0xFF475569),
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                valor,
-                style: const TextStyle(
-                  fontSize: 16.5,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF0F172A),
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
+    const corTexto = Color(0xFF475569);
+    final iconeWidget = Icon(icone, size: 20, color: corTexto);
+    final textoWidget = Flexible(
+      child: Text(
+        rotulo,
+        style: const TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          color: corTexto,
+        ),
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
+
+    return Expanded(
+      child: TextButton(
+        style: TextButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
           ),
         ),
-      ],
+        onPressed: onPressed,
+        child: Row(
+          mainAxisAlignment:
+              iconeDepois ? MainAxisAlignment.end : MainAxisAlignment.start,
+          children: iconeDepois
+              ? [textoWidget, const SizedBox(width: 8), iconeWidget]
+              : [iconeWidget, const SizedBox(width: 8), textoWidget],
+        ),
+      ),
     );
   }
 }

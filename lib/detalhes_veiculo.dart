@@ -67,39 +67,53 @@ class _DetalhesVeiculoState extends State<DetalhesVeiculo> {
     return '$dia/$mes/${dt.year} às $hora:$min';
   }
 
-  Widget _construirInfoData({
+  Widget _construirBadgeExtra({
+    required double maxWidth,
     required IconData icone,
-    required String rotulo,
-    required String valor,
+    required String texto,
+    required Color corFundo,
+    required Color corConteudo,
   }) {
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxWidth),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: corFundo,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icone, size: 16, color: corConteudo),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                texto,
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: corConteudo,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _construirConteudoBotaoBase(IconData icone, String rotulo) {
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Icon(icone, color: const Color(0xFF475569), size: 21),
+        Icon(icone),
         const SizedBox(width: 8),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                rotulo,
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: Color(0xFF475569),
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                valor,
-                style: const TextStyle(
-                  fontSize: 14.5,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF0F172A),
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
+        Flexible(
+          child: Text(
+            rotulo,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+            textAlign: TextAlign.center,
           ),
         ),
       ],
@@ -188,10 +202,13 @@ class _DetalhesVeiculoState extends State<DetalhesVeiculo> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _construirInfoData(
+                        InfoCampoVeiculo(
                           icone: Icons.person_outline_outlined,
                           rotulo: 'Último Motorista',
                           valor: ultimoMotorista,
+                          tamanhoIcone: 21,
+                          tamanhoValor: 14.5,
+                          pesoValor: FontWeight.w600,
                         ),
                         const SizedBox(height: 14),
                         LayoutBuilder(
@@ -201,16 +218,22 @@ class _DetalhesVeiculoState extends State<DetalhesVeiculo> {
                             final empilhar =
                                 constraints.maxWidth < 310 || escala > 19;
 
-                            final cardCadastro = _construirInfoData(
+                            final cardCadastro = InfoCampoVeiculo(
                               icone: Icons.calendar_today_outlined,
                               rotulo: 'Data de Cadastro',
                               valor: criadoEm,
+                              tamanhoIcone: 21,
+                              tamanhoValor: 14.5,
+                              pesoValor: FontWeight.w600,
                             );
 
-                            final cardAtualizacao = _construirInfoData(
+                            final cardAtualizacao = InfoCampoVeiculo(
                               icone: Icons.update_outlined,
                               rotulo: 'Última Atualização',
                               valor: atualizadoEm,
+                              tamanhoIcone: 21,
+                              tamanhoValor: 14.5,
+                              pesoValor: FontWeight.w600,
                             );
 
                             if (empilhar) {
@@ -243,86 +266,24 @@ class _DetalhesVeiculoState extends State<DetalhesVeiculo> {
                                 runSpacing: 6,
                                 children: [
                                   if (possuiAC)
-                                    ConstrainedBox(
-                                      constraints: BoxConstraints(
-                                        maxWidth: badgeConstraints.maxWidth,
-                                      ),
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 10,
-                                          vertical: 6,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: Colors.blue.withValues(alpha: 0.1),
-                                          borderRadius:
-                                              BorderRadius.circular(20),
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(
-                                              Icons.ac_unit_outlined,
-                                              size: 16,
-                                              color: Color.lerp(
-                                                Colors.blue,
-                                                Colors.black,
-                                                0.4,
-                                              ),
-                                            ),
-                                            const SizedBox(width: 6),
-                                            Flexible(
-                                              child: Text(
-                                                'Ar-condicionado',
-                                                style: TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                  color: Color.lerp(
-                                                    Colors.blue,
-                                                    Colors.black,
-                                                    0.4,
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
+                                    _construirBadgeExtra(
+                                      maxWidth: badgeConstraints.maxWidth,
+                                      icone: Icons.ac_unit_outlined,
+                                      texto: 'Ar-condicionado',
+                                      corFundo: Colors.blue.withValues(alpha: 0.1),
+                                      corConteudo: Color.lerp(
+                                        Colors.blue,
+                                        Colors.black,
+                                        0.4,
+                                      )!,
                                     ),
                                   if (possuiPreferencial)
-                                    ConstrainedBox(
-                                      constraints: BoxConstraints(
-                                        maxWidth: badgeConstraints.maxWidth,
-                                      ),
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 10,
-                                          vertical: 6,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFF2D2F8D),
-                                          borderRadius:
-                                              BorderRadius.circular(20),
-                                        ),
-                                        child: const Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(
-                                              Icons.accessible_outlined,
-                                              size: 16,
-                                              color: Colors.white,
-                                            ),
-                                            SizedBox(width: 6),
-                                            Flexible(
-                                              child: Text(
-                                                'Acesso Preferencial',
-                                                style: TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                  color: Colors.white,
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
+                                    _construirBadgeExtra(
+                                      maxWidth: badgeConstraints.maxWidth,
+                                      icone: Icons.accessible_outlined,
+                                      texto: 'Acesso Preferencial',
+                                      corFundo: const Color(0xFF2D2F8D),
+                                      corConteudo: Colors.white,
                                     ),
                                 ],
                               );
@@ -406,20 +367,9 @@ class _DetalhesVeiculoState extends State<DetalhesVeiculo> {
                     ),
                   ),
                   onPressed: () => _confirmarExclusao(context),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.delete_outline),
-                      SizedBox(width: 8),
-                      Flexible(
-                        child: Text(
-                          'Excluir Veículo',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    ],
+                  child: _construirConteudoBotaoBase(
+                    Icons.delete_outline,
+                    'Excluir Veículo',
                   ),
                 );
 
@@ -433,20 +383,9 @@ class _DetalhesVeiculoState extends State<DetalhesVeiculo> {
                     ),
                   ),
                   onPressed: () => _abrirEdicao(context),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.edit_outlined),
-                      SizedBox(width: 8),
-                      Flexible(
-                        child: Text(
-                          'Editar Veículo',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    ],
+                  child: _construirConteudoBotaoBase(
+                    Icons.edit_outlined,
+                    'Editar Veículo',
                   ),
                 );
 
