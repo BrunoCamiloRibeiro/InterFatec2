@@ -262,7 +262,7 @@ class FooterPacientes extends StatelessWidget {
                       border: Border.all(color: const Color(0xFFF59E0B)),
                     ),
                     child: Text(
-                      'Atenção: ${pendentes.length} passageiro(s) ainda pendente(s) (${pendentes.map((p) => p.nome).join(', ')}) serão marcados como Concluídos.',
+                      'Atenção: ${pendentes.length} passageiro(s) ainda pendente(s) (${pendentes.map((p) => p.nome).join(', ')}) permanecerão com o status atual na viagem (ela seguirá ativa).',
                       style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,

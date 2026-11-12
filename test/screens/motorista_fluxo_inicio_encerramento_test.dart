@@ -211,7 +211,7 @@ void main() {
     );
 
     testWidgets(
-      '5. Fechar a viagem via Gerar Relatório consolida passageiros pendentes para concluído (4) e encerra a viagem atual',
+      '5. Fechar a sessão via Gerar Relatório com passageiro pendente (status 2) preserva o status pendente e mantém a viagem ativa',
       (tester) async {
         final viagemService = ViagemService();
         final syncService = PacienteSyncService();
@@ -280,14 +280,14 @@ void main() {
         expect(find.text('Início da Viagem'), findsOneWidget);
         expect(find.text('Lista de Passageiros'), findsNothing);
 
-        // A viagem exibida na tela é encerrada e a passageira pendente recebe fallback para status 4 (Concluído)
+        // A viagem mantém status 'ativa' e a passageira pendente permanece em status 2 (não concluída)
         final viagemFinal = viagemService.todasViagens
             .where((v) => v.id == 'horario_2026_11_8_999999')
             .firstOrNull;
         expect(viagemFinal, isNotNull);
-        expect(viagemFinal!.isConcluida, isTrue);
-        expect(viagemFinal.status, equals('encerrada'));
-        expect(viagemFinal.passageiros.first.statusEmbarque, equals(4));
+        expect(viagemFinal!.isConcluida, isFalse);
+        expect(viagemFinal.status, equals('ativa'));
+        expect(viagemFinal.passageiros.first.statusEmbarque, equals(2));
       },
     );
 

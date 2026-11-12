@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:trans_saude/components/card_tracking_paciente.dart';
+import 'package:trans_saude/components/card_veiculo.dart';
 import 'package:trans_saude/components/dialog_excluir_veiculo.dart';
 import 'package:trans_saude/components/footer_veiculos.dart';
 import 'package:trans_saude/components/formulario_pessoa.dart';
@@ -549,7 +550,7 @@ void main() {
       expect(find.byKey(const Key('botaoGestaoPessoasAppBar')), findsNothing);
     });
 
-    testWidgets('DetalhesVeiculo formata Timestamp e remove ações duplicadas', (tester) async {
+    testWidgets('DetalhesVeiculo formata Timestamp, move motorista para Mais Informações e resume CardVeiculo', (tester) async {
       final veiculoMap = <String, dynamic>{
         'id': 'v_det_1',
         'placa': 'DEF4G56',
@@ -559,6 +560,9 @@ void main() {
         'ano': 2023,
         'qtdAssentos': 15,
         'quilometragemAtual': 73000,
+        'ultimoMotoristaNome': 'Carlos Silva',
+        'possuiAC': true,
+        'observacoes': 'Revisão em dia',
         'status': 'disponivel',
         'criadoEm': Timestamp.fromDate(DateTime(2026, 11, 11, 9, 30)),
         'atualizadoEm': Timestamp.fromDate(DateTime(2026, 11, 11, 10, 45)),
@@ -579,6 +583,44 @@ void main() {
       expect(find.textContaining('Timestamp('), findsNothing);
       expect(find.text('11/11/2026 às 09:30'), findsOneWidget);
       expect(find.text('11/11/2026 às 10:45'), findsOneWidget);
+
+      // CardVeiculo fica resumido (placa, carro/ano/tipo, KM e assentos), sem Último Motorista nem tags/observações
+      final cardFinder = find.byType(CardVeiculo);
+      expect(
+        find.descendant(of: cardFinder, matching: find.text('Último Motorista')),
+        findsNothing,
+      );
+      expect(
+        find.descendant(of: cardFinder, matching: find.text('Ar-condicionado')),
+        findsNothing,
+      );
+      expect(
+        find.descendant(of: cardFinder, matching: find.text('73000 km')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: cardFinder, matching: find.text('15')),
+        findsOneWidget,
+      );
+
+      // Motorista e extras ficam dentro de "Mais Informações"
+      final expansionFinder = find.byType(ExpansionTile);
+      expect(
+        find.descendant(of: expansionFinder, matching: find.text('Último Motorista')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: expansionFinder, matching: find.text('Carlos Silva')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: expansionFinder, matching: find.text('Ar-condicionado')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: expansionFinder, matching: find.text('Revisão em dia')),
+        findsOneWidget,
+      );
     });
 
     testWidgets('Admin inicia recolhidos cards concluídos/cancelados e expandidos ativos/planejados', (tester) async {
@@ -622,6 +664,40 @@ void main() {
       );
       expect(tilePlan.initiallyExpanded, isTrue);
       expect(tileCanc.initiallyExpanded, isFalse);
+    });
+
+    testWidgets('Barra de data do Admin preenche largura no celular e fica centralizada na web', (tester) async {
+      final dataDia = DateTime(2026, 11, 11);
+
+      // 1. Mobile (390x844): barra preenche toda a largura útil (390 - 32 = 358px) e data centralizada
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: GerenciadorViagensScreen(
+            viagemServiceOverride: viagemService,
+            dataInicial: dataDia,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final rectMobile = tester.getRect(find.byKey(const Key('barraDataAdmin')));
+      expect(rectMobile.width, equals(358.0));
+      final rectSeletorMobile = tester.getRect(
+        find.byKey(const Key('botaoSeletorDataCalendario')),
+      );
+      expect((rectSeletorMobile.center.dx - 195.0).abs(), lessThan(20.0));
+
+      // 2. Web/Desktop (1280x800): barra fica centralizada horizontalmente (centro próximo de 640px)
+      tester.view.physicalSize = const Size(1280, 800);
+      await tester.pumpAndSettle();
+
+      final rectWeb = tester.getRect(find.byKey(const Key('barraDataAdmin')));
+      expect((rectWeb.center.dx - 640.0).abs(), lessThan(2.0));
+      expect(rectWeb.width, lessThan(800.0));
     });
   });
 }

@@ -860,7 +860,7 @@ void main() {
     );
 
     testWidgets(
-      '14. Gerar Relatório encerra apenas a viagem exibida na tela consolidando pendentes para 4 e preserva outra viagem compartilhada ativa',
+      '14. Gerar Relatório encerra sessão do veículo mantendo viagem ativa e pendências preservadas quando há paciente não concluído',
       (tester) async {
         FirebaseAuthService().clearRoleCache();
         final viagemService = ViagemService();
@@ -971,16 +971,16 @@ void main() {
         await tester.tap(find.text('Confirmar'));
         await tester.pumpAndSettle();
 
-        // Viagem em foco foi encerrada e pendente foi para 4; cancelado manteve 5
+        // Viagem em foco permanece ativa e pendente mantém status 2; cancelado mantém 5
         final vFocoFinal = viagemService.todasViagens
             .firstWhere((v) => v.id == 'viagem_em_foco');
-        expect(vFocoFinal.status, equals('encerrada'));
-        expect(vFocoFinal.isConcluida, isTrue);
+        expect(vFocoFinal.status, equals('ativa'));
+        expect(vFocoFinal.isConcluida, isFalse);
         expect(
           vFocoFinal.passageiros
               .firstWhere((p) => p.pacienteId == 'p_pendente')
               .statusEmbarque,
-          equals(4),
+          equals(2),
         );
         expect(
           vFocoFinal.passageiros

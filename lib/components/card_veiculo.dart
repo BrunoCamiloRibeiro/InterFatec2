@@ -35,18 +35,6 @@ class CardVeiculo extends StatelessWidget {
     final String statusRaw = (veiculo['status'] ?? 'disponivel').toString();
     final dynamic km = veiculo['quilometragemAtual'] ?? 0;
     final dynamic assentos = veiculo['qtdAssentos'] ?? 0;
-    final String rawMotorista =
-        (veiculo['ultimoMotoristaNome'] ?? veiculo['ultimoMotoristaId'] ?? '')
-            .toString()
-            .trim();
-    final String ultimoMotorista = (rawMotorista.isEmpty ||
-            rawMotorista == 'null' ||
-            rawMotorista == 'motorista_atual')
-        ? 'Não informado'
-        : rawMotorista;
-    final bool possuiAC = veiculo['possuiAC'] == true;
-    final bool possuiPreferencial = veiculo['possuiPreferencial'] == true;
-    final String? observacoes = veiculo['observacoes']?.toString();
 
     // Ícone e tipo de acordo com a categoria
     final (IconData iconeTipo, String labelTipo) = switch (tipoRaw) {
@@ -98,29 +86,36 @@ class CardVeiculo extends StatelessWidget {
                     Text(
                       placa,
                       style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF0F172A),
+                        letterSpacing: 0.3,
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 4),
                     Text(
                       descricaoVeiculo,
-                      style: const TextStyle(fontSize: 14, color: Colors.black),
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF1E293B),
+                      ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 6),
                     Row(
                       children: [
-                        Icon(iconeTipo, size: 18, color: Colors.grey[700]),
-                        const SizedBox(width: 5),
+                        Icon(iconeTipo, size: 20, color: const Color(0xFF475569)),
+                        const SizedBox(width: 6),
                         Flexible(
                           child: Text(
                             labelTipo,
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Colors.grey[700],
+                            style: const TextStyle(
+                              fontSize: 14.5,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF475569),
                             ),
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -262,172 +257,53 @@ class CardVeiculo extends StatelessWidget {
               },
             ),
 
-            // INFORMAÇÕES OPERACIONAIS
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              spacing: 12,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: _construirCampoMetadado(
-                        icone: Icons.speed_outlined,
-                        rotulo: 'Quilometragem Atual',
-                        valor: '$km km',
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _construirCampoMetadado(
-                        icone: Icons.chair_outlined,
-                        rotulo: 'Qtd. de Assentos',
-                        valor: '$assentos',
-                      ),
-                    ),
-                  ],
-                ),
-                _construirCampoMetadado(
-                  icone: Icons.person_outline_outlined,
-                  rotulo: 'Último Motorista',
-                  valor: ultimoMotorista,
-                ),
-              ],
-            ),
-
-            // TAGS / EXTRAS DO VEÍCULO (CLICÁVEIS PARA FILTRAR)
-            Wrap(
-              alignment: WrapAlignment.start,
-              spacing: 8,
-              runSpacing: 4,
-              children: [
-                if (possuiAC)
-                  TextButton(
-                    onPressed: () {
-                      if (onTagSelecionada != null) {
-                        onTagSelecionada!('ac');
-                      }
-                    },
-                    style: TextButton.styleFrom(
-                      backgroundColor: Colors.blue.withValues(alpha: 0.1),
-                      foregroundColor: Color.lerp(
-                        Colors.blue,
-                        Colors.black,
-                        0.4,
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.ac_unit_outlined, size: 16),
-                        SizedBox(width: 6),
-                        Flexible(
-                          child: Text(
-                            'Ar-condicionado',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                if (possuiPreferencial)
-                  TextButton(
-                    onPressed: () {
-                      if (onTagSelecionada != null) {
-                        onTagSelecionada!('preferencial');
-                      }
-                    },
-                    style: TextButton.styleFrom(
-                      backgroundColor: const Color(0xFF2D2F8D).withValues(alpha: 1),
-                      foregroundColor: Color.lerp(
-                        const Color(0xFF2D2F8D),
-                        Colors.white,
-                        0.8,
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.accessible_outlined, size: 16),
-                        SizedBox(width: 6),
-                        Flexible(
-                          child: Text(
-                            'Acesso Preferencial',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
-
-            // OBSERVAÇÃO
-            if (observacoes != null && observacoes.isNotEmpty)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.orange.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        spacing: 6,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.help_outline_outlined,
-                                size: 20,
-                                color: Color.lerp(
-                                  Colors.orange,
-                                  Colors.brown,
-                                  0.5,
-                                ),
-                              ),
-                              const SizedBox(width: 5),
-                              Flexible(
-                                child: Text(
-                                  'Observação',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color.lerp(
-                                      Colors.orange,
-                                      Colors.brown,
-                                      0.5,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          Text(
-                            observacoes,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              color: Colors.black87,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+            // INFORMAÇÕES OPERACIONAIS RESUMIDAS (KM E ASSENTOS EM DESTAQUE)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
               ),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final escala = MediaQuery.textScalerOf(context).scale(15);
+                  final empilhar = constraints.maxWidth < 245 || escala > 22;
+
+                  final campoKm = _construirCampoMetadado(
+                    icone: Icons.speed_outlined,
+                    rotulo: 'Quilometragem Atual',
+                    valor: '$km km',
+                  );
+                  final campoAssentos = _construirCampoMetadado(
+                    icone: Icons.chair_outlined,
+                    rotulo: 'Qtd. de Assentos',
+                    valor: '$assentos',
+                  );
+
+                  if (empilhar) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        campoKm,
+                        const SizedBox(height: 10),
+                        campoAssentos,
+                      ],
+                    );
+                  }
+
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: campoKm),
+                      const SizedBox(width: 12),
+                      Expanded(child: campoAssentos),
+                    ],
+                  );
+                },
+              ),
+            ),
 
             if (exibirAcoesRodape) ...[
               // BOTÕES DE EDITAR E VER DETALHES
@@ -527,7 +403,7 @@ class CardVeiculo extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icone, size: 20, color: Colors.grey[700]),
+        Icon(icone, size: 22, color: const Color(0xFF334155)),
         const SizedBox(width: 8),
         Expanded(
           child: Column(
@@ -535,14 +411,20 @@ class CardVeiculo extends StatelessWidget {
             children: [
               Text(
                 rotulo,
-                style: TextStyle(
-                  color: Color.lerp(Colors.grey, Colors.black, 0.5),
-                  fontSize: 12,
+                style: const TextStyle(
+                  color: Color(0xFF475569),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
+              const SizedBox(height: 2),
               Text(
                 valor,
-                style: const TextStyle(fontSize: 14),
+                style: const TextStyle(
+                  fontSize: 16.5,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF0F172A),
+                ),
                 overflow: TextOverflow.ellipsis,
               ),
             ],

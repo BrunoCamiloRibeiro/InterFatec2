@@ -374,118 +374,183 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
     final eHoje = _isDataHoje(_dataSelecionada);
     final textoData = '${eHoje ? "Hoje, " : ""}${_formatarDataBrasileira(_dataSelecionada)}';
 
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x08000000),
-            blurRadius: 4,
-            offset: Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Wrap(
-        alignment: WrapAlignment.spaceBetween,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        spacing: 8,
-        runSpacing: 10,
-        children: [
-          // Controles de data (anterior, seletor, próxima)
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              IconButton(
-                key: const Key('botaoDiaAnterior'),
-                icon: const Icon(Icons.chevron_left),
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-                tooltip: 'Dia Anterior',
-                onPressed: () => _mudarDia(-1),
-              ),
-              Flexible(
-                child: InkWell(
-                  key: const Key('botaoSeletorDataCalendario'),
-                  borderRadius: BorderRadius.circular(8),
-                  onTap: _selecionarDataCalendario,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.calendar_today, size: 16, color: Color(0xFF0F172A)),
-                        const SizedBox(width: 6),
-                        Flexible(
-                          child: Text(
-                            textoData,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF0F172A),
-                            ),
-                          ),
-                        ),
-                      ],
+    final controlesData = Row(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        IconButton(
+          key: const Key('botaoDiaAnterior'),
+          icon: const Icon(Icons.chevron_left),
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+          tooltip: 'Dia Anterior',
+          onPressed: () => _mudarDia(-1),
+        ),
+        Flexible(
+          child: InkWell(
+            key: const Key('botaoSeletorDataCalendario'),
+            borderRadius: BorderRadius.circular(8),
+            onTap: _selecionarDataCalendario,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.calendar_today, size: 16, color: Color(0xFF0F172A)),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      textoData,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF0F172A),
+                      ),
                     ),
                   ),
-                ),
+                ],
               ),
-              IconButton(
-                key: const Key('botaoProximoDia'),
-                icon: const Icon(Icons.chevron_right),
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-                tooltip: 'Próximo Dia',
-                onPressed: () => _mudarDia(1),
-              ),
-            ],
+            ),
           ),
+        ),
+        IconButton(
+          key: const Key('botaoProximoDia'),
+          icon: const Icon(Icons.chevron_right),
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+          tooltip: 'Próximo Dia',
+          onPressed: () => _mudarDia(1),
+        ),
+      ],
+    );
 
-          // Ações do topo: Mapa em tempo real e Duplicar de outro dia
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              OutlinedButton.icon(
-                key: const Key('botaoMapaFrotaAdmin'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF0F172A),
-                  backgroundColor: _mostrarMapaFrota
-                      ? const Color(0xFFE2E8F0)
-                      : Colors.white,
-                  side: const BorderSide(color: Color(0xFFCBD5E1)),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                ),
-                icon: Icon(
-                  _mostrarMapaFrota ? Icons.map : Icons.map_outlined,
-                  size: 16,
-                ),
-                label: Text(_mostrarMapaFrota ? 'Ocultar Mapa' : 'Mapa da Frota'),
-                onPressed: () {
-                  setState(() {
-                    _mostrarMapaFrota = !_mostrarMapaFrota;
-                  });
-                },
-              ),
-              OutlinedButton.icon(
-                key: const Key('botaoDuplicarHorarios'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF0F172A),
-                  side: const BorderSide(color: Color(0xFFCBD5E1)),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                ),
-                icon: const Icon(Icons.copy, size: 16),
-                label: const Text('Duplicar de outro dia'),
-                onPressed: _abrirModalDuplicarHorarios,
-              ),
-            ],
-          ),
-        ],
+    final botaoMapa = OutlinedButton.icon(
+      key: const Key('botaoMapaFrotaAdmin'),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: const Color(0xFF0F172A),
+        backgroundColor: _mostrarMapaFrota
+            ? const Color(0xFFE2E8F0)
+            : Colors.white,
+        side: const BorderSide(color: Color(0xFFCBD5E1)),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        minimumSize: const Size(0, 44),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
+      icon: Icon(
+        _mostrarMapaFrota ? Icons.map : Icons.map_outlined,
+        size: 16,
+      ),
+      label: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Text(
+          _mostrarMapaFrota ? 'Ocultar Mapa' : 'Mapa da Frota',
+          maxLines: 1,
+        ),
+      ),
+      onPressed: () {
+        setState(() {
+          _mostrarMapaFrota = !_mostrarMapaFrota;
+        });
+      },
+    );
+
+    final botaoDuplicar = OutlinedButton.icon(
+      key: const Key('botaoDuplicarHorarios'),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: const Color(0xFF0F172A),
+        side: const BorderSide(color: Color(0xFFCBD5E1)),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        minimumSize: const Size(0, 44),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+      icon: const Icon(Icons.copy, size: 16),
+      label: const FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Text(
+          'Duplicar de outro dia',
+          maxLines: 1,
+        ),
+      ),
+      onPressed: _abrirModalDuplicarHorarios,
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final larguraDisponivel = constraints.maxWidth;
+        final ehMobile = larguraDisponivel < 680;
+        final ehUltraEstreito = larguraDisponivel < 340;
+
+        final decoracaoCard = BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.shade200),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x08000000),
+              blurRadius: 4,
+              offset: Offset(0, 2),
+            ),
+          ],
+        );
+
+        if (ehMobile) {
+          // No celular, preenche toda a largura da tela com os elementos centralizados.
+          return Container(
+            key: const Key('barraDataAdmin'),
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: decoracaoCard,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Center(child: controlesData),
+                const SizedBox(height: 10),
+                if (ehUltraEstreito)
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [botaoMapa, botaoDuplicar],
+                  )
+                else
+                  Row(
+                    children: [
+                      Expanded(child: botaoMapa),
+                      const SizedBox(width: 8),
+                      Expanded(child: botaoDuplicar),
+                    ],
+                  ),
+              ],
+            ),
+          );
+        }
+
+        // Na web / telas largas, mantém a barra centralizada na tela.
+        return Center(
+          child: Container(
+            key: const Key('barraDataAdmin'),
+            constraints: const BoxConstraints(maxWidth: 760),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: decoracaoCard,
+            child: Wrap(
+              alignment: WrapAlignment.center,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 16,
+              runSpacing: 10,
+              children: [
+                controlesData,
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [botaoMapa, botaoDuplicar],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 

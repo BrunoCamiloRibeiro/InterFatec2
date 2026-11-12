@@ -304,11 +304,21 @@ class _MotoristaState extends State<Motorista> {
   // SEÇÃO: Controle de Sessão do Veículo, GPS e Listeners Firestore
   // ===========================================================================
 
-  String _obterIdMotoristaSessao() =>
-      _motoristaId ??
-      FirebaseAuthService().currentDocId ??
-      FirebaseAuthService().currentUserId ??
-      '';
+  String _obterIdMotoristaSessao() {
+    final motDirect = _motoristaId?.trim() ?? '';
+    if (motDirect.isNotEmpty) return motDirect;
+    final docId = FirebaseAuthService().currentDocId?.trim() ?? '';
+    if (docId.isNotEmpty) return docId;
+    final userId = FirebaseAuthService().currentUserId?.trim() ?? '';
+    if (userId.isNotEmpty) return userId;
+    final sessaoMot = _viagemService.sessaoAtiva?.motoristaId.trim() ?? '';
+    if (sessaoMot.isNotEmpty && sessaoMot != 'motorista_atual') {
+      return sessaoMot;
+    }
+    final vMot = _viagemAtiva?.motoristaId.trim() ?? '';
+    if (vMot.isNotEmpty && vMot != 'motorista_atual') return vMot;
+    return '';
+  }
 
   bool _isFirebaseDisponivel() {
     try {
@@ -883,8 +893,23 @@ class _MotoristaState extends State<Motorista> {
   }
 
   int _contarAssentosOcupados(List<PacienteModel> pacientes) {
+    final meuMotoristaId = _obterIdMotoristaSessao().trim();
+    final passageirosViagem = _viagemAtiva?.passageiros ?? const [];
+    final mapaMotoristaPorPaciente = <String, String>{
+      for (final pv in passageirosViagem)
+        if (pv.motoristaId != null && pv.motoristaId!.trim().isNotEmpty)
+          pv.pacienteId: pv.motoristaId!.trim(),
+    };
+
     int preenchidos = 0;
     for (final p in pacientes.where((p) => p.status == 1 || p.status == 3)) {
+      final motResponsavel = mapaMotoristaPorPaciente[p.id];
+      if (motResponsavel != null &&
+          motResponsavel.isNotEmpty &&
+          meuMotoristaId.isNotEmpty &&
+          motResponsavel != meuMotoristaId) {
+        continue;
+      }
       preenchidos += (p.nomeAcompanhante?.isNotEmpty == true) ? 2 : 1;
     }
     return preenchidos;
@@ -973,6 +998,11 @@ class _MotoristaState extends State<Motorista> {
     );
     if (!mounted) return false;
 
+    final idMotoristaSwipe = _obterIdMotoristaSessao();
+    final nomeMotoristaSwipe = _motoristaNome.trim().isNotEmpty
+        ? _motoristaNome.trim()
+        : (_viagemService.sessaoAtiva?.motoristaNome.trim() ?? '');
+
     if (resultado.sucesso) {
       if (idViagemAlvo != null && !idViagemAlvo.startsWith('sessao_ativa_')) {
         unawaited(
@@ -983,6 +1013,8 @@ class _MotoristaState extends State<Motorista> {
             prontoRetorno: resultado.paciente?.prontoRetorno,
             janelaReversao: resultado.paciente?.janelaReversao,
             limparJanelaReversao: resultado.paciente?.janelaReversao == null,
+            motoristaId: idMotoristaSwipe,
+            motoristaNome: nomeMotoristaSwipe,
           ),
         );
       }
@@ -1030,7 +1062,15 @@ class _MotoristaState extends State<Motorista> {
               final novosPassageiros = _viagemAtiva!.passageiros
                   .map(
                     (pv) => pv.pacienteId == paciente.id
-                        ? pv.copyWith(statusEmbarque: proximoStatus)
+                        ? pv.copyWith(
+                            statusEmbarque: proximoStatus,
+                            motoristaId: idMotoristaSwipe.isNotEmpty
+                                ? idMotoristaSwipe
+                                : null,
+                            motoristaNome: nomeMotoristaSwipe.isNotEmpty
+                                ? nomeMotoristaSwipe
+                                : null,
+                          )
                         : pv,
                   )
                   .toList();

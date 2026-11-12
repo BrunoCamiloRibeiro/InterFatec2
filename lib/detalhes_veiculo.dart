@@ -75,7 +75,7 @@ class _DetalhesVeiculoState extends State<DetalhesVeiculo> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icone, color: Colors.grey[700], size: 20),
+        Icon(icone, color: const Color(0xFF475569), size: 21),
         const SizedBox(width: 8),
         Expanded(
           child: Column(
@@ -83,14 +83,20 @@ class _DetalhesVeiculoState extends State<DetalhesVeiculo> {
             children: [
               Text(
                 rotulo,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Color.lerp(Colors.grey, Colors.black, 0.5),
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF475569),
                 ),
               ),
+              const SizedBox(height: 2),
               Text(
                 valor,
-                style: const TextStyle(fontSize: 13),
+                style: const TextStyle(
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF0F172A),
+                ),
                 overflow: TextOverflow.ellipsis,
               ),
             ],
@@ -106,6 +112,18 @@ class _DetalhesVeiculoState extends State<DetalhesVeiculo> {
     final String placa = (veiculo['placa'] ?? '-').toString();
     final String criadoEm = _formatarData(veiculo['criadoEm']);
     final String atualizadoEm = _formatarData(veiculo['atualizadoEm']);
+    final String rawMotorista =
+        (veiculo['ultimoMotoristaNome'] ?? veiculo['ultimoMotoristaId'] ?? '')
+            .toString()
+            .trim();
+    final String ultimoMotorista = (rawMotorista.isEmpty ||
+            rawMotorista == 'null' ||
+            rawMotorista == 'motorista_atual')
+        ? 'Não informado'
+        : rawMotorista;
+    final bool possuiAC = veiculo['possuiAC'] == true;
+    final bool possuiPreferencial = veiculo['possuiPreferencial'] == true;
+    final String? observacoes = veiculo['observacoes']?.toString().trim();
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
@@ -120,9 +138,11 @@ class _DetalhesVeiculoState extends State<DetalhesVeiculo> {
         ),
       ),
       body: SafeArea(
-        child: ListView(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
-          children: [
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
             // CARD PRINCIPAL DO VEÍCULO (sem ações duplicadas de rodapé)
             CardVeiculo(
               veiculo: veiculo,
@@ -165,43 +185,203 @@ class _DetalhesVeiculoState extends State<DetalhesVeiculo> {
                 children: [
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-                    child: LayoutBuilder(
-                      builder: (context, constraints) {
-                        final escala = MediaQuery.textScalerOf(context).scale(13);
-                        final empilhar = constraints.maxWidth < 310 || escala > 19;
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _construirInfoData(
+                          icone: Icons.person_outline_outlined,
+                          rotulo: 'Último Motorista',
+                          valor: ultimoMotorista,
+                        ),
+                        const SizedBox(height: 14),
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            final escala =
+                                MediaQuery.textScalerOf(context).scale(13);
+                            final empilhar =
+                                constraints.maxWidth < 310 || escala > 19;
 
-                        final cardCadastro = _construirInfoData(
-                          icone: Icons.calendar_today_outlined,
-                          rotulo: 'Data de Cadastro',
-                          valor: criadoEm,
-                        );
+                            final cardCadastro = _construirInfoData(
+                              icone: Icons.calendar_today_outlined,
+                              rotulo: 'Data de Cadastro',
+                              valor: criadoEm,
+                            );
 
-                        final cardAtualizacao = _construirInfoData(
-                          icone: Icons.update_outlined,
-                          rotulo: 'Última Atualização',
-                          valor: atualizadoEm,
-                        );
+                            final cardAtualizacao = _construirInfoData(
+                              icone: Icons.update_outlined,
+                              rotulo: 'Última Atualização',
+                              valor: atualizadoEm,
+                            );
 
-                        if (empilhar) {
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              cardCadastro,
-                              const SizedBox(height: 12),
-                              cardAtualizacao,
-                            ],
-                          );
-                        }
+                            if (empilhar) {
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  cardCadastro,
+                                  const SizedBox(height: 12),
+                                  cardAtualizacao,
+                                ],
+                              );
+                            }
 
-                        return Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(child: cardCadastro),
-                            const SizedBox(width: 12),
-                            Expanded(child: cardAtualizacao),
-                          ],
-                        );
-                      },
+                            return Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(child: cardCadastro),
+                                const SizedBox(width: 12),
+                                Expanded(child: cardAtualizacao),
+                              ],
+                            );
+                          },
+                        ),
+                        if (possuiAC || possuiPreferencial) ...[
+                          const SizedBox(height: 14),
+                          LayoutBuilder(
+                            builder: (context, badgeConstraints) {
+                              return Wrap(
+                                spacing: 8,
+                                runSpacing: 6,
+                                children: [
+                                  if (possuiAC)
+                                    ConstrainedBox(
+                                      constraints: BoxConstraints(
+                                        maxWidth: badgeConstraints.maxWidth,
+                                      ),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 6,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.blue.withValues(alpha: 0.1),
+                                          borderRadius:
+                                              BorderRadius.circular(20),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              Icons.ac_unit_outlined,
+                                              size: 16,
+                                              color: Color.lerp(
+                                                Colors.blue,
+                                                Colors.black,
+                                                0.4,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 6),
+                                            Flexible(
+                                              child: Text(
+                                                'Ar-condicionado',
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Color.lerp(
+                                                    Colors.blue,
+                                                    Colors.black,
+                                                    0.4,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  if (possuiPreferencial)
+                                    ConstrainedBox(
+                                      constraints: BoxConstraints(
+                                        maxWidth: badgeConstraints.maxWidth,
+                                      ),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 6,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF2D2F8D),
+                                          borderRadius:
+                                              BorderRadius.circular(20),
+                                        ),
+                                        child: const Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              Icons.accessible_outlined,
+                                              size: 16,
+                                              color: Colors.white,
+                                            ),
+                                            SizedBox(width: 6),
+                                            Flexible(
+                                              child: Text(
+                                                'Acesso Preferencial',
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              );
+                            },
+                          ),
+                        ],
+                        if (observacoes != null && observacoes.isNotEmpty) ...[
+                          const SizedBox(height: 14),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(
+                                      Icons.help_outline_outlined,
+                                      size: 18,
+                                      color: Color.lerp(
+                                        Colors.orange,
+                                        Colors.brown,
+                                        0.5,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Flexible(
+                                      child: Text(
+                                        'Observação',
+                                        style: TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w600,
+                                          color: Color.lerp(
+                                            Colors.orange,
+                                            Colors.brown,
+                                            0.5,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  observacoes,
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
                 ],
@@ -291,6 +471,7 @@ class _DetalhesVeiculoState extends State<DetalhesVeiculo> {
               },
             ),
           ],
+          ),
         ),
       ),
     );

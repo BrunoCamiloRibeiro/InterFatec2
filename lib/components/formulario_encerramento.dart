@@ -201,34 +201,35 @@ class _FormularioEncerramentoState extends State<FormularioEncerramento> {
       viagemUnica: widget.viagem,
     );
 
-    final viagensSnapshot = listaParaRelatorio
-        .map(
-          (v) => v.copyWith(
-            status: 'encerrada',
-            codigosAcesso: Map<String, String>.from(v.codigosAcesso),
-            passageiros: v.passageiros
-                .map(
-                  (p) => p.copyWith(
-                    statusEmbarque: p.statusEmbarque < 4 ? 4 : p.statusEmbarque,
-                    prontoRetorno: false,
-                    limparJanelaReversao: true,
-                  ),
-                )
-                .toList(),
-          ),
-        )
-        .toList();
-    final pacientesSnapshot = widget.pacientes
-        ?.map(
-          (p) => p.status < 4
-              ? p.copyWith(
-                  status: 4,
-                  prontoRetorno: false,
-                  limparJanelaReversao: true,
-                )
-              : p,
-        )
-        .toList();
+    final pacientesSnapshot = widget.pacientes != null
+        ? List<PacienteModel>.from(widget.pacientes!)
+        : null;
+
+    final viagensSnapshot = listaParaRelatorio.map((v) {
+      final passageirosSinc = v.passageiros.map((p) {
+        final st = ViagemService().resolverStatusEfetivoPassageiro(
+          p,
+          viagemId: v.id,
+          pacientesContexto: pacientesSnapshot,
+        );
+        return p.copyWith(statusEmbarque: st);
+      }).toList();
+      final concluiu = v.isConcluida ||
+          ViagemService().todosPacientesVoltaram(
+            v.copyWith(passageiros: passageirosSinc),
+            pacientesContexto: pacientesSnapshot,
+          );
+      return v.copyWith(
+        status: concluiu ? 'encerrada' : 'ativa',
+        codigosAcesso: concluiu
+            ? const <String, String>{}
+            : Map<String, String>.from(v.codigosAcesso),
+        passageiros: passageirosSinc,
+      );
+    }).toList();
+
+    final todasViagensConcluidas = viagensSnapshot.isNotEmpty &&
+        viagensSnapshot.every((v) => v.isConcluida);
 
     // Atualiza estado e sessão do motorista imediatamente antes da geração do PDF (Zero-Wait UI).
     unawaited(
@@ -238,7 +239,8 @@ class _FormularioEncerramentoState extends State<FormularioEncerramento> {
         viagensExplicitas: viagensSnapshot,
         pacientes: pacientesSnapshot,
         motoristaId: widget.motoristaId,
-        encerrarViagensDefinitivamente: true,
+        encerrarViagensDefinitivamente: false,
+        finalizarSessaoMotorista: true,
       ),
     );
 
@@ -252,20 +254,22 @@ class _FormularioEncerramentoState extends State<FormularioEncerramento> {
     }
 
     messenger?.showSnackBar(
-      const SnackBar(
-        duration: Duration(seconds: 2),
+      SnackBar(
+        duration: const Duration(seconds: 2),
         behavior: SnackBarBehavior.floating,
-        backgroundColor: Color(0xFF0F172A),
+        backgroundColor: const Color(0xFF0F172A),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Viagem encerrada. Preparando relatório PDF em segundo plano...',
-              style: TextStyle(fontWeight: FontWeight.w600),
+              todasViagensConcluidas
+                  ? 'Viagem encerrada. Preparando relatório PDF em segundo plano...'
+                  : 'Sessão encerrada (pendências mantidas). Preparando relatório PDF em segundo plano...',
+              style: const TextStyle(fontWeight: FontWeight.w600),
             ),
-            SizedBox(height: 8),
-            LinearProgressIndicator(
+            const SizedBox(height: 8),
+            const LinearProgressIndicator(
               minHeight: 3,
               backgroundColor: Colors.white24,
               valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF38BDF8)),

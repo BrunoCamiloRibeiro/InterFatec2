@@ -2227,6 +2227,8 @@ class ViagemService {
     bool? prontoRetorno,
     JanelaReversaoModel? janelaReversao,
     bool limparJanelaReversao = false,
+    String? motoristaId,
+    String? motoristaNome,
     bool persistirRemoto = true,
   }) async {
     if (pacienteId.isEmpty) return;
@@ -2256,6 +2258,8 @@ class ViagemService {
         prontoRetorno: prontoRetorno,
         janelaReversao: janelaReversao,
         limparJanelaReversao: limparJanelaReversao,
+        motoristaId: motoristaId,
+        motoristaNome: motoristaNome,
       );
       if (att == null) continue;
 
@@ -2293,6 +2297,8 @@ class ViagemService {
         prontoRetorno: prontoRetorno,
         janelaReversao: janelaReversao,
         limparJanelaReversao: limparJanelaReversao,
+        motoristaId: motoristaId,
+        motoristaNome: motoristaNome,
       );
       if (att == null) continue;
 
@@ -2328,6 +2334,8 @@ class ViagemService {
         prontoRetorno: prontoRetorno,
         janelaReversao: janelaReversao,
         limparJanelaReversao: limparJanelaReversao,
+        motoristaId: motoristaId,
+        motoristaNome: motoristaNome,
       );
       if (att != null) {
         if (att.isConcluida) {
@@ -2406,6 +2414,8 @@ class ViagemService {
     bool? prontoRetorno,
     JanelaReversaoModel? janelaReversao,
     bool limparJanelaReversao = false,
+    String? motoristaId,
+    String? motoristaNome,
   }) {
     final List<PassageiroViagemModel> basePassageiros;
     if (v.passageiros.isNotEmpty) {
@@ -2443,6 +2453,12 @@ class ViagemService {
     final novosPassageiros = <PassageiroViagemModel>[];
     PassageiroViagemModel? passageiroModificado;
 
+    final motIdArg = motoristaId?.trim() ?? '';
+    final String? motIdEfetivo =
+        (motIdArg.isNotEmpty && motIdArg != 'motorista_atual') ? motIdArg : null;
+    final motNomeArg = motoristaNome?.trim() ?? '';
+    final String? motNomeEfetivo = motNomeArg.isNotEmpty ? motNomeArg : null;
+
     for (final p in basePassageiros) {
       if (p.pacienteId == pacienteId) {
         final bool novoPronto = prontoRetorno ??
@@ -2451,10 +2467,14 @@ class ViagemService {
             limparJanelaReversao || (novoStatus != 2 && novoStatus != 5);
         final JanelaReversaoModel? novaJanela =
             deveLimparJanela ? null : (janelaReversao ?? p.janelaReversao);
+        final String? novoMotId = motIdEfetivo ?? p.motoristaId;
+        final String? novoMotNome = motNomeEfetivo ?? p.motoristaNome;
 
         final mudouPassageiro = p.statusEmbarque != novoStatus ||
             p.prontoRetorno != novoPronto ||
-            p.janelaReversao != novaJanela;
+            p.janelaReversao != novaJanela ||
+            p.motoristaId != novoMotId ||
+            p.motoristaNome != novoMotNome;
 
         if (mudouPassageiro) {
           mudou = true;
@@ -2463,6 +2483,8 @@ class ViagemService {
             prontoRetorno: novoPronto,
             janelaReversao: novaJanela,
             limparJanelaReversao: novaJanela == null,
+            motoristaId: novoMotId,
+            motoristaNome: novoMotNome,
           );
           passageiroModificado = atualizadoP;
           novosPassageiros.add(atualizadoP);
@@ -2937,6 +2959,7 @@ class ViagemService {
           viagemAtualizada: viagemAtualizada,
           ehPlaceholderSessao: ehPlaceholderSessao,
           todosVoltaram: todosVoltaram,
+          forcarConclusao: forcarConclusao,
           passageirosSincronizados: passageirosSincronizados,
           veiculoId: veiculoId,
           veiculoIdParaKm: veiculoIdParaKm,
@@ -2962,6 +2985,7 @@ class ViagemService {
     required ViagemModel viagemAtualizada,
     required bool ehPlaceholderSessao,
     required bool todosVoltaram,
+    required bool forcarConclusao,
     required List<PassageiroViagemModel> passageirosSincronizados,
     required String veiculoId,
     String veiculoIdParaKm = '',
@@ -2993,30 +3017,42 @@ class ViagemService {
           if (todosVoltaram) 'codigosAcesso': <String, dynamic>{},
           if (todosVoltaram && motEncLimpo.isNotEmpty)
             'motoristaEncerramentoId': motEncLimpo,
-          if (passageirosSincronizados.isNotEmpty)
+          if (forcarConclusao && passageirosSincronizados.isNotEmpty)
             'passageiros':
                 passageirosSincronizados.map((p) => p.toMap()).toList(),
           'kmFinal': ?kmFinalCalculado,
           'kmRodado': ?kmRodadoCalculado,
         };
 
-        await FirebaseFirestore.instance
-            .collection('viagens')
-            .doc(viagem.id)
-            .set(dadosViagem, SetOptions(merge: true));
+        final docRef =
+            FirebaseFirestore.instance.collection('viagens').doc(viagem.id);
+        await FirebaseFirestore.instance.runTransaction((tx) async {
+          final snap = await tx.get(docRef);
+          if (!snap.exists || snap.data() == null) {
+            tx.set(docRef, dadosViagem, SetOptions(merge: true));
+            return;
+          }
+          final remoto = ViagemModel.fromMap(snap.data()!, docId: snap.id);
+          if (remoto.isCancelada || (remoto.isConcluida && !todosVoltaram)) {
+            return;
+          }
+          tx.set(docRef, dadosViagem, SetOptions(merge: true));
+        });
         _totalGravacoesFirestoreJornada++;
 
-        await _registrarSnapshotHomologado(
-          viagem: viagem,
-          viagemAtualizada: viagemAtualizada,
-          passageirosSincronizados: passageirosSincronizados,
-          veiculoId: veiculoId,
-          kmFinalCalculado: kmFinalCalculado,
-          kmRodadoCalculado: kmRodadoCalculado,
-          agoraFim: agoraFim,
-          idMotoristaParaLiberar: idMotoristaParaLiberar,
-          nomeMotoristaParaLiberar: nomeMotoristaParaLiberar,
-        );
+        if (todosVoltaram) {
+          await _registrarSnapshotHomologado(
+            viagem: viagem,
+            viagemAtualizada: viagemAtualizada,
+            passageirosSincronizados: passageirosSincronizados,
+            veiculoId: veiculoId,
+            kmFinalCalculado: kmFinalCalculado,
+            kmRodadoCalculado: kmRodadoCalculado,
+            agoraFim: agoraFim,
+            idMotoristaParaLiberar: idMotoristaParaLiberar,
+            nomeMotoristaParaLiberar: nomeMotoristaParaLiberar,
+          );
+        }
       }
 
       if (sessaoFinalizada) {
@@ -3164,6 +3200,7 @@ class ViagemService {
     List<PacienteModel>? pacientes,
     String? motoristaId,
     bool encerrarViagensDefinitivamente = false,
+    bool finalizarSessaoMotorista = false,
   }) async {
     final motArg = motoristaId?.trim() ?? '';
     final sessaoDoMapa =
@@ -3227,6 +3264,7 @@ class ViagemService {
       for (final v in viagensExplicitas) {
         if (v.id.isNotEmpty &&
             (encerrarViagensDefinitivamente ||
+                finalizarSessaoMotorista ||
                 !temEscopoCondutor ||
                 pertenceAoCondutor(v))) {
           mapaParaEncerrar[v.id] = v;
@@ -3288,12 +3326,15 @@ class ViagemService {
         },
       );
       final manterSessaoPorOutrasViagens =
-          encerrarViagensDefinitivamente && aindaRestamOutrasViagensAtivas;
+          encerrarViagensDefinitivamente &&
+          !finalizarSessaoMotorista &&
+          aindaRestamOutrasViagensAtivas;
       if (encerrandoSessaoCorrente && !manterSessaoPorOutrasViagens) {
         _sessaoFinalizadaPeloMotorista = true;
       }
       final deveLiberarSessao =
-          encerrarViagensDefinitivamente && !aindaRestamOutrasViagensAtivas;
+          finalizarSessaoMotorista ||
+          (encerrarViagensDefinitivamente && !aindaRestamOutrasViagensAtivas);
 
       for (final v in mapaParaEncerrar.values.toList()) {
         await encerrarViagem(
