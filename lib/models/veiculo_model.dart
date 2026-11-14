@@ -231,7 +231,9 @@ class VeiculoModel {
         ? rawAssentos.toInt()
         : (int.tryParse(rawAssentos?.toString() ?? '') ?? 4);
 
-    final rawKm = map['quilometragemAtual'] ?? map['ultimaKmRegistrada'];
+    final rawKm = map['quilometragemAtual'] ??
+        map['ultimaKmRegistrada'] ??
+        map['quilometragem'];
     final int km = (rawKm is num)
         ? rawKm.toInt()
         : (int.tryParse(rawKm?.toString() ?? '') ?? 0);

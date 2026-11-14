@@ -5,6 +5,7 @@ class DialogExcluirVeiculo extends StatelessWidget {
   final String id;
   final String placa;
   final String modelo;
+  final bool emUso;
   final VoidCallback? onConfirmar;
 
   const DialogExcluirVeiculo({
@@ -12,6 +13,7 @@ class DialogExcluirVeiculo extends StatelessWidget {
     required this.id,
     required this.placa,
     required this.modelo,
+    this.emUso = false,
     this.onConfirmar,
   });
 
@@ -20,6 +22,7 @@ class DialogExcluirVeiculo extends StatelessWidget {
     required String id,
     required String placa,
     required String modelo,
+    bool emUso = false,
     VoidCallback? onConfirmar,
   }) {
     return showDialog<bool>(
@@ -28,6 +31,7 @@ class DialogExcluirVeiculo extends StatelessWidget {
         id: id,
         placa: placa,
         modelo: modelo,
+        emUso: emUso,
         onConfirmar: onConfirmar,
       ),
     );
@@ -35,6 +39,24 @@ class DialogExcluirVeiculo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (emUso) {
+      return AlertDialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        title: const Text('Veículo em Uso'),
+        content: SingleChildScrollView(
+          child: Text(
+            'Não é possível excluir o veículo ${placa.toUpperCase()} ($modelo) enquanto ele estiver em uso em uma viagem ativa.',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Entendi'),
+          ),
+        ],
+      );
+    }
+
     return AlertDialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       title: const Text('Confirmação'),

@@ -22,6 +22,8 @@ import 'package:trans_saude/models/veiculo_model.dart';
 import 'package:trans_saude/models/viagem_model.dart';
 import 'package:trans_saude/motorista.dart';
 import 'package:trans_saude/services/auth_service.dart';
+import 'package:trans_saude/models/janela_reversao_model.dart';
+import 'package:trans_saude/services/paciente_sync_service.dart';
 import 'package:trans_saude/services/viagem_service.dart';
 
 class _MockUser implements User {
@@ -752,5 +754,483 @@ void main() {
       expect(viagemService.viagensAtivas, isEmpty);
       expect(viagemService.sessaoAtiva, isNull);
     });
+
+    testWidgets(
+      '13. Paciente único com "Fui embora" (status 5) não auto-encerra a viagem e permite swipe 5 -> 1 pelo motorista',
+      (tester) async {
+        FirebaseAuthService().clearRoleCache();
+        final viagemService = ViagemService();
+        final syncService = PacienteSyncService();
+
+        final paciente = PacienteModel(
+          id: 'pac_unico_5',
+          nome: 'Matheus Silva',
+          cpf: '111.222.333-44',
+          telefone: '(17) 99999-1111',
+          enderecoPaciente: 'Rua A, 100',
+          localConsulta: 'HB Rio Preto',
+          horarioConsulta: '09:00',
+          status: 0,
+        );
+        syncService.resetParaTestes([paciente]);
+
+        final viagem = ViagemModel(
+          id: 'viagem_status5_teste',
+          motoristaId: 'mot_rodolfo',
+          motoristaNome: 'Rodolfo',
+          veiculoId: 'veic_1',
+          veiculoPlaca: 'BRA-2E19',
+          veiculoModelo: 'Spin',
+          kmInicial: 1000,
+          cidadeDestino: 'Rio Preto',
+          dataHoraInicio: DateTime.now(),
+          status: 'ativa',
+          passageiros: [
+            PassageiroViagemModel(
+              pacienteId: 'pac_unico_5',
+              pacienteNome: 'Matheus Silva',
+              localOrigem: 'Rua A, 100',
+              localDestino: 'HB Rio Preto',
+              horarioAtendimento: '09:00',
+              statusEmbarque: 0,
+            ),
+          ],
+          passageirosIds: ['pac_unico_5'],
+        );
+        viagemService.resetParaTestes(
+          viagensAtivasIniciais: [viagem],
+          todasViagensIniciais: [viagem],
+        );
+
+        // Simula ação do paciente "Fui embora" -> status 5 com janela de reversão
+        final res = await syncService.solicitarCancelamento(
+          pacienteId: 'pac_unico_5',
+          atorId: 'pac_unico_5',
+          atorRole: 'paciente',
+          viagemId: 'viagem_status5_teste',
+        );
+        expect(res.sucesso, isTrue);
+        await viagemService.atualizarStatusPassageiroNaViagem(
+          viagemId: 'viagem_status5_teste',
+          pacienteId: 'pac_unico_5',
+          novoStatus: 5,
+          prontoRetorno: false,
+          janelaReversao: res.paciente?.janelaReversao ??
+              JanelaReversaoModel(
+                acao: 'cancelamento_carona',
+                estadoAnterior: 0,
+                iniciadoEm: DateTime.now().toUtc(),
+                expiraEm:
+                    DateTime.now().toUtc().add(const Duration(seconds: 300)),
+              ),
+        );
+
+        // Viagem não pode ter sido auto-encerrada
+        final viagemAposCancel = viagemService.todasViagens
+            .firstWhere((v) => v.id == 'viagem_status5_teste');
+        expect(viagemAposCancel.isConcluida, isFalse);
+        expect(viagemAposCancel.passageiros.first.statusEmbarque, equals(5));
+
+        // Renderiza a tela do motorista e verifica notificação + swipe 5 -> 1
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Motorista(
+              viagemInicial: viagemAposCancel,
+              viagemServiceOverride: viagemService,
+              syncServiceOverride: syncService,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Aguardando confirmação do passageiro'), findsOneWidget);
+
+        // Desliza o card do paciente em status 5 para embarcar na ida (status 1)
+        await tester.drag(find.byType(Dismissible).first, const Offset(-400, 0));
+        await tester.pumpAndSettle();
+
+        expect(find.text('PRÓXIMA ETAPA'), findsOneWidget);
+        await tester.tap(find.byKey(const Key('botao_confirmar_dialogo_motorista')));
+        await tester.pumpAndSettle();
+
+        final viagemAposSwipe = viagemService.todasViagens
+            .firstWhere((v) => v.id == 'viagem_status5_teste');
+        expect(viagemAposSwipe.passageiros.first.statusEmbarque, equals(1));
+      },
+    );
+
+    testWidgets(
+      '14. Gerar Relatório encerra sessão do veículo mantendo viagem ativa e pendências preservadas quando há paciente não concluído',
+      (tester) async {
+        FirebaseAuthService().clearRoleCache();
+        final viagemService = ViagemService();
+        final syncService = PacienteSyncService();
+        syncService.resetParaTestes([]);
+
+        const veiculo = VeiculoModel(
+          id: 'veic_1',
+          placa: 'BRA-2E19',
+          modelo: 'Spin LTZ',
+          capacidade: 7,
+          quilometragemAtual: 50000,
+          emUso: false,
+        );
+
+        final viagemExibida = ViagemModel(
+          id: 'viagem_em_foco',
+          motoristaId: '',
+          motoristaNome: '',
+          veiculoId: '',
+          veiculoPlaca: '',
+          veiculoModelo: '',
+          kmInicial: 50000,
+          cidadeDestino: 'Rio Preto',
+          dataHoraInicio: DateTime.now(),
+          status: 'aberta',
+          passageiros: const [
+            PassageiroViagemModel(
+              pacienteId: 'p_pendente',
+              pacienteNome: 'Paciente Pendente',
+              localOrigem: 'Origem',
+              localDestino: 'Destino',
+              horarioAtendimento: '08:00',
+              statusEmbarque: 2,
+            ),
+            PassageiroViagemModel(
+              pacienteId: 'p_cancelado',
+              pacienteNome: 'Paciente Cancelado',
+              localOrigem: 'Origem',
+              localDestino: 'Destino',
+              horarioAtendimento: '09:00',
+              statusEmbarque: 5,
+            ),
+          ],
+          passageirosIds: const ['p_pendente', 'p_cancelado'],
+        );
+
+        final viagemCompartilhada = ViagemModel(
+          id: 'viagem_colega_barretos',
+          motoristaId: 'mot_colega',
+          motoristaNome: 'Colega',
+          veiculoId: 'veic_outro',
+          veiculoPlaca: 'XYZ-9999',
+          veiculoModelo: 'Van',
+          kmInicial: 10000,
+          cidadeDestino: 'Barretos',
+          dataHoraInicio: DateTime.now(),
+          status: 'ativa',
+          passageiros: const [
+            PassageiroViagemModel(
+              pacienteId: 'p_barretos',
+              pacienteNome: 'Paciente Barretos',
+              localOrigem: 'Origem',
+              localDestino: 'Hospital Barretos',
+              horarioAtendimento: '10:00',
+              statusEmbarque: 1,
+            ),
+          ],
+          passageirosIds: const ['p_barretos'],
+        );
+
+        viagemService.resetParaTestes(
+          veiculosIniciais: const [veiculo],
+          todasViagensIniciais: [viagemExibida, viagemCompartilhada],
+        );
+
+        await viagemService.iniciarViagem(
+          veiculo: veiculo,
+          kmInicial: 50000,
+          cidadeDestino: 'Rio Preto',
+          motoristaId: 'mot_rodolfo',
+          motoristaNome: 'Rodolfo',
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Motorista(
+              viagemInicial: viagemService.viagensAtivas
+                  .firstWhere((v) => v.id == 'viagem_em_foco'),
+              viagemServiceOverride: viagemService,
+              syncServiceOverride: syncService,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Lista de Passageiros'), findsOneWidget);
+        await tester.tap(find.text('Gerar Relatório'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('botaoConfirmarFinalizacao')));
+        await tester.pumpAndSettle();
+
+        await tester.enterText(find.widgetWithText(TextField, '00:00'), '14:30');
+        await tester.enterText(find.widgetWithText(TextField, 'Ex: 85650'), '50120');
+        await tester.enterText(find.widgetWithText(TextField, 'Ex: 230'), '120');
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Confirmar'));
+        await tester.pumpAndSettle();
+
+        // Viagem em foco permanece ativa e pendente mantém status 2; cancelado mantém 5
+        final vFocoFinal = viagemService.todasViagens
+            .firstWhere((v) => v.id == 'viagem_em_foco');
+        expect(vFocoFinal.status, equals('ativa'));
+        expect(vFocoFinal.isConcluida, isFalse);
+        expect(
+          vFocoFinal.passageiros
+              .firstWhere((p) => p.pacienteId == 'p_pendente')
+              .statusEmbarque,
+          equals(2),
+        );
+        expect(
+          vFocoFinal.passageiros
+              .firstWhere((p) => p.pacienteId == 'p_cancelado')
+              .statusEmbarque,
+          equals(5),
+        );
+
+        // A viagem compartilhada de outro motorista permanece intacta e ativa!
+        final vColega = viagemService.todasViagens
+            .firstWhere((v) => v.id == 'viagem_colega_barretos');
+        expect(vColega.status, equals('ativa'));
+        expect(vColega.isConcluida, isFalse);
+
+        // Veículo do motorista foi liberado
+        final veicFinal =
+            viagemService.todosVeiculos.firstWhere((v) => v.id == 'veic_1');
+        expect(veicFinal.emUso, isFalse);
+      },
+    );
+
+    test(
+      '15. obterTodasViagensDoDiaParaRelatorio consolida todas as viagens do dia mantendo encerramento isolado',
+      () async {
+        final viagemService = ViagemService();
+        viagemService.limparSessaoLocal();
+        final hoje = DateTime(2026, 11, 10, 8, 0);
+
+        final v1Encerrada = ViagemModel(
+          id: 'horario_2026_11_10_01',
+          motoristaId: '',
+          motoristaNome: '',
+          veiculoId: 'veic_a',
+          veiculoPlaca: 'BRA-2E19',
+          veiculoModelo: 'Spin',
+          kmInicial: 50000,
+          cidadeDestino: 'SÃO JOSÉ DO RIO PRETO',
+          dataHoraInicio: DateTime(2026, 11, 10, 6, 0),
+          status: 'encerrada',
+          passageirosIds: const ['pac_matheus'],
+          passageiros: const [
+            PassageiroViagemModel(
+              pacienteId: 'pac_matheus',
+              pacienteNome: 'Matheus',
+              localOrigem: 'Origem',
+              localDestino: 'HB',
+              horarioAtendimento: '08:30',
+              statusEmbarque: 4,
+            ),
+          ],
+        );
+
+        final v2Ativa = ViagemModel(
+          id: 'horario_2026_11_10_02',
+          motoristaId: '',
+          motoristaNome: '',
+          veiculoId: '',
+          veiculoPlaca: 'DEF-4G56',
+          veiculoModelo: 'Ducato',
+          kmInicial: 72000,
+          cidadeDestino: 'SÃO JOSÉ DO RIO PRETO',
+          dataHoraInicio: DateTime(2026, 11, 10, 8, 0),
+          status: 'ativa',
+          passageirosIds: const ['pac_hank'],
+          passageiros: const [
+            PassageiroViagemModel(
+              pacienteId: 'pac_hank',
+              pacienteNome: 'Hank',
+              localOrigem: 'Origem',
+              localDestino: 'AME',
+              horarioAtendimento: '22:00',
+              statusEmbarque: 0,
+            ),
+          ],
+        );
+
+        final v3Foco = ViagemModel(
+          id: 'horario_2026_11_10_03',
+          motoristaId: 'mot_bruno',
+          motoristaNome: 'Bruno',
+          veiculoId: 'veic_b',
+          veiculoPlaca: 'AEG-1234',
+          veiculoModelo: 'Ka',
+          kmInicial: 10000,
+          cidadeDestino: 'BARRETOS',
+          dataHoraInicio: DateTime(2026, 11, 10, 10, 0),
+          status: 'ativa',
+          passageirosIds: const ['pac_heitor'],
+          passageiros: const [
+            PassageiroViagemModel(
+              pacienteId: 'pac_heitor',
+              pacienteNome: 'Heitor',
+              localOrigem: 'Origem',
+              localDestino: 'Hospital de Amor',
+              horarioAtendimento: '15:00',
+              statusEmbarque: 1,
+            ),
+          ],
+        );
+
+        viagemService.sincronizarViagensRemotas([
+          v1Encerrada,
+          v2Ativa,
+          v3Foco,
+        ]);
+
+        await viagemService.iniciarViagem(
+          veiculo: const VeiculoModel(
+            id: 'veic_b',
+            placa: 'AEG-1234',
+            modelo: 'Ka',
+            capacidade: 4,
+            quilometragemAtual: 10000,
+          ),
+          kmInicial: 10000,
+          cidadeDestino: 'BARRETOS',
+          motoristaId: 'mot_bruno',
+          motoristaNome: 'Bruno',
+        );
+
+        // Encerramento isola estritamente a v3Foco
+        final paraEncerrar = viagemService.obterViagensParaRelatorio(
+          viagensExplicitas: [v3Foco],
+          viagemUnica: v3Foco,
+        );
+        expect(paraEncerrar.map((v) => v.id).toList(), equals([v3Foco.id]));
+
+        await viagemService.encerrarTodasViagens(
+          kmFinal: 10120,
+          kmRodado: 120,
+          viagensExplicitas: paraEncerrar,
+          motoristaId: 'mot_bruno',
+          encerrarViagensDefinitivamente: true,
+        );
+
+        final v3Pos = viagemService.todasViagens
+            .firstWhere((v) => v.id == v3Foco.id);
+        final v2Pos = viagemService.todasViagens
+            .firstWhere((v) => v.id == v2Ativa.id);
+        expect(v3Pos.status, equals('encerrada'));
+        expect(v2Pos.status, equals('ativa'));
+
+        // Relatório diário traz TODAS as 3 viagens do dia em ordem cronológica
+        final doDia = await viagemService.obterTodasViagensDoDiaParaRelatorio(
+          viagemEncerradaAtual: v3Pos,
+          dataReferencia: hoje,
+        );
+        expect(
+          doDia.map((v) => v.id).toList(),
+          equals([v1Encerrada.id, v2Ativa.id, v3Foco.id]),
+        );
+      },
+    );
+
+    test(
+      '16. Encerramento com kmFinal atualiza quilometragemAtual do veículo da sessão mesmo restando outras viagens ativas',
+      () async {
+        final viagemService = ViagemService();
+        viagemService.limparSessaoLocal();
+
+        const veicSpin = VeiculoModel(
+          id: 'spin_km_test',
+          placa: 'BRA-2E19',
+          modelo: 'Spin LTZ',
+          capacidade: 7,
+          quilometragemAtual: 50000,
+          emUso: false,
+        );
+
+        final v1Alvo = ViagemModel(
+          id: 'viagem_km_1',
+          motoristaId: '',
+          motoristaNome: '',
+          veiculoId: '',
+          veiculoPlaca: '',
+          veiculoModelo: '',
+          kmInicial: 50000,
+          cidadeDestino: 'Rio Preto',
+          dataHoraInicio: DateTime(2026, 11, 10, 6, 0),
+          status: 'ativa',
+          passageirosIds: const ['p1'],
+          passageiros: const [
+            PassageiroViagemModel(
+              pacienteId: 'p1',
+              pacienteNome: 'Matheus',
+              localOrigem: 'Rua A',
+              localDestino: 'HB',
+              horarioAtendimento: '08:00',
+              statusEmbarque: 2,
+            ),
+          ],
+        );
+
+        final v2Restante = ViagemModel(
+          id: 'viagem_km_2',
+          motoristaId: '',
+          motoristaNome: '',
+          veiculoId: '',
+          veiculoPlaca: '',
+          veiculoModelo: '',
+          kmInicial: 50000,
+          cidadeDestino: 'Barretos',
+          dataHoraInicio: DateTime(2026, 11, 10, 8, 0),
+          status: 'ativa',
+          passageirosIds: const ['p2'],
+          passageiros: const [
+            PassageiroViagemModel(
+              pacienteId: 'p2',
+              pacienteNome: 'Audrey',
+              localOrigem: 'Rua B',
+              localDestino: 'AME',
+              horarioAtendimento: '10:00',
+              statusEmbarque: 0,
+            ),
+          ],
+        );
+
+        viagemService.resetParaTestes(
+          veiculosIniciais: [veicSpin],
+          todasViagensIniciais: [v1Alvo, v2Restante],
+        );
+
+        await viagemService.iniciarViagem(
+          veiculo: veicSpin,
+          kmInicial: 50000,
+          cidadeDestino: 'Rio Preto',
+          motoristaId: 'mot_alberto',
+          motoristaNome: 'Alberto',
+        );
+
+        await viagemService.encerrarTodasViagens(
+          kmFinal: 53000,
+          kmRodado: 3000,
+          viagensExplicitas: [v1Alvo],
+          motoristaId: 'mot_alberto',
+          encerrarViagensDefinitivamente: true,
+        );
+
+        // Mesmo com v2Restante mantendo a sessão ativa, a quilometragem do veículo foi atualizada para 53000!
+        final veicPos = viagemService.todosVeiculos
+            .firstWhere((v) => v.id == 'spin_km_test');
+        expect(veicPos.quilometragemAtual, equals(53000));
+        expect(veicPos.emUso, isTrue);
+        expect(
+          viagemService.todasViagens
+              .firstWhere((v) => v.id == 'viagem_km_2')
+              .status,
+          equals('ativa'),
+        );
+      },
+    );
   });
 }

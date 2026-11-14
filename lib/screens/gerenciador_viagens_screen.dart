@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
+import '../components/card_tracking_paciente.dart';
 import '../lista_pessoas.dart';
 import '../lista_veiculos.dart';
 import '../models/motorista_model.dart';
@@ -64,6 +65,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
 
   String _filtroTexto = '';
   String _filtroStatus = 'todos'; // todos, planejada, ativa, concluida, cancelada
+  bool _mostrarMapaFrota = false;
 
   @override
   void initState() {
@@ -281,8 +283,6 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
     final viagensExibicao = _viagensFiltradas;
     final totalHorarios = _todasViagensDoDia.length;
     final totalAtivos = _todasViagensDoDia.where((v) => v.isAtiva).length;
-    final totalPlanejados =
-        _todasViagensDoDia.where((v) => v.isPlanejada || v.isAberta).length;
     final totalConcluidos = _todasViagensDoDia.where((v) => v.isConcluida).length;
     final totalCancelados = _todasViagensDoDia.where((v) => v.isCancelada).length;
 
@@ -300,39 +300,13 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
         backgroundColor: const Color(0xFF0F172A),
         foregroundColor: Colors.white,
         elevation: 0,
-        title: const FittedBox(
-          fit: BoxFit.scaleDown,
-          alignment: Alignment.centerLeft,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Gerenciador de Horários',
-                style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
-                overflow: TextOverflow.ellipsis,
-                maxLines: 1,
-              ),
-              Text(
-                'Escala e Grade Diária',
-                style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
-                overflow: TextOverflow.ellipsis,
-                maxLines: 1,
-              ),
-            ],
-          ),
+        title: const Text(
+          'Gerenciador de Horários',
+          style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+          overflow: TextOverflow.ellipsis,
+          maxLines: 1,
         ),
         actions: [
-          IconButton(
-            key: const Key('botaoGestaoPessoasAppBar'),
-            icon: const Icon(Icons.people_alt_outlined),
-            tooltip: 'Gestão de Pessoas',
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const ListaPessoas()),
-              );
-            },
-          ),
           IconButton(
             key: const Key('botaoLogoutAdmin'),
             icon: const Icon(Icons.logout),
@@ -360,13 +334,17 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
               _construirPainelIndicadores(
                 total: totalHorarios,
                 ativos: totalAtivos,
-                planejados: totalPlanejados,
                 concluidos: totalConcluidos,
                 cancelados: totalCancelados,
                 assentosOcupados: assentosOcupados,
                 assentosTotais: assentosTotais,
               ),
               const SizedBox(height: 14),
+
+              if (_mostrarMapaFrota) ...[
+                const CardTrackingPaciente(),
+                const SizedBox(height: 14),
+              ],
 
               // Barra de busca e filtros de status
               _construirBarraFiltros(),
@@ -396,115 +374,180 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
     final eHoje = _isDataHoje(_dataSelecionada);
     final textoData = '${eHoje ? "Hoje, " : ""}${_formatarDataBrasileira(_dataSelecionada)}';
 
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x08000000),
-            blurRadius: 4,
-            offset: Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Wrap(
-        alignment: WrapAlignment.spaceBetween,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        spacing: 8,
-        runSpacing: 10,
-        children: [
-          // Controles de data (anterior, seletor, próxima)
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              IconButton(
-                key: const Key('botaoDiaAnterior'),
-                icon: const Icon(Icons.chevron_left),
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                tooltip: 'Dia Anterior',
-                onPressed: () => _mudarDia(-1),
-              ),
-              Flexible(
-                child: InkWell(
-                  key: const Key('botaoSeletorDataCalendario'),
-                  borderRadius: BorderRadius.circular(8),
-                  onTap: _selecionarDataCalendario,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.calendar_today, size: 16, color: Color(0xFF0F172A)),
-                        const SizedBox(width: 6),
-                        Flexible(
-                          child: Text(
-                            textoData,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF0F172A),
-                            ),
-                          ),
-                        ),
-                      ],
+    final controlesData = Row(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        IconButton(
+          key: const Key('botaoDiaAnterior'),
+          icon: const Icon(Icons.chevron_left),
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+          tooltip: 'Dia Anterior',
+          onPressed: () => _mudarDia(-1),
+        ),
+        Flexible(
+          child: InkWell(
+            key: const Key('botaoSeletorDataCalendario'),
+            borderRadius: BorderRadius.circular(8),
+            onTap: _selecionarDataCalendario,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.calendar_today, size: 16, color: Color(0xFF0F172A)),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      textoData,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF0F172A),
+                      ),
                     ),
                   ),
-                ),
+                ],
               ),
-              IconButton(
-                key: const Key('botaoProximoDia'),
-                icon: const Icon(Icons.chevron_right),
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                tooltip: 'Próximo Dia',
-                onPressed: () => _mudarDia(1),
-              ),
-            ],
+            ),
           ),
+        ),
+        IconButton(
+          key: const Key('botaoProximoDia'),
+          icon: const Icon(Icons.chevron_right),
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+          tooltip: 'Próximo Dia',
+          onPressed: () => _mudarDia(1),
+        ),
+      ],
+    );
 
-          // Ações do topo: Duplicar de outro dia e Novo Horário
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              OutlinedButton.icon(
-                key: const Key('botaoDuplicarHorarios'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF0F172A),
-                  side: const BorderSide(color: Color(0xFFCBD5E1)),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+    final botaoMapa = _construirBotaoBarraTopo(
+      key: const Key('botaoMapaFrotaAdmin'),
+      icone: _mostrarMapaFrota ? Icons.map : Icons.map_outlined,
+      label: _mostrarMapaFrota ? 'Ocultar Mapa' : 'Mapa da Frota',
+      ativo: _mostrarMapaFrota,
+      onPressed: () => setState(() => _mostrarMapaFrota = !_mostrarMapaFrota),
+    );
+
+    final botaoDuplicar = _construirBotaoBarraTopo(
+      key: const Key('botaoDuplicarHorarios'),
+      icone: Icons.copy,
+      label: 'Duplicar de outro dia',
+      onPressed: _abrirModalDuplicarHorarios,
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final larguraDisponivel = constraints.maxWidth;
+        final ehMobile = larguraDisponivel < 680;
+        final ehUltraEstreito = larguraDisponivel < 340;
+
+        final decoracaoCard = BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.shade200),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x08000000),
+              blurRadius: 4,
+              offset: Offset(0, 2),
+            ),
+          ],
+        );
+
+        if (ehMobile) {
+          // No celular, preenche toda a largura da tela com os elementos centralizados.
+          return Container(
+            key: const Key('barraDataAdmin'),
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: decoracaoCard,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Center(child: controlesData),
+                const SizedBox(height: 10),
+                if (ehUltraEstreito)
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [botaoMapa, botaoDuplicar],
+                  )
+                else
+                  Row(
+                    children: [
+                      Expanded(child: botaoMapa),
+                      const SizedBox(width: 8),
+                      Expanded(child: botaoDuplicar),
+                    ],
+                  ),
+              ],
+            ),
+          );
+        }
+
+        // Na web / telas largas, mantém a barra centralizada na tela.
+        return Center(
+          child: Container(
+            key: const Key('barraDataAdmin'),
+            constraints: const BoxConstraints(maxWidth: 760),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: decoracaoCard,
+            child: Wrap(
+              alignment: WrapAlignment.center,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 16,
+              runSpacing: 10,
+              children: [
+                controlesData,
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [botaoMapa, botaoDuplicar],
                 ),
-                icon: const Icon(Icons.copy, size: 16),
-                label: const Text('Duplicar de outro dia'),
-                onPressed: _abrirModalDuplicarHorarios,
-              ),
-              ElevatedButton.icon(
-                key: const Key('botaoNovoHorarioBarra'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF0F172A),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                ),
-                icon: const Icon(Icons.add, size: 16),
-                label: const Text('Novo Horário'),
-                onPressed: () => _abrirModalNovoOuEditarHorario(null),
-              ),
-            ],
+              ],
+            ),
           ),
-        ],
+        );
+      },
+    );
+  }
+
+  Widget _construirBotaoBarraTopo({
+    required Key key,
+    required IconData icone,
+    required String label,
+    required VoidCallback onPressed,
+    bool ativo = false,
+  }) {
+    return OutlinedButton.icon(
+      key: key,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: const Color(0xFF0F172A),
+        backgroundColor: ativo ? const Color(0xFFE2E8F0) : Colors.white,
+        side: const BorderSide(color: Color(0xFFCBD5E1)),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        minimumSize: const Size(0, 44),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
+      icon: Icon(icone, size: 16),
+      label: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Text(label, maxLines: 1),
+      ),
+      onPressed: onPressed,
     );
   }
 
   Widget _construirPainelIndicadores({
     required int total,
     required int ativos,
-    required int planejados,
     required int concluidos,
     required int cancelados,
     required int assentosOcupados,
@@ -523,7 +566,6 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
             _itemIndicador(
               titulo: 'Horários no Dia',
               valor: '$total',
-              subtitulo: '$planejados planejados',
               cor: const Color(0xFF0F172A),
               icone: Icons.schedule,
               largura: larguraItem,
@@ -531,15 +573,15 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
             _itemIndicador(
               titulo: 'Em Trânsito (Ativos)',
               valor: '$ativos',
-              subtitulo: 'viagens em andamento',
               cor: const Color(0xFF059669),
               icone: Icons.directions_bus,
               largura: larguraItem,
             ),
             _itemIndicador(
               titulo: 'Assentos Ocupados',
-              valor: '$assentosOcupados / $assentosTotais',
-              subtitulo: 'lotação da frota',
+              valor: assentosTotais > 0
+                  ? '$assentosOcupados / $assentosTotais'
+                  : '$assentosOcupados',
               cor: const Color(0xFF0284C7),
               icone: Icons.event_seat,
               largura: larguraItem,
@@ -547,7 +589,6 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
             _itemIndicador(
               titulo: 'Finalizadas / Canceladas',
               valor: '$concluidos / $cancelados',
-              subtitulo: 'baixa operacional',
               cor: const Color(0xFF475569),
               icone: Icons.check_circle_outline,
               largura: larguraItem,
@@ -561,7 +602,6 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
   Widget _itemIndicador({
     required String titulo,
     required String valor,
-    required String subtitulo,
     required Color cor,
     required IconData icone,
     required double largura,
@@ -571,35 +611,47 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.grey.shade200),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Flexible(
-                child: Text(
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: cor.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icone, size: 18, color: cor),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
                   titulo,
-                  style: const TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Color(0xFF64748B),
+                    fontWeight: FontWeight.w600,
+                  ),
                   overflow: TextOverflow.ellipsis,
                 ),
-              ),
-              Icon(icone, size: 16, color: cor),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            valor,
-            style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: cor),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            subtitulo,
-            style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8)),
-            overflow: TextOverflow.ellipsis,
+                const SizedBox(height: 2),
+                Text(
+                  valor,
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                    color: cor,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -619,7 +671,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
           TextField(
             key: const Key('campoBuscaHorario'),
             decoration: InputDecoration(
-              hintText: 'Buscar por horário, cidade, motorista, veículo ou paciente...',
+              hintText: 'Buscar por horário, cidade, motorista ou paciente...',
               hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
               prefixIcon: const Icon(Icons.search, size: 20),
               suffixIcon: _filtroTexto.isNotEmpty
@@ -707,31 +759,9 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
           ),
           const SizedBox(height: 6),
           const Text(
-            'Crie um novo Horário de Saída para o dia ou duplique a grade de uma data anterior.',
+            'Use o botão "Novo Horário" abaixo ou "Duplicar de outro dia" para montar a escala.',
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
-          ),
-          const SizedBox(height: 16),
-          Wrap(
-            alignment: WrapAlignment.center,
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              OutlinedButton.icon(
-                icon: const Icon(Icons.copy, size: 16),
-                label: const Text('Duplicar de outro dia'),
-                onPressed: _abrirModalDuplicarHorarios,
-              ),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF0F172A),
-                  foregroundColor: Colors.white,
-                ),
-                icon: const Icon(Icons.add, size: 16),
-                label: const Text('Criar Novo Horário'),
-                onPressed: () => _abrirModalNovoOuEditarHorario(null),
-              ),
-            ],
           ),
         ],
       ),
@@ -794,18 +824,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
         break;
     }
 
-    final temVeiculoDefinido =
-        viagem.veiculoId.trim().isNotEmpty || viagem.veiculoPlaca.trim().isNotEmpty;
-    final veic = _resolverVeiculoDaViagem(viagem);
-
-    final capacidade = temVeiculoDefinido
-        ? (veic.capacidade > 0 ? veic.capacidade : 7)
-        : 0;
     final preenchidosBaixa = _calcularAssentosComBaixa(viagem);
-    final disponiveis = capacidade > 0
-        ? (capacidade - preenchidosBaixa).clamp(0, capacidade)
-        : 0;
-    final lotacaoUltrapassada = capacidade > 0 && preenchidosBaixa > capacidade;
 
     // Regra de borda: verificar se há pacientes sem CPF
     final temPacienteSemCpf = viagem.passageiros.any(
@@ -827,7 +846,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
           data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
           child: ExpansionTile(
             key: Key('cardHorario_${viagem.id}'),
-            initiallyExpanded: true,
+            initiallyExpanded: !viagem.isConcluida && !viagem.isCancelada,
             tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             childrenPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             title: Wrap(
@@ -860,14 +879,11 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                 ),
               ],
             ),
-          subtitle: Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                Container(
+            subtitle: Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
                     color: corBadge,
@@ -875,35 +891,43 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                   ),
                   child: Text(
                     textoBadge,
-                    style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold),
-                  ),
-                ),
-                Text(
-                  temVeiculoDefinido
-                      ? 'Veículo: ${viagem.veiculoPlaca} (${viagem.veiculoModelo})'
-                      : 'Veículo: A definir pelo motorista',
-                  style: const TextStyle(fontSize: 12, color: Color(0xFF475569)),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: lotacaoUltrapassada ? Colors.red.shade100 : const Color(0xFFE2E8F0),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    temVeiculoDefinido
-                        ? 'Lugares: $preenchidosBaixa / $capacidade ($disponiveis disponíveis)'
-                        : 'Lugares com baixa: $preenchidosBaixa (veículo a definir)',
-                    style: TextStyle(
-                      fontSize: 11,
+                    style: const TextStyle(
+                      fontSize: 10,
+                      color: Colors.white,
                       fontWeight: FontWeight.bold,
-                      color: lotacaoUltrapassada ? Colors.red.shade800 : const Color(0xFF334155),
                     ),
                   ),
                 ),
-              ],
+              ),
             ),
-          ),
+            trailing: Container(
+              key: Key('contagemAssentos_${viagem.id}'),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFCBD5E1)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.event_seat_rounded,
+                    size: 14,
+                    color: Color(0xFF334155),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '$preenchidosBaixa',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           children: [
             if (viagem.isConcluida)
               Container(
@@ -961,7 +985,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                     SizedBox(width: 6),
                     Expanded(
                       child: Text(
-                        'Aviso: Há paciente(s) sem CPF cadastrado neste Horário. Eles constam na escala de embarque, mas não poderão acessar o app até regularização.',
+                        'Há passageiro(s) sem CPF cadastrado (sem acesso ao app até regularizar).',
                         style: TextStyle(fontSize: 11, color: Color(0xFF92400E)),
                       ),
                     ),
@@ -999,7 +1023,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                     onPressed: () => _abrirModalNovoOuEditarHorario(viagem),
                   ),
                 ],
-                if (!viagem.isCancelada)
+                if (!viagem.isCancelada && !viagem.isConcluida)
                   OutlinedButton.icon(
                     key: Key('botaoCancelarHorario_${viagem.id}'),
                     style: OutlinedButton.styleFrom(
@@ -1014,32 +1038,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                   ),
               ],
             ),
-            const Divider(height: 16),
-
-            // Lista de passageiros
-            Wrap(
-              alignment: WrapAlignment.spaceBetween,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: 8,
-              runSpacing: 4,
-              children: [
-                Text(
-                  'Passageiros Agendados (${viagem.passageiros.length})',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF0F172A),
-                  ),
-                ),
-                Text(
-                  temVeiculoDefinido
-                      ? 'Lugares Preenchidos (Baixa): $preenchidosBaixa • Disponíveis: $disponiveis'
-                      : 'Lugares Preenchidos (Baixa): $preenchidosBaixa',
-                  style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
+            const Divider(height: 14),
 
             if (viagem.passageiros.isEmpty)
               Container(
@@ -1064,9 +1063,8 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
 }
 
   Widget _construirItemPassageiro(ViagemModel viagem, PassageiroViagemModel passageiro) {
-    final temAcompanhante = passageiro.acompanhanteNome != null &&
-        passageiro.acompanhanteNome!.trim().isNotEmpty;
     final codigoAcesso = viagem.codigosAcesso[passageiro.pacienteId]?.trim();
+    final horarioAtend = passageiro.horarioAtendimento.trim();
 
     // Resolve o status e a prontidão isolados para esta viagem específica
     final pacSync = PacienteSyncService().obterPacienteMemoria(
@@ -1081,202 +1079,197 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
         PacienteModel.dadosStatus(statusEfetivo);
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 6),
+      margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: Colors.grey.shade200),
       ),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Badge com a ordem de embarque
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: const Color(0xFF0F172A),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Text(
-              '#${passageiro.ordemEmbarque}',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
+          // Cabeçalho do passageiro: [Horário] + Nome (igual ao card da viagem)
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              if (horarioAtend.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF059669).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    horarioAtend,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF059669),
+                    ),
+                  ),
+                ),
+              Text(
+                passageiro.pacienteNome,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF0F172A),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+
+          // 1. Status (em coluna)
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            children: [
+              Container(
+                key: ValueKey('status_passageiro_admin_${passageiro.pacienteId}'),
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  color: corStatus.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: corStatus.withValues(alpha: 0.45)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(iconeStatus, size: 12, color: corStatus),
+                    const SizedBox(width: 4),
+                    Flexible(
+                      child: Text(
+                        nomeStatus,
+                        style: TextStyle(
+                          color: corStatus,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (statusEfetivo == 2 && prontoRetornoEfetivo)
+                Container(
+                  key: ValueKey('pronto_retorno_admin_${passageiro.pacienteId}'),
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFDCFCE7),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: const Color(0xFF16A34A)),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.notifications_active, size: 12, color: Color(0xFF15803D)),
+                      SizedBox(width: 4),
+                      Flexible(
+                        child: Text(
+                          'Pronto p/ Retorno',
+                          style: TextStyle(
+                            color: Color(0xFF15803D),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 6),
+
+          // 2. Origem (destacada)
+          Row(
+            children: [
+              const Icon(Icons.my_location_rounded, size: 13, color: Color(0xFF334155)),
+              const SizedBox(width: 5),
+              Expanded(
+                child: Text(
+                  'Origem: ${passageiro.localOrigem}',
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF1E293B),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 3),
+
+          // 3. Destino (destacado)
+          Row(
+            children: [
+              const Icon(Icons.place_outlined, size: 14, color: Color(0xFF0F172A)),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  'Destino: ${passageiro.localDestino}',
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          // 4. Código de acesso do passageiro
+          if (codigoAcesso != null && codigoAcesso.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E293B),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: const Color(0xFF3B82F6), width: 1),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.key,
+                    size: 12,
+                    color: Color(0xFF60A5FA),
+                  ),
+                  const SizedBox(width: 4),
+                  Flexible(
+                    child: Text(
+                      'Código: $codigoAcesso',
+                      key: ValueKey('codigo_acesso_admin_${passageiro.pacienteId}'),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 11,
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-          ),
-          const SizedBox(width: 10),
+          ],
 
-          // Informações do paciente e acompanhante
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 4,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  alignment: WrapAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      passageiro.pacienteNome,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF0F172A),
-                      ),
-                    ),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 4,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        Container(
-                          key: ValueKey('status_passageiro_admin_${passageiro.pacienteId}'),
-                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: corStatus.withValues(alpha: 0.14),
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: corStatus.withValues(alpha: 0.45)),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(iconeStatus, size: 12, color: corStatus),
-                              const SizedBox(width: 4),
-                              Flexible(
-                                child: Text(
-                                  nomeStatus,
-                                  style: TextStyle(
-                                    color: corStatus,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 11,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        if (statusEfetivo == 2 && prontoRetornoEfetivo)
-                          Container(
-                            key: ValueKey('pronto_retorno_admin_${passageiro.pacienteId}'),
-                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFDCFCE7),
-                              borderRadius: BorderRadius.circular(6),
-                              border: Border.all(color: const Color(0xFF16A34A)),
-                            ),
-                            child: const Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.notifications_active, size: 12, color: Color(0xFF15803D)),
-                                SizedBox(width: 4),
-                                Flexible(
-                                  child: Text(
-                                    'Pronto p/ Retorno',
-                                    style: TextStyle(
-                                      color: Color(0xFF15803D),
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 11,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        if (codigoAcesso != null && codigoAcesso.isNotEmpty)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF1E293B),
-                              borderRadius: BorderRadius.circular(6),
-                              border: Border.all(color: const Color(0xFF3B82F6), width: 1),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(
-                                  Icons.key,
-                                  size: 12,
-                                  color: Color(0xFF60A5FA),
-                                ),
-                                const SizedBox(width: 4),
-                                Flexible(
-                                  child: Text(
-                                    'Código: $codigoAcesso',
-                                    key: ValueKey('codigo_acesso_admin_${passageiro.pacienteId}'),
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 11,
-                                      letterSpacing: 0.8,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                      ],
-                    ),
-                  ],
+          if (passageiro.observacoes != null && passageiro.observacoes!.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                'Obs: ${passageiro.observacoes}',
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontStyle: FontStyle.italic,
+                  color: Color(0xFF64748B),
                 ),
-                if (temAcompanhante)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.people_alt_outlined, size: 13, color: Color(0xFF0284C7)),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            'Acompanhante: ${passageiro.acompanhanteNome}',
-                            style: const TextStyle(fontSize: 11, color: Color(0xFF0284C7)),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                const SizedBox(height: 4),
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 4,
-                  children: [
-                    Text(
-                      'Origem: ${passageiro.localOrigem}',
-                      style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
-                    ),
-                    Text(
-                      'Destino: ${passageiro.localDestino}',
-                      style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
-                    ),
-                    if (passageiro.horarioAtendimento.isNotEmpty)
-                      Text(
-                        'Consulta: ${passageiro.horarioAtendimento}',
-                        style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF059669),
-                        ),
-                      ),
-                  ],
-                ),
-                if (passageiro.observacoes != null && passageiro.observacoes!.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      'Obs: ${passageiro.observacoes}',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontStyle: FontStyle.italic,
-                        color: Color(0xFF64748B),
-                      ),
-                    ),
-                  ),
-              ],
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -1290,7 +1283,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
     final eEdicao = viagemExistente != null;
 
     final controllerHorario = TextEditingController(
-      text: viagemExistente?.nomeHorario ?? '06:00 - Saída Matutina',
+      text: viagemExistente?.nomeHorario ?? '06:00',
     );
     final controllerDestino = TextEditingController(
       text: viagemExistente?.cidadeDestino ?? 'SÃO JOSÉ DO RIO PRETO',
@@ -1341,13 +1334,13 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                           ),
                         ),
 
-                      // Horário / Nome
+                      // Horário de Saída
                       TextField(
                         key: const Key('campoNomeHorario'),
                         controller: controllerHorario,
                         decoration: const InputDecoration(
-                          labelText: 'Horário / Nome de Saída *',
-                          hintText: 'Ex.: 06:00 - Barretos (Hospital de Amor)',
+                          labelText: 'Horário de Saída *',
+                          hintText: 'Ex.: 06:00',
                           isDense: true,
                         ),
                       ),
@@ -1383,7 +1376,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                         runSpacing: 4,
                         children: [
                           Text(
-                            'Passageiros (${passageirosTemp.length}) - Vagas previstas: $totalAssentos (veículo escolhido pelo motorista)',
+                            'Passageiros (${passageirosTemp.length}) • Vagas: $totalAssentos',
                             style: const TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.bold,
@@ -1842,7 +1835,7 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'Selecione o dia de origem para copiar os horários, veículos, motoristas e passageiros para o dia selecionado:',
+                        'Selecione o dia de origem para copiar os horários e passageiros para o dia selecionado:',
                         style: TextStyle(fontSize: 13, color: Color(0xFF475569)),
                       ),
                       const SizedBox(height: 12),
@@ -2038,7 +2031,6 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                       color: Color(0xFF0284C7),
                     ),
                   ),
-                  subtitle: const Text('Escala e grade diária de viagens'),
                   selected: true,
                   selectedTileColor: const Color(0xFF0284C7).withValues(alpha: 0.08),
                   onTap: () {
@@ -2052,7 +2044,6 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                     'Gestão de Pessoas',
                     style: TextStyle(fontWeight: FontWeight.w600),
                   ),
-                  subtitle: const Text('Pacientes, Motoristas e Admins'),
                   onTap: () {
                     Navigator.of(context).pop();
                     Navigator.of(context).push(
@@ -2067,7 +2058,6 @@ class _GerenciadorViagensScreenState extends State<GerenciadorViagensScreen> {
                     'Gestão de Veículos',
                     style: TextStyle(fontWeight: FontWeight.w600),
                   ),
-                  subtitle: const Text('Controle da frota municipal'),
                   onTap: () {
                     Navigator.of(context).pop();
                     Navigator.of(context).push(

@@ -211,7 +211,7 @@ void main() {
     );
 
     testWidgets(
-      '5. Fechar a própria viagem redireciona o motorista para o FormularioInicioViagem, mas a viagem só finaliza se todos os pacientes tiverem voltado',
+      '5. Fechar a sessão via Gerar Relatório com passageiro pendente (status 2) preserva o status pendente e mantém a viagem ativa',
       (tester) async {
         final viagemService = ViagemService();
         final syncService = PacienteSyncService();
@@ -280,28 +280,14 @@ void main() {
         expect(find.text('Início da Viagem'), findsOneWidget);
         expect(find.text('Lista de Passageiros'), findsNothing);
 
-        // Porém a viagem NÃO finalizou ainda porque a paciente ainda não voltou (status == 2)
-        final viagemParcial = viagemService.todasViagens
-            .where((v) => v.id == 'horario_2026_11_8_999999')
-            .firstOrNull;
-        expect(viagemParcial, isNotNull);
-        expect(viagemParcial!.isAtiva, isTrue);
-        expect(viagemParcial.isConcluida, isFalse);
-        expect(viagemParcial.passageiros.first.statusEmbarque, equals(2));
-
-        // Agora outro motorista traz a paciente de volta (status -> 4)
-        await viagemService.atualizarStatusPassageiroNaViagem(
-          viagemId: 'horario_2026_11_8_999999',
-          pacienteId: 'p_1',
-          novoStatus: 4,
-        );
-
+        // A viagem mantém status 'ativa' e a passageira pendente permanece em status 2 (não concluída)
         final viagemFinal = viagemService.todasViagens
             .where((v) => v.id == 'horario_2026_11_8_999999')
             .firstOrNull;
         expect(viagemFinal, isNotNull);
-        expect(viagemFinal!.isConcluida, isTrue);
-        expect(viagemFinal.passageiros.first.statusEmbarque, equals(4));
+        expect(viagemFinal!.isConcluida, isFalse);
+        expect(viagemFinal.status, equals('ativa'));
+        expect(viagemFinal.passageiros.first.statusEmbarque, equals(2));
       },
     );
 
@@ -381,13 +367,18 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        // Verifica status PLANEJADA, veículo a definir pelo motorista e lugares com baixa = 0
+        // Verifica status PLANEJADA e lugares com baixa = 0 (sem veículo vinculado à viagem)
         expect(find.text('PLANEJADA'), findsOneWidget);
-        expect(find.text('Veículo: A definir pelo motorista'), findsOneWidget);
-        expect(find.text('Lugares com baixa: 0 (veículo a definir)'), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byKey(Key('contagemAssentos_$viagemId')),
+            matching: find.text('0'),
+          ),
+          findsOneWidget,
+        );
         expect(find.text('Aguardando Transporte'), findsNWidgets(2));
 
-        // 2. Motorista escolhe o veículo e inicia a viagem -> NÃO gera nova viagem, ativa a viagem existente sem vincular motorista
+        // 2. Motorista escolhe o veículo e inicia a viagem -> NÃO gera nova viagem, ativa a viagem existente sem vincular motorista/veículo à viagem
         await viagemService.iniciarViagem(
           veiculo: const VeiculoModel(
             id: 'v1',
@@ -405,8 +396,14 @@ void main() {
         expect(viagemService.todasViagens.length, equals(1));
         expect(viagemService.todasViagens.first.motoristaId, isEmpty);
         expect(find.text('EM TRÂNSITO (ATIVA)'), findsOneWidget);
-        expect(find.text('Veículo: ABC-1D23 (Chevrolet Spin 1.8 LTZ)'), findsOneWidget);
-        expect(find.text('Lugares: 0 / 7 (7 disponíveis)'), findsOneWidget);
+        expect(find.text('ABC-1D23 (Chevrolet Spin 1.8 LTZ)'), findsNothing);
+        expect(
+          find.descendant(
+            of: find.byKey(Key('contagemAssentos_$viagemId')),
+            matching: find.text('0'),
+          ),
+          findsOneWidget,
+        );
 
         // 3. Testa transição dos status e atualização dinâmica de lugares disponíveis/preenchidos conforme a baixa
         // Paciente 2 solicita cancelamento -> status 5 ('Cancelado')
@@ -436,7 +433,13 @@ void main() {
         );
         await tester.pumpAndSettle();
         expect(find.text('Embarcou para Ida'), findsOneWidget);
-        expect(find.text('Lugares: 1 / 7 (6 disponíveis)'), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byKey(Key('contagemAssentos_$viagemId')),
+            matching: find.text('1'),
+          ),
+          findsOneWidget,
+        );
 
         // Paciente 1 desembarca para consulta -> status 2 ('Desembarcou para Consulta')
         await syncService.avancarEtapaMotorista(

@@ -1,11 +1,69 @@
 import 'package:flutter/material.dart';
 
+/// Linha padronizada de metadado (ícone + rótulo + valor) usada nos cards e detalhes de veículo.
+class InfoCampoVeiculo extends StatelessWidget {
+  final IconData icone;
+  final String rotulo;
+  final String valor;
+  final double tamanhoIcone;
+  final double tamanhoRotulo;
+  final double tamanhoValor;
+  final FontWeight pesoValor;
+
+  const InfoCampoVeiculo({
+    super.key,
+    required this.icone,
+    required this.rotulo,
+    required this.valor,
+    this.tamanhoIcone = 22,
+    this.tamanhoRotulo = 13,
+    this.tamanhoValor = 16.5,
+    this.pesoValor = FontWeight.bold,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icone, size: tamanhoIcone, color: const Color(0xFF475569)),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                rotulo,
+                style: TextStyle(
+                  color: const Color(0xFF475569),
+                  fontSize: tamanhoRotulo,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                valor,
+                style: TextStyle(
+                  fontSize: tamanhoValor,
+                  fontWeight: pesoValor,
+                  color: const Color(0xFF0F172A),
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class CardVeiculo extends StatelessWidget {
   final Map<String, dynamic> veiculo;
   final VoidCallback? onEditar;
   final VoidCallback? onDetalhes;
   final ValueChanged<String>? onStatusChanged;
-  final ValueChanged<String>? onTagSelecionada;
+  final bool exibirAcoesRodape;
 
   const CardVeiculo({
     super.key,
@@ -13,7 +71,7 @@ class CardVeiculo extends StatelessWidget {
     this.onEditar,
     this.onDetalhes,
     this.onStatusChanged,
-    this.onTagSelecionada,
+    this.exibirAcoesRodape = true,
   });
 
   @override
@@ -33,20 +91,6 @@ class CardVeiculo extends StatelessWidget {
     final String statusRaw = (veiculo['status'] ?? 'disponivel').toString();
     final dynamic km = veiculo['quilometragemAtual'] ?? 0;
     final dynamic assentos = veiculo['qtdAssentos'] ?? 0;
-    final String rawMotorista =
-        (veiculo['ultimoMotoristaNome'] ?? veiculo['ultimoMotoristaId'] ?? '')
-            .toString()
-            .trim();
-    final String ultimoMotorista = (rawMotorista.isEmpty ||
-            rawMotorista == 'null' ||
-            rawMotorista == 'motorista_atual')
-        ? 'Não informado'
-        : (rawMotorista == 'mot_inicial_01'
-            ? 'Roberto Almeida Prado'
-            : rawMotorista);
-    final bool possuiAC = veiculo['possuiAC'] == true;
-    final bool possuiPreferencial = veiculo['possuiPreferencial'] == true;
-    final String? observacoes = veiculo['observacoes']?.toString();
 
     // Ícone e tipo de acordo com a categoria
     final (IconData iconeTipo, String labelTipo) = switch (tipoRaw) {
@@ -98,29 +142,36 @@ class CardVeiculo extends StatelessWidget {
                     Text(
                       placa,
                       style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF0F172A),
+                        letterSpacing: 0.3,
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 4),
                     Text(
                       descricaoVeiculo,
-                      style: const TextStyle(fontSize: 14, color: Colors.black),
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF1E293B),
+                      ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 6),
                     Row(
                       children: [
-                        Icon(iconeTipo, size: 18, color: Colors.grey[700]),
-                        const SizedBox(width: 5),
+                        Icon(iconeTipo, size: 20, color: const Color(0xFF475569)),
+                        const SizedBox(width: 6),
                         Flexible(
                           child: Text(
                             labelTipo,
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Colors.grey[700],
+                            style: const TextStyle(
+                              fontSize: 14.5,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF475569),
                             ),
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -262,347 +313,115 @@ class CardVeiculo extends StatelessWidget {
               },
             ),
 
-            // INFORMAÇÕES OPERACIONAIS
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              spacing: 12,
-              children: [
-                // QUILOMETRAGEM E QTD DE ASSENTOS
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // QUILOMETRAGEM
-                    Expanded(
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(
-                            Icons.speed_outlined,
-                            size: 20,
-                            color: Colors.grey[700],
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Quilometragem Atual',
-                                  style: TextStyle(
-                                    color: Color.lerp(
-                                      Colors.grey,
-                                      Colors.black,
-                                      0.5,
-                                    ),
-                                    fontSize: 12,
-                                  ),
-                                ),
-                                Text(
-                                  '$km km',
-                                  style: const TextStyle(fontSize: 14),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    // QTD DE ASSENTOS
-                    Expanded(
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(
-                            Icons.chair_outlined,
-                            size: 20,
-                            color: Colors.grey[700],
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Qtd. de Assentos',
-                                  style: TextStyle(
-                                    color: Color.lerp(
-                                      Colors.grey,
-                                      Colors.black,
-                                      0.5,
-                                    ),
-                                    fontSize: 12,
-                                  ),
-                                ),
-                                Text(
-                                  '$assentos',
-                                  style: const TextStyle(fontSize: 14),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                // ÚLTIMO MOTORISTA
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(
-                      Icons.person_outline_outlined,
-                      size: 20,
-                      color: Colors.grey[700],
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Último Motorista',
-                            style: TextStyle(
-                              color: Color.lerp(
-                                Colors.grey,
-                                Colors.black,
-                                0.5,
-                              ),
-                              fontSize: 12,
-                            ),
-                          ),
-                          Text(
-                            ultimoMotorista,
-                            style: const TextStyle(fontSize: 14),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-
-            // TAGS / EXTRAS DO VEÍCULO (CLICÁVEIS PARA FILTRAR)
-            Wrap(
-              alignment: WrapAlignment.start,
-              spacing: 8,
-              runSpacing: 4,
-              children: [
-                if (possuiAC)
-                  TextButton(
-                    onPressed: () {
-                      if (onTagSelecionada != null) {
-                        onTagSelecionada!('ac');
-                      }
-                    },
-                    style: TextButton.styleFrom(
-                      backgroundColor: Colors.blue.withValues(alpha: 0.1),
-                      foregroundColor: Color.lerp(
-                        Colors.blue,
-                        Colors.black,
-                        0.4,
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.ac_unit_outlined, size: 16),
-                        SizedBox(width: 6),
-                        Flexible(
-                          child: Text(
-                            'Ar-condicionado',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                if (possuiPreferencial)
-                  TextButton(
-                    onPressed: () {
-                      if (onTagSelecionada != null) {
-                        onTagSelecionada!('preferencial');
-                      }
-                    },
-                    style: TextButton.styleFrom(
-                      backgroundColor: const Color(0xFF2D2F8D).withValues(alpha: 1),
-                      foregroundColor: Color.lerp(
-                        const Color(0xFF2D2F8D),
-                        Colors.white,
-                        0.8,
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.accessible_outlined, size: 16),
-                        SizedBox(width: 6),
-                        Flexible(
-                          child: Text(
-                            'Acesso Preferencial',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
-
-            // OBSERVAÇÃO
-            if (observacoes != null && observacoes.isNotEmpty)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.orange.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        spacing: 6,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.help_outline_outlined,
-                                size: 20,
-                                color: Color.lerp(
-                                  Colors.orange,
-                                  Colors.brown,
-                                  0.5,
-                                ),
-                              ),
-                              const SizedBox(width: 5),
-                              Flexible(
-                                child: Text(
-                                  'Observação',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color.lerp(
-                                      Colors.orange,
-                                      Colors.brown,
-                                      0.5,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          Text(
-                            observacoes,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              color: Colors.black87,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+            // INFORMAÇÕES OPERACIONAIS RESUMIDAS (KM E ASSENTOS EM DESTAQUE)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
               ),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final escala = MediaQuery.textScalerOf(context).scale(15);
+                  final empilhar = constraints.maxWidth < 245 || escala > 22;
 
-            // BOTÕES DE EDITAR E VER DETALHES
-            const Divider(height: 2),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: TextButton(
-                    style: ButtonStyle(
-                      padding: WidgetStateProperty.all(
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                      ),
-                      shape: WidgetStateProperty.all(
-                        RoundedRectangleBorder(
-                          borderRadius: BorderRadiusGeometry.circular(8),
-                        ),
-                      ),
-                    ),
-                    onPressed: onEditar,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.start,
+                  final campoKm = InfoCampoVeiculo(
+                    icone: Icons.speed_outlined,
+                    rotulo: 'Quilometragem Atual',
+                    valor: '$km km',
+                  );
+                  final campoAssentos = InfoCampoVeiculo(
+                    icone: Icons.chair_outlined,
+                    rotulo: 'Qtd. de Assentos',
+                    valor: '$assentos',
+                  );
+
+                  if (empilhar) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(
-                          Icons.edit_outlined,
-                          size: 20,
-                          color: Colors.grey[700],
-                        ),
-                        const SizedBox(width: 8),
-                        Flexible(
-                          child: Text(
-                            'Editar',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: Color.lerp(Colors.grey, Colors.black, 0.5),
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
+                        campoKm,
+                        const SizedBox(height: 10),
+                        campoAssentos,
                       ],
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: TextButton(
-                    style: ButtonStyle(
-                      padding: WidgetStateProperty.all(
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                      ),
-                      shape: WidgetStateProperty.all(
-                        RoundedRectangleBorder(
-                          borderRadius: BorderRadiusGeometry.circular(8),
-                        ),
-                      ),
-                    ),
-                    onPressed: onDetalhes,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        Flexible(
-                          child: Text(
-                            'Ver Detalhes',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: Color.lerp(Colors.grey, Colors.black, 0.5),
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Icon(
-                          Icons.arrow_forward_outlined,
-                          size: 20,
-                          color: Colors.grey[700],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
+                    );
+                  }
+
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: campoKm),
+                      const SizedBox(width: 12),
+                      Expanded(child: campoAssentos),
+                    ],
+                  );
+                },
+              ),
             ),
+
+            if (exibirAcoesRodape) ...[
+              const Divider(height: 2),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  _construirBotaoRodape(
+                    icone: Icons.edit_outlined,
+                    rotulo: 'Editar',
+                    onPressed: onEditar,
+                  ),
+                  const SizedBox(width: 12),
+                  _construirBotaoRodape(
+                    icone: Icons.arrow_forward_outlined,
+                    rotulo: 'Ver Detalhes',
+                    onPressed: onDetalhes,
+                    iconeDepois: true,
+                  ),
+                ],
+              ),
+            ],
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _construirBotaoRodape({
+    required IconData icone,
+    required String rotulo,
+    required VoidCallback? onPressed,
+    bool iconeDepois = false,
+  }) {
+    const corTexto = Color(0xFF475569);
+    final iconeWidget = Icon(icone, size: 20, color: corTexto);
+    final textoWidget = Flexible(
+      child: Text(
+        rotulo,
+        style: const TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          color: corTexto,
+        ),
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
+
+    return Expanded(
+      child: TextButton(
+        style: TextButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+        onPressed: onPressed,
+        child: Row(
+          mainAxisAlignment:
+              iconeDepois ? MainAxisAlignment.end : MainAxisAlignment.start,
+          children: iconeDepois
+              ? [textoWidget, const SizedBox(width: 8), iconeWidget]
+              : [iconeWidget, const SizedBox(width: 8), textoWidget],
         ),
       ),
     );

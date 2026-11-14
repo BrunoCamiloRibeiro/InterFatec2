@@ -18,6 +18,7 @@ import 'package:trans_saude/services/viagem_service.dart';
 import 'components/card_paciente.dart';
 import 'components/dialogo_confirmacao_motorista.dart';
 import 'components/footer_pacientes.dart';
+import 'components/formulario_encerramento.dart';
 import 'components/formulario_inicio_viagem.dart';
 import 'components/motorista_header.dart';
 
@@ -182,20 +183,27 @@ class _MotoristaState extends State<Motorista> {
 
     _subViagensAtivas = _viagemService.viagensAtivasStream.listen((viagens) {
       if (!mounted) return;
-      final ativas = viagens
+      final reais = viagens
           .where(
             (v) =>
-                v.id.startsWith('sessao_ativa_') ||
-                (!v.isCancelada &&
-                    !v.isConcluida &&
-                    !_viagemService.todosPacientesVoltaram(v)),
+                !v.id.startsWith('sessao_ativa_') &&
+                !v.isCancelada &&
+                !v.isConcluida &&
+                !_viagemService.todosPacientesVoltaram(v),
           )
           .toList();
+      final ativas = reais.isNotEmpty
+          ? reais
+          : viagens.where((v) => v.id.startsWith('sessao_ativa_')).toList();
       if (ativas.any((v) => v.isEmOperacao)) {
         _cancelarTimeoutCarregamentoViagem();
       }
       setState(() {
         _selecionarViagemPreservandoId(ativas);
+        if (ativas.isEmpty && _viagemService.sessaoFinalizadaPeloMotorista) {
+          _emViagemFirestore = false;
+          FirebaseAuthService.motoristaEmViagemStatic = false;
+        }
         _capacidadeVeiculo = _resolverCapacidadeVeiculo();
       });
       _atualizarTransmissaoGpsMotorista();
@@ -296,11 +304,27 @@ class _MotoristaState extends State<Motorista> {
   // SEÇÃO: Controle de Sessão do Veículo, GPS e Listeners Firestore
   // ===========================================================================
 
-  String _obterIdMotoristaSessao() =>
-      _motoristaId ??
-      FirebaseAuthService().currentDocId ??
-      FirebaseAuthService().currentUserId ??
-      '';
+  String _obterIdMotoristaSessao() {
+    final motDirect = _motoristaId?.trim() ?? '';
+    if (motDirect.isNotEmpty) return motDirect;
+    final docId = FirebaseAuthService().currentDocId?.trim() ?? '';
+    if (docId.isNotEmpty) return docId;
+    final userId = FirebaseAuthService().currentUserId?.trim() ?? '';
+    if (userId.isNotEmpty) return userId;
+    final sessaoMot = _viagemService.sessaoAtiva?.motoristaId.trim() ?? '';
+    if (sessaoMot.isNotEmpty && sessaoMot != 'motorista_atual') {
+      return sessaoMot;
+    }
+    final vMot = _viagemAtiva?.motoristaId.trim() ?? '';
+    if (vMot.isNotEmpty && vMot != 'motorista_atual') return vMot;
+    return '';
+  }
+
+  String _obterNomeMotoristaSessao() {
+    final nome = _motoristaNome.trim();
+    if (nome.isNotEmpty) return nome;
+    return _viagemService.sessaoAtiva?.motoristaNome.trim() ?? '';
+  }
 
   bool _isFirebaseDisponivel() {
     try {
@@ -403,6 +427,23 @@ class _MotoristaState extends State<Motorista> {
 
   void _aoEncerrarViagemMotorista() {
     if (!mounted) return;
+    final restantes = _viagemService.viagensAtivas
+        .where(
+          (v) =>
+              !v.id.startsWith('sessao_ativa_') &&
+              !v.isCancelada &&
+              !v.isConcluida,
+        )
+        .toList();
+    if (!_viagemService.sessaoFinalizadaPeloMotorista && restantes.isNotEmpty) {
+      setState(() {
+        _selecionarViagemPreservandoId(restantes);
+        _capacidadeVeiculo = _resolverCapacidadeVeiculo();
+      });
+      _atualizarTransmissaoGpsMotorista();
+      return;
+    }
+
     _cancelarTimeoutCarregamentoViagem();
     _inicioViagemOptimistaEm = null;
     setState(() {
@@ -858,8 +899,23 @@ class _MotoristaState extends State<Motorista> {
   }
 
   int _contarAssentosOcupados(List<PacienteModel> pacientes) {
+    final meuMotoristaId = _obterIdMotoristaSessao().trim();
+    final passageirosViagem = _viagemAtiva?.passageiros ?? const [];
+    final mapaMotoristaPorPaciente = <String, String>{
+      for (final pv in passageirosViagem)
+        if (pv.motoristaId != null && pv.motoristaId!.trim().isNotEmpty)
+          pv.pacienteId: pv.motoristaId!.trim(),
+    };
+
     int preenchidos = 0;
     for (final p in pacientes.where((p) => p.status == 1 || p.status == 3)) {
+      final motResponsavel = mapaMotoristaPorPaciente[p.id];
+      if (motResponsavel != null &&
+          motResponsavel.isNotEmpty &&
+          meuMotoristaId.isNotEmpty &&
+          motResponsavel != meuMotoristaId) {
+        continue;
+      }
       preenchidos += (p.nomeAcompanhante?.isNotEmpty == true) ? 2 : 1;
     }
     return preenchidos;
@@ -895,7 +951,8 @@ class _MotoristaState extends State<Motorista> {
     DismissDirection direction,
     PacienteModel paciente,
   ) async {
-    if (direction != DismissDirection.endToStart || paciente.status >= 4) {
+    if (direction != DismissDirection.endToStart ||
+        (paciente.status >= 4 && paciente.status != 5)) {
       return false;
     }
 
@@ -913,6 +970,7 @@ class _MotoristaState extends State<Motorista> {
       1 => (2, AcaoTransicao.motoristaDesembarcarConsulta),
       2 => (3, AcaoTransicao.motoristaReembarcarVolta),
       3 => (4, AcaoTransicao.motoristaConcluirViagem),
+      5 => (1, AcaoTransicao.motoristaEmbarcarIda),
       _ => (-1, AcaoTransicao.motoristaEmbarcarIda),
     };
     if (proximoStatus == -1) return false;
@@ -932,18 +990,22 @@ class _MotoristaState extends State<Motorista> {
     );
     if (!confirmou) return false;
 
-    final idViagemAlvo = _viagemAtiva?.id;
+    final viagemAntesSwipe = _viagemAtiva;
+    final idViagemAlvo = viagemAntesSwipe?.id;
     _syncService.registrarPacienteEmMemoriaSeAusente(
       paciente,
       viagemId: idViagemAlvo,
     );
     final resultado = await _syncService.avancarEtapaMotorista(
       pacienteId: paciente.id,
-      motoristaId: _motoristaId ?? 'motorista',
+      motoristaId: _obterIdMotoristaSessao(),
       acao: acao,
       viagemId: idViagemAlvo,
     );
     if (!mounted) return false;
+
+    final idMotoristaSwipe = _obterIdMotoristaSessao();
+    final nomeMotoristaSwipe = _obterNomeMotoristaSessao();
 
     if (resultado.sucesso) {
       if (idViagemAlvo != null && !idViagemAlvo.startsWith('sessao_ativa_')) {
@@ -955,9 +1017,18 @@ class _MotoristaState extends State<Motorista> {
             prontoRetorno: resultado.paciente?.prontoRetorno,
             janelaReversao: resultado.paciente?.janelaReversao,
             limparJanelaReversao: resultado.paciente?.janelaReversao == null,
+            motoristaId: idMotoristaSwipe,
+            motoristaNome: nomeMotoristaSwipe,
           ),
         );
       }
+      final viagemAutoEncerrada = widget.pacientesStreamOverride == null &&
+          idViagemAlvo != null &&
+          !idViagemAlvo.startsWith('sessao_ativa_') &&
+          !_viagemService.viagensAtivas.any((v) => v.id == idViagemAlvo) &&
+          _viagemService.todasViagens.any(
+            (v) => v.id == idViagemAlvo && v.isConcluida,
+          );
       if (widget.pacientesStreamOverride == null) {
         setState(() {
           _selecionarViagemPreservandoId(
@@ -995,7 +1066,15 @@ class _MotoristaState extends State<Motorista> {
               final novosPassageiros = _viagemAtiva!.passageiros
                   .map(
                     (pv) => pv.pacienteId == paciente.id
-                        ? pv.copyWith(statusEmbarque: proximoStatus)
+                        ? pv.copyWith(
+                            statusEmbarque: proximoStatus,
+                            motoristaId: idMotoristaSwipe.isNotEmpty
+                                ? idMotoristaSwipe
+                                : null,
+                            motoristaNome: nomeMotoristaSwipe.isNotEmpty
+                                ? nomeMotoristaSwipe
+                                : null,
+                          )
                         : pv,
                   )
                   .toList();
@@ -1007,10 +1086,51 @@ class _MotoristaState extends State<Motorista> {
           }),
         );
       }
-      _exibirSnackBar(
-        "Avanço para '$proximoStatusNome' confirmado com sucesso.",
-        const Color(0xFF16A34A),
-      );
+      if (viagemAutoEncerrada) {
+        final vConcluida = _viagemService.todasViagens.firstWhere(
+          (v) => v.id == idViagemAlvo,
+          orElse: () => viagemAntesSwipe!,
+        );
+        final rotuloViagem = (vConcluida.nomeHorario != null &&
+                vConcluida.nomeHorario!.trim().isNotEmpty)
+            ? vConcluida.nomeHorario!.trim()
+            : vConcluida.cidadeDestino;
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              duration: const Duration(seconds: 6),
+              backgroundColor: const Color(0xFF0F172A),
+              behavior: SnackBarBehavior.floating,
+              content: Text(
+                'Viagem ($rotuloViagem) concluída automaticamente! Todos os passageiros finalizaram.',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              action: SnackBarAction(
+                label: 'Informar KM / PDF',
+                textColor: const Color(0xFF38BDF8),
+                onPressed: () {
+                  if (!mounted) return;
+                  showDialog<bool>(
+                    context: context,
+                    builder: (_) => FormularioEncerramento(
+                      viagem: vConcluida,
+                      viagens: [vConcluida],
+                      motoristaId: _obterIdMotoristaSessao(),
+                      motoristaNome: _motoristaNome,
+                      onViagemEncerrada: _aoEncerrarViagemMotorista,
+                    ),
+                  );
+                },
+              ),
+            ),
+          );
+      } else {
+        _exibirSnackBar(
+          "Avanço para '$proximoStatusNome' confirmado com sucesso.",
+          const Color(0xFF16A34A),
+        );
+      }
     } else {
       _exibirSnackBar(resultado.mensagem, const Color(0xFFB83227));
     }
@@ -1067,12 +1187,7 @@ class _MotoristaState extends State<Motorista> {
         _garantirCodigosPacientesNaViagemAtiva(pacientes);
         final preenchidos = _contarAssentosOcupados(pacientes);
 
-        final placaSessao = _resolverPlacaVeiculoSessao();
-        final placaViagem = _viagemAtiva?.veiculoPlaca.trim() ?? '';
-        final veiculoViagemHeader = placaViagem.isNotEmpty &&
-                _normalizarPlaca(placaViagem) != _normalizarPlaca(placaSessao)
-            ? placaViagem
-            : null;
+        const String? veiculoViagemHeader = null;
         final motViagemHeader = _viagemAtiva?.motoristaNome.trim() ?? '';
         final motoristaHeader = (motViagemHeader.isNotEmpty &&
                 motViagemHeader != 'motorista_atual')
@@ -1095,9 +1210,11 @@ class _MotoristaState extends State<Motorista> {
                 MotoristaHeader(
                   tituloViagem: _viagensAtivas.length > 1
                       ? 'Viagem ${_indiceViagemAtual + 1} de ${_viagensAtivas.length} (${_viagemAtiva?.cidadeDestino ?? ""})'
-                      : (_viagemAtiva != null && _viagemAtiva!.id.isNotEmpty
-                            ? 'Viagem ${_viagemAtiva!.id}'
-                            : 'Viagem 1'),
+                      : (_viagemAtiva != null &&
+                              _viagemAtiva!.id.isNotEmpty &&
+                              !_viagemAtiva!.id.startsWith('sessao_ativa_')
+                          ? 'Viagem ${_viagemAtiva!.id}'
+                          : 'Sem Viagens Ativas'),
                   motoristaNome: motoristaHeader,
                   destino: destinoHeader,
                   veiculo: veiculoViagemHeader,
@@ -1119,6 +1236,8 @@ class _MotoristaState extends State<Motorista> {
                       : null,
                 ),
                 const SizedBox(height: 12),
+                if (pacientes.isEmpty)
+                  _construirEstadoVazioViagem(),
                 for (final paciente in pacientes)
                   _construirCardPassageiro(paciente),
               ],
@@ -1131,10 +1250,55 @@ class _MotoristaState extends State<Motorista> {
             viagens: _viagensAtivas,
             pacientes: pacientes,
             motoristaId: _obterIdMotoristaSessao(),
+            motoristaNome: motoristaHeader ?? _motoristaNome,
             onViagemEncerrada: _aoEncerrarViagemMotorista,
           ),
         );
       },
+    );
+  }
+
+  Widget _construirEstadoVazioViagem() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: const BoxDecoration(
+                color: Color(0xFFF1F5F9),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.directions_bus_outlined,
+                size: 48,
+                color: Color(0xFF64748B),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Nenhum passageiro nesta viagem',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF1E293B),
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Quando o setor administrativo agendar novos passageiros ou viagens para este veículo, eles aparecerão aqui automaticamente.',
+              style: TextStyle(
+                fontSize: 14,
+                color: Color(0xFF64748B),
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1190,6 +1354,7 @@ class _MotoristaState extends State<Motorista> {
     final idMotoristaSessao = _obterIdMotoristaSessao();
     return Scaffold(
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         title: const Text(
           'Início da Viagem',
           overflow: TextOverflow.ellipsis,
@@ -1242,21 +1407,11 @@ class _MotoristaState extends State<Motorista> {
 
   AppBar _construirAppBarEmViagem() {
     return AppBar(
+      automaticallyImplyLeading: false,
       backgroundColor: const Color(0xFF0F172A),
       foregroundColor: Colors.white,
       elevation: 2,
-      titleSpacing: 4,
-      leading: IconButton(
-        icon: const Icon(Icons.arrow_back),
-        color: Colors.white,
-        onPressed: () {
-          if (Navigator.of(context).canPop()) {
-            Navigator.of(context).pop();
-          } else {
-            Navigator.of(context).pushReplacementNamed('/');
-          }
-        },
-      ),
+      titleSpacing: 16,
       title: const Text(
         'Lista de Passageiros',
         maxLines: 1,
@@ -1318,14 +1473,15 @@ class _MotoristaState extends State<Motorista> {
       child: Dismissible(
         key: ValueKey(paciente.id.isNotEmpty ? paciente.id : paciente.nome),
         // Permite apenas deslize da direita para a esquerda para avançar status.
-        direction:
-            (paciente.status < 4) ? DismissDirection.endToStart : DismissDirection.none,
+        direction: (paciente.status < 4 || paciente.status == 5)
+            ? DismissDirection.endToStart
+            : DismissDirection.none,
         background: Container(),
         secondaryBackground: Container(
           padding: const EdgeInsets.only(right: 16),
           alignment: Alignment.centerRight,
           decoration: BoxDecoration(
-            color: Colors.green.withValues(alpha: 0.4),
+            color: const Color(0xFF15803D),
             borderRadius: BorderRadius.circular(16),
           ),
           child: const Column(

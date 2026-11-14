@@ -265,7 +265,7 @@ service cloud.firestore {
     /// Validador estrito para a coleção /viagens
     function isValidViagem(dados) {
       return dados.keys().hasOnly([
-        'id', 'motoristaId', 'motoristaNome', 'veiculoId', 'veiculoPlaca', 'veiculoModelo',
+        'id', 'motoristaId', 'motoristaNome', 'motoristaEncerramentoId', 'veiculoId', 'veiculoPlaca', 'veiculoModelo',
         'kmInicial', 'cidadeDestino', 'dataHoraInicio', 'status', 'kmFinal', 'kmRodado',
         'dataHoraFim', 'observacoes', 'passageirosIds', 'passageiros', 'sessaoId',
         'codigosAcesso', 'codigosHash', 'codigoAcesso', 'destino', 'data', 'horario',
@@ -274,6 +274,7 @@ service cloud.firestore {
       ])
       && dados.status is string && dados.status in ['aberta', 'em_andamento', 'ativa', 'encerrada', 'cancelada', 'planejada']
       && (!('motoristaId' in dados) || (dados.motoristaId is string && dados.motoristaId.size() <= 128))
+      && (!('motoristaEncerramentoId' in dados) || dados.motoristaEncerramentoId == null || (dados.motoristaEncerramentoId is string && dados.motoristaEncerramentoId.size() <= 128))
       && (!('motoristaNome' in dados) || (dados.motoristaNome is string && dados.motoristaNome.size() <= 120))
       && (!('veiculoId' in dados) || (dados.veiculoId is string && dados.veiculoId.size() <= 128))
       && (!('veiculoPlaca' in dados) || (dados.veiculoPlaca is string && dados.veiculoPlaca.size() <= 20))
@@ -444,7 +445,7 @@ service cloud.firestore {
       // - Motorista: lê viagens ativas ou abertas (status != 'encerrada')
       // - Paciente (autenticado anônimo ou paciente): lê SOMENTE SE status != 'encerrada'
       // Ao encerrar a viagem (status == 'encerrada'), o acesso de leitura é bloqueado na fonte pelas Security Rules!
-      allow read: if isAdmin() || (
+      allow read: if isAdmin() || isMotorista() || (
         isAuthenticated() && resource.data.status != 'encerrada'
       );
 
@@ -453,9 +454,21 @@ service cloud.firestore {
                     && isValidViagem(request.resource.data)
                     && ('status' in request.resource.data);
 
-      // ATUALIZAÇÃO: Admin e Motoristas autenticados (status da viagem e passageiros)
-      allow update: if (isAdmin() || isMotorista())
-                    && isValidViagem(request.resource.data);
+      // ATUALIZAÇÃO:
+      // - Admin e Motoristas autenticados (status da viagem e passageiros)
+      // - Paciente autenticado: atualiza exclusivamente 'passageiros' e 'atualizadoEm'
+      //   em viagens ativas/abertas ("Fui embora" / "Estou Pronto" / "Desfazer")
+      allow update: if isValidViagem(request.resource.data) && (
+        isAdmin()
+        || isMotorista()
+        || (
+          isAuthenticated()
+          && resource.data.status != 'encerrada'
+          && resource.data.status != 'cancelada'
+          && request.resource.data.status == resource.data.status
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['passageiros', 'atualizadoEm'])
+        )
+      );
 
       // EXCLUSÃO: Apenas Admin
       allow delete: if isAdmin();
@@ -514,7 +527,9 @@ service cloud.firestore {
     // COLEÇÃO DE AUDITORIA/HOMOLOGAÇÃO: /viagens_homologadas/{docId}
     // ===============================================================
     match /viagens_homologadas/{docId} {
-      allow read, write: if isAdmin();
+      allow read: if isAdmin() || isMotorista();
+      allow create: if isAdmin() || isMotorista();
+      allow update, delete: if false;
     }
 
     // ===============================================================

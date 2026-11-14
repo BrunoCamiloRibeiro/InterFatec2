@@ -49,11 +49,13 @@ import 'package:trans_saude/motorista.dart';
 
 // Ponto de entrada da suíte principal de testes de widgets
 void main() {
-  // Teste de carregamento da tela inicial de início de viagem
+  // Teste de carregamento do formulário inicial de início de viagem
   testWidgets(
     'Tela de início de viagem (inicial) carrega com campos e botão iniciar',
     (WidgetTester tester) async {
-      await tester.pumpWidget(const MaterialApp(home: TelaInicioViagem()));
+      await tester.pumpWidget(
+        const MaterialApp(home: Motorista()),
+      );
       await tester.pumpAndSettle();
 
       expect(find.text('Início da Viagem'), findsOneWidget);

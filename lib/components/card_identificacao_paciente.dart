@@ -33,12 +33,12 @@ class CardIdentificacaoPaciente extends StatelessWidget {
   Widget _construirLinhaDetalhe(IconData icone, String texto) {
     return Row(
       children: [
-        Icon(icone, size: 16, color: const Color(0xFF64748B)),
-        const SizedBox(width: 6),
+        Icon(icone, size: 18, color: const Color(0xFF475569)),
+        const SizedBox(width: 8),
         Expanded(
           child: Text(
             texto,
-            style: const TextStyle(fontSize: 13, color: Color(0xFF334155)),
+            style: const TextStyle(fontSize: 14.5, color: Color(0xFF1E293B)),
             overflow: TextOverflow.ellipsis,
           ),
         ),
@@ -77,28 +77,28 @@ class CardIdentificacaoPaciente extends StatelessWidget {
                           ? 'CADASTRO DE PESSOA'
                           : 'IDENTIFICAÇÃO DO PACIENTE',
                       style: const TextStyle(
-                        fontSize: 12,
+                        fontSize: 12.5,
                         fontWeight: FontWeight.bold,
                         letterSpacing: 0.5,
-                        color: Color(0xFF64748B),
+                        color: Color(0xFF475569),
                       ),
                     ),
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 12,
-                        vertical: 5,
+                        vertical: 6,
                       ),
                       decoration: BoxDecoration(
                         color: badgeCor.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: badgeCor.withValues(alpha: 0.3),
+                          color: badgeCor.withValues(alpha: 0.35),
                         ),
                       ),
                       child: Text(
                         badgeTexto,
                         style: TextStyle(
-                          fontSize: 12,
+                          fontSize: 13,
                           fontWeight: FontWeight.bold,
                           color: badgeCor,
                         ),
@@ -130,17 +130,18 @@ class CardIdentificacaoPaciente extends StatelessWidget {
                         Text(
                           TextAbbreviator.abbreviate(nome, maxCharacters: 28),
                           style: const TextStyle(
-                            fontSize: 16.5,
+                            fontSize: 18,
                             fontWeight: FontWeight.bold,
                             color: Color(0xFF0F172A),
                           ),
                         ),
-                        const SizedBox(height: 3),
+                        const SizedBox(height: 4),
                         Text(
                           'CPF: $cpf',
                           style: const TextStyle(
-                            fontSize: 13,
-                            color: Color(0xFF64748B),
+                            fontSize: 14.5,
+                            fontWeight: FontWeight.w500,
+                            color: Color(0xFF475569),
                           ),
                         ),
                       ],

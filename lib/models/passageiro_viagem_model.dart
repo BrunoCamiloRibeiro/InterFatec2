@@ -82,6 +82,12 @@ class PassageiroViagemModel {
   /// Janela temporária de reversão vinculada especificamente a esta viagem.
   final JanelaReversaoModel? janelaReversao;
 
+  /// ID do motorista que realizou o embarque/última movimentação do passageiro.
+  final String? motoristaId;
+
+  /// Nome do motorista que realizou o embarque/última movimentação do passageiro.
+  final String? motoristaNome;
+
   /// Construtor constante imutável
   const PassageiroViagemModel({
     required this.pacienteId,
@@ -99,6 +105,8 @@ class PassageiroViagemModel {
     this.statusEmbarque = 0,
     this.prontoRetorno = false,
     this.janelaReversao,
+    this.motoristaId,
+    this.motoristaNome,
   });
 
   /// Converte a instância para mapa compatível com persistência no Cloud Firestore
@@ -120,6 +128,10 @@ class PassageiroViagemModel {
       'statusEmbarque': statusEmbarque,
       if (prontoRetorno) 'prontoRetorno': prontoRetorno,
       if (janelaReversao != null) 'janelaReversao': janelaReversao!.toMap(),
+      if (motoristaId != null && motoristaId!.trim().isNotEmpty)
+        'motoristaId': motoristaId,
+      if (motoristaNome != null && motoristaNome!.trim().isNotEmpty)
+        'motoristaNome': motoristaNome,
     };
   }
 
@@ -148,6 +160,8 @@ class PassageiroViagemModel {
       janelaReversao: janelaRaw is Map
           ? JanelaReversaoModel.fromMap(Map<String, dynamic>.from(janelaRaw))
           : null,
+      motoristaId: map['motoristaId']?.toString(),
+      motoristaNome: map['motoristaNome']?.toString(),
     );
   }
 
@@ -172,6 +186,9 @@ class PassageiroViagemModel {
     bool? prontoRetorno,
     JanelaReversaoModel? janelaReversao,
     bool limparJanelaReversao = false,
+    String? motoristaId,
+    String? motoristaNome,
+    bool limparMotorista = false,
   }) {
     return PassageiroViagemModel(
       pacienteId: pacienteId ?? this.pacienteId,
@@ -190,6 +207,9 @@ class PassageiroViagemModel {
       prontoRetorno: prontoRetorno ?? this.prontoRetorno,
       janelaReversao:
           limparJanelaReversao ? null : (janelaReversao ?? this.janelaReversao),
+      motoristaId: limparMotorista ? null : (motoristaId ?? this.motoristaId),
+      motoristaNome:
+          limparMotorista ? null : (motoristaNome ?? this.motoristaNome),
     );
   }
 
@@ -200,7 +220,9 @@ class PassageiroViagemModel {
         other.pacienteId == pacienteId &&
         other.ordemEmbarque == ordemEmbarque &&
         other.statusEmbarque == statusEmbarque &&
-        other.prontoRetorno == prontoRetorno;
+        other.prontoRetorno == prontoRetorno &&
+        other.motoristaId == motoristaId &&
+        other.motoristaNome == motoristaNome;
   }
 
   @override
@@ -208,5 +230,7 @@ class PassageiroViagemModel {
       pacienteId.hashCode ^
       ordemEmbarque.hashCode ^
       statusEmbarque.hashCode ^
-      prontoRetorno.hashCode;
+      prontoRetorno.hashCode ^
+      motoristaId.hashCode ^
+      motoristaNome.hashCode;
 }

@@ -231,7 +231,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 CpfInputFormatter(),
               ],
               decoration: _decoracaoCampo(
-                labelText: 'CPF',
                 hintText: '000.000.000-00',
                 prefixIcon: Icons.badge_outlined,
               ),
@@ -263,7 +262,6 @@ class _LoginScreenState extends State<LoginScreen> {
               textInputAction: TextInputAction.done,
               onFieldSubmitted: _isLoading ? null : (_) => _submit(),
               decoration: _decoracaoCampo(
-                labelText: 'Senha',
                 hintText: '••••••••',
                 prefixIcon: Icons.lock_outline,
                 suffixIcon: Semantics(
@@ -383,7 +381,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 CpfInputFormatter(),
               ],
               decoration: _decoracaoCampo(
-                labelText: 'CPF',
                 hintText: '000.000.000-00',
                 prefixIcon: Icons.badge_outlined,
               ),
@@ -418,7 +415,6 @@ class _LoginScreenState extends State<LoginScreen> {
               ],
               onFieldSubmitted: _isLoading ? null : (_) => _submitPaciente(),
               decoration: _decoracaoCampo(
-                labelText: 'Código de Acesso',
                 hintText: 'Ex.: 12345',
                 prefixIcon: Icons.key_outlined,
               ),
@@ -524,7 +520,7 @@ class _LoginScreenState extends State<LoginScreen> {
     return Text(
       texto,
       style: const TextStyle(
-        fontSize: 11,
+        fontSize: 12.5,
         fontWeight: FontWeight.bold,
         color: Color(0xFF334155),
       ),
@@ -561,7 +557,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   InputDecoration _decoracaoCampo({
-    required String labelText,
+    String? labelText,
     required String hintText,
     required IconData prefixIcon,
     Widget? suffixIcon,
@@ -573,8 +569,8 @@ class _LoginScreenState extends State<LoginScreen> {
     return InputDecoration(
       labelText: labelText,
       hintText: hintText,
-      hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
-      prefixIcon: Icon(prefixIcon, color: const Color(0xFF64748B)),
+      hintStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 15),
+      prefixIcon: Icon(prefixIcon, color: const Color(0xFF475569)),
       suffixIcon: suffixIcon,
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       border: bordaPadrao,
@@ -603,7 +599,7 @@ class _LoginScreenState extends State<LoginScreen> {
           disabledBackgroundColor:
               const Color(0xFF0F172A).withValues(alpha: 0.6),
           disabledForegroundColor: Colors.white70,
-          minimumSize: const Size.fromHeight(48),
+          minimumSize: const Size.fromHeight(54),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(10),
           ),

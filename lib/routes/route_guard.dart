@@ -5,7 +5,6 @@ import '../motorista.dart';
 import '../paciente.dart';
 import '../screens/admin_placeholder_screen.dart';
 import '../screens/auth_gate.dart';
-import '../screens/gerenciador_viagens_screen.dart';
 import '../screens/login_screen.dart';
 import '../services/auth_service.dart';
 
@@ -35,16 +34,6 @@ class RouteGuard {
           return MaterialPageRoute(
             settings: settings,
             builder: (_) => AdminPlaceholderScreen(authService: service),
-          );
-        }
-        return _redirecionarAcessoIndevido(role, settings, service);
-
-      case '/gerenciador-horarios':
-      case '/gerenciador-viagens':
-        if (role == UserRole.admin) {
-          return MaterialPageRoute(
-            settings: settings,
-            builder: (_) => GerenciadorViagensScreen(authServiceOverride: service),
           );
         }
         return _redirecionarAcessoIndevido(role, settings, service);

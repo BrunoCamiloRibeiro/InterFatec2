@@ -244,6 +244,7 @@ void main() {
         await tester.enterText(find.byType(TextFormField).at(1), '52998224725');
         await tester.enterText(find.byType(TextFormField).at(2), '14997776655');
         await tester.enterText(find.byType(TextFormField).at(3), '01234567890');
+        await tester.enterText(find.byKey(const Key('campoSenhaPessoa')), '123456');
         await tester.pumpAndSettle();
 
         // Dispara criação

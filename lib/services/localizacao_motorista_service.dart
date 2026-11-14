@@ -36,6 +36,7 @@ import 'package:geolocator/geolocator.dart';
 
 import '../models/localizacao_motorista_model.dart';
 import '../models/viagem_model.dart';
+import 'auth_service.dart';
 import 'viagem_service.dart';
 
 /// Serviço singleton para controle e streaming de geolocalização dos motoristas.
@@ -170,6 +171,7 @@ class LocalizacaoMotoristaService {
       try {
         authUid = FirebaseAuth.instance.currentUser?.uid;
       } catch (_) {}
+      authUid ??= FirebaseAuthService().currentUserId;
       if (authUid == null || authUid.isEmpty) {
         return;
       }
@@ -483,18 +485,23 @@ class LocalizacaoMotoristaService {
           accuracy: LocationAccuracy.high,
           distanceFilter: 200,
         ),
-      ).listen((pos) {
-        atualizarLocalizacaoMotorista(
-          motoristaId: motoristaId,
-          motoristaNome: motoristaNome,
-          veiculoPlaca: veiculoPlaca,
-          veiculoModelo: veiculoModelo,
-          cidadeDestino: cidadeDestino,
-          latitude: pos.latitude,
-          longitude: pos.longitude,
-          viagemId: viagemId,
-        );
-      });
+      ).listen(
+        (pos) {
+          atualizarLocalizacaoMotorista(
+            motoristaId: motoristaId,
+            motoristaNome: motoristaNome,
+            veiculoPlaca: veiculoPlaca,
+            veiculoModelo: veiculoModelo,
+            cidadeDestino: cidadeDestino,
+            latitude: pos.latitude,
+            longitude: pos.longitude,
+            viagemId: viagemId,
+          );
+        },
+        onError: (Object erro, StackTrace stack) {
+          debugPrint('Erro no stream GPS do motorista: $erro');
+        },
+      );
       _iniciandoTransmissao = false;
       return true;
     } catch (e) {

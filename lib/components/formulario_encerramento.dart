@@ -26,12 +26,18 @@ Future<Uint8List> _compilarPdfEmIsolate(Map<String, dynamic> payload) async {
     );
   }).toList();
 
+  final rawMap = payload['viagemIdPorPaciente'] as Map?;
+  final viagemIdPorPaciente = rawMap?.map(
+    (k, v) => MapEntry(k.toString(), v.toString()),
+  );
+
   return RelatorioPdfService.gerarRoteiroViagemPdf(
     viagem: viagem,
     pacientes: pacientes,
     retornoInformado: payload['retornoInformado'] as String?,
     kmRetornoInformado: payload['kmRetornoInformado'] as int?,
     kmRodadoInformado: payload['kmRodadoInformado'] as int?,
+    viagemIdPorPaciente: viagemIdPorPaciente,
   );
 }
 
@@ -41,6 +47,7 @@ class FormularioEncerramento extends StatefulWidget {
   final List<ViagemModel>? viagens;
   final List<PacienteModel>? pacientes;
   final String? motoristaId;
+  final String? motoristaNome;
   final void Function(String retorno, String kmRetorno, String kmRodado)?
       onConfirmar;
   final VoidCallback? onViagemEncerrada;
@@ -51,6 +58,7 @@ class FormularioEncerramento extends StatefulWidget {
     this.viagens,
     this.pacientes,
     this.motoristaId,
+    this.motoristaNome,
     this.onConfirmar,
     this.onViagemEncerrada,
   });
@@ -182,22 +190,46 @@ class _FormularioEncerramentoState extends State<FormularioEncerramento> {
 
     widget.onConfirmar?.call(retorno, kmRetorno, kmRodado);
 
+    final listaViagensAlvo = widget.viagem != null
+        ? <ViagemModel>[widget.viagem!]
+        : ((widget.viagens != null && widget.viagens!.isNotEmpty)
+            ? <ViagemModel>[widget.viagens!.first]
+            : null);
+
     final listaParaRelatorio = ViagemService().obterViagensParaRelatorio(
-      viagensExplicitas: widget.viagens,
+      viagensExplicitas: listaViagensAlvo,
       viagemUnica: widget.viagem,
     );
 
-    final viagensSnapshot = listaParaRelatorio
-        .map(
-          (v) => v.copyWith(
-            codigosAcesso: Map<String, String>.from(v.codigosAcesso),
-            passageiros: List.from(v.passageiros),
-          ),
-        )
-        .toList();
     final pacientesSnapshot = widget.pacientes != null
         ? List<PacienteModel>.from(widget.pacientes!)
         : null;
+
+    final viagensSnapshot = listaParaRelatorio.map((v) {
+      final passageirosSinc = v.passageiros.map((p) {
+        final st = ViagemService().resolverStatusEfetivoPassageiro(
+          p,
+          viagemId: v.id,
+          pacientesContexto: pacientesSnapshot,
+        );
+        return p.copyWith(statusEmbarque: st);
+      }).toList();
+      final concluiu = v.isConcluida ||
+          ViagemService().todosPacientesVoltaram(
+            v.copyWith(passageiros: passageirosSinc),
+            pacientesContexto: pacientesSnapshot,
+          );
+      return v.copyWith(
+        status: concluiu ? 'encerrada' : 'ativa',
+        codigosAcesso: concluiu
+            ? const <String, String>{}
+            : Map<String, String>.from(v.codigosAcesso),
+        passageiros: passageirosSinc,
+      );
+    }).toList();
+
+    final todasViagensConcluidas = viagensSnapshot.isNotEmpty &&
+        viagensSnapshot.every((v) => v.isConcluida);
 
     // Atualiza estado e sessão do motorista imediatamente antes da geração do PDF (Zero-Wait UI).
     unawaited(
@@ -207,6 +239,8 @@ class _FormularioEncerramentoState extends State<FormularioEncerramento> {
         viagensExplicitas: viagensSnapshot,
         pacientes: pacientesSnapshot,
         motoristaId: widget.motoristaId,
+        encerrarViagensDefinitivamente: false,
+        finalizarSessaoMotorista: true,
       ),
     );
 
@@ -220,20 +254,22 @@ class _FormularioEncerramentoState extends State<FormularioEncerramento> {
     }
 
     messenger?.showSnackBar(
-      const SnackBar(
-        duration: Duration(seconds: 2),
+      SnackBar(
+        duration: const Duration(seconds: 2),
         behavior: SnackBarBehavior.floating,
-        backgroundColor: Color(0xFF0F172A),
+        backgroundColor: const Color(0xFF0F172A),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Viagem encerrada. Preparando relatório PDF em segundo plano...',
-              style: TextStyle(fontWeight: FontWeight.w600),
+              todasViagensConcluidas
+                  ? 'Viagem encerrada. Preparando relatório PDF em segundo plano...'
+                  : 'Sessão encerrada (pendências mantidas). Preparando relatório PDF em segundo plano...',
+              style: const TextStyle(fontWeight: FontWeight.w600),
             ),
-            SizedBox(height: 8),
-            LinearProgressIndicator(
+            const SizedBox(height: 8),
+            const LinearProgressIndicator(
               minHeight: 3,
               backgroundColor: Colors.white24,
               valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF38BDF8)),
@@ -265,29 +301,44 @@ class _FormularioEncerramentoState extends State<FormularioEncerramento> {
   }) async {
     await Future<void>.delayed(const Duration(milliseconds: 50));
 
-    final vBase = viagensSnapshot.isNotEmpty
-        ? viagensSnapshot.first
-        : (viagemFallback ??
-            ViagemModel(
-              id: 'relatorio_${DateTime.now().millisecondsSinceEpoch}',
-              motoristaId: '',
-              motoristaNome: '',
-              veiculoId: '',
-              veiculoPlaca: '',
-              veiculoModelo: '',
-              kmInicial: 0,
-              cidadeDestino: 'TFD',
-              dataHoraInicio: DateTime.now(),
-              status: 'encerrada',
-            ));
+    final viagemFocoAtual =
+        viagensSnapshot.isNotEmpty ? viagensSnapshot.first : viagemFallback;
+
+    List<ViagemModel> viagensParaPdf = viagensSnapshot;
+    try {
+      final todasDoDia =
+          await ViagemService().obterTodasViagensDoDiaParaRelatorio(
+        viagemEncerradaAtual: viagemFocoAtual,
+      );
+      if (todasDoDia.isNotEmpty) {
+        viagensParaPdf = todasDoDia;
+      }
+    } catch (_) {}
+
+    final vBase = viagemFocoAtual ??
+        (viagensParaPdf.isNotEmpty
+            ? viagensParaPdf.first
+            : ViagemModel(
+                id: 'relatorio_${DateTime.now().millisecondsSinceEpoch}',
+                motoristaId: '',
+                motoristaNome: '',
+                veiculoId: '',
+                veiculoPlaca: '',
+                veiculoModelo: '',
+                kmInicial: 0,
+                cidadeDestino: 'TFD',
+                dataHoraInicio: DateTime.now(),
+                status: 'encerrada',
+              ));
 
     final mapaPacientesConsolidados = <String, PacienteModel>{};
+    final mapaViagemIdPorPaciente = <String, String>{};
     final codigosConsolidados = <String, String>{...vBase.codigosAcesso};
     final idsPassageirosConsolidados = <String>[];
     final destinos = <String>[];
 
-    if (viagensSnapshot.isNotEmpty) {
-      for (final v in viagensSnapshot) {
+    if (viagensParaPdf.isNotEmpty) {
+      for (final v in viagensParaPdf) {
         if (v.cidadeDestino.trim().isNotEmpty &&
             !destinos.contains(v.cidadeDestino.trim())) {
           destinos.add(v.cidadeDestino.trim());
@@ -295,10 +346,11 @@ class _FormularioEncerramentoState extends State<FormularioEncerramento> {
         codigosConsolidados.addAll(v.codigosAcesso);
         final pacsDaViagem = ViagemService().obterPacientesParaViagemRelatorio(
           v,
-          pacientesInformados: pacientesSnapshot,
+          pacientesInformados: v.id == vBase.id ? pacientesSnapshot : null,
         );
         for (final p in pacsDaViagem) {
           mapaPacientesConsolidados[p.id] = p;
+          mapaViagemIdPorPaciente[p.id] = v.id;
           if (!idsPassageirosConsolidados.contains(p.id)) {
             idsPassageirosConsolidados.add(p.id);
           }
@@ -307,13 +359,25 @@ class _FormularioEncerramentoState extends State<FormularioEncerramento> {
     } else if (pacientesSnapshot != null) {
       for (final p in pacientesSnapshot) {
         mapaPacientesConsolidados[p.id] = p;
+        if (vBase.id.isNotEmpty) {
+          mapaViagemIdPorPaciente[p.id] = vBase.id;
+        }
         if (!idsPassageirosConsolidados.contains(p.id)) {
           idsPassageirosConsolidados.add(p.id);
         }
       }
     }
 
+    final motNomePdf = (vBase.motoristaNome.trim().isNotEmpty &&
+            vBase.motoristaNome.trim() != 'motorista_atual')
+        ? vBase.motoristaNome.trim()
+        : ((widget.motoristaNome?.trim().isNotEmpty == true &&
+                widget.motoristaNome!.trim() != 'motorista_atual')
+            ? widget.motoristaNome!.trim()
+            : '');
+
     final viagemParaPdf = vBase.copyWith(
+      motoristaNome: motNomePdf,
       cidadeDestino:
           destinos.isNotEmpty ? destinos.join(' / ') : vBase.cidadeDestino,
       passageirosIds: idsPassageirosConsolidados,
@@ -339,6 +403,7 @@ class _FormularioEncerramentoState extends State<FormularioEncerramento> {
           'retornoInformado': retorno.isNotEmpty ? retorno : null,
           'kmRetornoInformado': kmRetornoNum,
           'kmRodadoInformado': kmRodadoNum,
+          'viagemIdPorPaciente': mapaViagemIdPorPaciente,
         };
         pdfBytes = await compute(_compilarPdfEmIsolate, payload);
       } else {
@@ -348,6 +413,7 @@ class _FormularioEncerramentoState extends State<FormularioEncerramento> {
           retornoInformado: retorno.isNotEmpty ? retorno : null,
           kmRetornoInformado: kmRetornoNum,
           kmRodadoInformado: kmRodadoNum,
+          viagemIdPorPaciente: mapaViagemIdPorPaciente,
         );
       }
     } catch (_) {}

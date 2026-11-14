@@ -296,6 +296,13 @@ class FirebaseAuthService implements AuthService {
       );
     }
 
+    if (_usuarioEstaInativo(data)) {
+      throw const AuthException(
+        'Usuário inativo. Contate a coordenação.',
+        code: 'user-inactive',
+      );
+    }
+
     final roleRaw = data['role'];
     if (roleRaw == null || roleRaw.toString().trim().isEmpty) {
       throw const AuthException(
@@ -644,6 +651,38 @@ class FirebaseAuthService implements AuthService {
     return codigoClaroValido || hashValido;
   }
 
+  Future<UserRole> _finalizarLoginPaciente({
+    required String pacienteId,
+    required String viagemId,
+    required String docLimpo,
+    String? ipOrigem,
+  }) async {
+    CodigoAcessoService.registrarSucesso(docLimpo, ip: ipOrigem);
+    _pacienteLogadoId = pacienteId;
+    _pacienteViagemId = viagemId;
+    _roleCache[pacienteId] = UserRole.paciente;
+
+    if (customAuth == null) {
+      try {
+        if (auth.currentUser == null) {
+          final cred = await auth.signInAnonymously();
+          final anonUid = cred.user?.uid;
+          if (anonUid != null && anonUid.isNotEmpty) {
+            _roleCache[anonUid] = UserRole.paciente;
+          }
+        } else {
+          _roleCache[auth.currentUser!.uid] = UserRole.paciente;
+        }
+      } catch (_) {
+        // Mantém fallback quando Auth anônimo não estiver habilitado no console.
+      }
+    }
+
+    ViagemService().garantirEscutaFirestore();
+    LocalizacaoMotoristaService().garantirEscutasFirestore();
+    return UserRole.paciente;
+  }
+
   @override
   Future<UserRole> loginPacienteComCodigo({
     required String documento,
@@ -724,6 +763,7 @@ class FirebaseAuthService implements AuthService {
             .where('role', isEqualTo: 'paciente')
             .get();
         pacientesDisponiveis = snap.docs
+            .where((d) => !_usuarioEstaInativo(d.data()))
             .map((d) => PacienteModel.fromMap(d.data(), docId: d.id))
             .toList();
       } catch (_) {}
@@ -739,6 +779,7 @@ class FirebaseAuthService implements AuthService {
       );
 
       for (final paciente in pacientesDisponiveis) {
+        if (!paciente.ativo) continue;
         final resolucao =
             CodigoAcessoService.resolverIdentificadorLogin(paciente);
         final docRes = resolucao.documentoNormalizado;
@@ -754,13 +795,12 @@ class FirebaseAuthService implements AuthService {
               codigoSanitizado,
               hashTentativa,
             )) {
-          CodigoAcessoService.registrarSucesso(docLimpo, ip: ipOrigem);
-          _pacienteLogadoId = paciente.id;
-          _pacienteViagemId = viagem.id;
-          _roleCache[paciente.id] = UserRole.paciente;
-          ViagemService().garantirEscutaFirestore();
-          LocalizacaoMotoristaService().garantirEscutasFirestore();
-          return UserRole.paciente;
+          return _finalizarLoginPaciente(
+            pacienteId: paciente.id,
+            viagemId: viagem.id,
+            docLimpo: docLimpo,
+            ipOrigem: ipOrigem,
+          );
         }
       }
 
@@ -777,13 +817,12 @@ class FirebaseAuthService implements AuthService {
               codigoSanitizado,
               hashTentativa,
             )) {
-          CodigoAcessoService.registrarSucesso(docLimpo, ip: ipOrigem);
-          _pacienteLogadoId = pv.pacienteId;
-          _pacienteViagemId = viagem.id;
-          _roleCache[pv.pacienteId] = UserRole.paciente;
-          ViagemService().garantirEscutaFirestore();
-          LocalizacaoMotoristaService().garantirEscutasFirestore();
-          return UserRole.paciente;
+          return _finalizarLoginPaciente(
+            pacienteId: pv.pacienteId,
+            viagemId: viagem.id,
+            docLimpo: docLimpo,
+            ipOrigem: ipOrigem,
+          );
         }
       }
     }

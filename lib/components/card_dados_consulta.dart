@@ -35,20 +35,20 @@ class CardDadosConsulta extends StatelessWidget {
                     'DADOS DO AGENDAMENTO',
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 12.5,
+                      fontSize: 13,
                       fontWeight: FontWeight.bold,
                       letterSpacing: 0.5,
-                      color: Color(0xFF64748B),
+                      color: Color(0xFF475569),
                     ),
                   ),
                 ),
                 const SizedBox(width: 8),
-                Text(
+                const Text(
                   'Hoje',
                   style: TextStyle(
-                    fontSize: 12.5,
+                    fontSize: 13,
                     fontWeight: FontWeight.w600,
-                    color: Colors.grey.shade500,
+                    color: Color(0xFF475569),
                   ),
                 ),
               ],
@@ -59,23 +59,22 @@ class CardDadosConsulta extends StatelessWidget {
               label: 'Local da Consulta',
               valor: localConsulta,
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
             _ItemLinhaConsulta(
               icone: Icons.access_time_outlined,
               label: 'Horário Previsto',
               valor: horarioConsulta,
-              detalheExtra: '(Chegar com antecedência)',
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
             _ItemLinhaConsulta(
               icone: Icons.location_on_outlined,
               label: 'Local de Saída / Embarque',
-              valor: localSaida.isNotEmpty
+              valor: (localSaida.isNotEmpty && enderecoPaciente.isNotEmpty)
                   ? '$localSaida ($enderecoPaciente)'
-                  : enderecoPaciente,
+                  : (localSaida.isNotEmpty ? localSaida : enderecoPaciente),
             ),
             if (nomeAcompanhante != null && nomeAcompanhante!.isNotEmpty) ...[
-              const SizedBox(height: 14),
+              const SizedBox(height: 16),
               _ItemLinhaConsulta(
                 icone: Icons.people_outline,
                 label: 'Acompanhante',
@@ -93,13 +92,11 @@ class _ItemLinhaConsulta extends StatelessWidget {
   final IconData icone;
   final String label;
   final String valor;
-  final String? detalheExtra;
 
   const _ItemLinhaConsulta({
     required this.icone,
     required this.label,
     required this.valor,
-    this.detalheExtra,
   });
 
   @override
@@ -108,13 +105,13 @@ class _ItemLinhaConsulta extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
-          width: 37,
-          height: 37,
+          width: 42,
+          height: 42,
           decoration: BoxDecoration(
             color: const Color(0xFFEFF6FF),
             borderRadius: BorderRadius.circular(10),
           ),
-          child: Icon(icone, size: 21, color: const Color(0xFF2563EB)),
+          child: Icon(icone, size: 23, color: const Color(0xFF1D4ED8)),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -124,35 +121,19 @@ class _ItemLinhaConsulta extends StatelessWidget {
               Text(
                 label.toUpperCase(),
                 style: const TextStyle(
-                  fontSize: 11.5,
+                  fontSize: 12.5,
                   fontWeight: FontWeight.bold,
-                  color: Color(0xFF64748B),
+                  color: Color(0xFF475569),
                 ),
               ),
-              const SizedBox(height: 2),
-              Wrap(
-                spacing: 6,
-                runSpacing: 2,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  Text(
-                    valor.isNotEmpty ? valor : 'Não informado',
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF0F172A),
-                    ),
-                  ),
-                  if (detalheExtra != null)
-                    Text(
-                      detalheExtra!,
-                      style: const TextStyle(
-                        fontSize: 12.5,
-                        color: Color(0xFF0284C7),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                ],
+              const SizedBox(height: 3),
+              Text(
+                valor.isNotEmpty ? valor : 'Não informado',
+                style: const TextStyle(
+                  fontSize: 16.5,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF0F172A),
+                ),
               ),
             ],
           ),
