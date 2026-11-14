@@ -166,6 +166,24 @@ flutter test -j 1
 
 Para homologar a sincronização em tempo real entre diferentes atores, abra três janelas/abas distintas do navegador:
 
+### Credenciais do Administrador (Firebase)
+
+#### Ambiente Firebase (`trans-saude3`)
+* **Documento:** `usuarios/admin_principal`
+* **Nome:** `Administrador Geral`
+* **CPF:** `387.457.650-73`
+* **E-mail:** `admin@transsaude.sp.gov.br`
+* **Senha:** `123456`
+* **Role:** `admin`
+
+#### Emulador Local (`npm run seed` / `audit_suite/seed_emulator.js`)
+* **Documento / UID:** `usuarios/usr_admin_master`
+* **Nome:** `Dra. Fernanda Vasconcelos`
+* **CPF:** `678.901.234-69`
+* **E-mail sintético:** `67890123469@transsaude.sp.gov.br`
+* **Senha:** `123456`
+* **Role:** `admin`
+
 ### Cenário de Teste: Operação Multi-Motorista com Viagem Compartilhada
 
 #### Preparação
